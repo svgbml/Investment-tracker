@@ -815,7 +815,7 @@
     });
     out.push(stat('Grootste terugval', S.n >= MIN_DAYS_SD ? (mdd < -0.0005 ? spct1(mdd) : 'Geen') : '–',
       S.n < MIN_DAYS_SD ? tooFew(S.n, MIN_DAYS_SD) : mdd < -0.0005 ? 'van piek tot dal' + (ddFrom ? ', ' + fDM.format(ddFrom) + ' tot ' + fDM.format(ddTo) : ' vanaf de start') : 'nog geen daling na een piek',
-      mdd < -0.0005 ? 'loss' : '', S.n >= MIN_DAYS_SD ? spark(ddPts, C.loss) : ''));
+      S.n >= MIN_DAYS_SD && mdd < -0.0005 ? 'loss' : '', S.n >= MIN_DAYS_SD ? spark(ddPts, C.loss) : ''));
 
     // Jij tegenover de markt over dezelfde dagen
     const b = M.bench;
@@ -852,8 +852,8 @@
       best ? 'tot ' + fDM.format(best.t) + '. Slechtste ' + seur(worst.weekResult) + ' tot ' + fDM.format(worst.t) : 'Na de tweede weekmeting', best ? tone(best.weekResult) : ''));
 
     // Gemiddelde dag
-    const avg = S.n ? mean(S.returns.map((d) => d.pct)) : null;
-    out.push(stat('Gemiddelde dag', isNum(avg) ? spct(avg) : '–', isNum(avg) ? '≈ ' + seur(avg * M.totalValue) + ' bij je huidige waarde' : 'Nog geen dagen gemeten', tone(avg)));
+    const avg = S.n >= MIN_DAYS_BEST ? mean(S.returns.map((d) => d.pct)) : null;
+    out.push(stat('Gemiddelde dag', isNum(avg) ? spct(avg) : '–', isNum(avg) ? '≈ ' + seur(avg * M.totalValue) + ' bij je huidige waarde, over ' + days(S.n) : tooFew(S.n, MIN_DAYS_BEST), tone(avg)));
 
     // Dividend
     const E = M.ev;
