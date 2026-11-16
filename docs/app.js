@@ -2470,7 +2470,7 @@
     }
     return '<section class="tile pad"><h3>Mijlpalen</h3>' +
       (next ? '<div class="ms-next"><span class="muted small">Volgende</span><b>' + esc(eur(next).replace(',00', '')) + '</b><span class="muted small">nog ' + esc(eur(next - now)) +
-        (eta ? ', rond ' + esc(fMonY.format(eta)) + ' bij je huidige inleg en 7% per jaar' : '') + '</span><div class="meter"><div style="width:' + Math.min(100, now / next * 100).toFixed(1) + '%"></div></div></div>' : '') +
+        (eta ? ', rond ' + esc(new Intl.DateTimeFormat('nl-NL', { month: 'long', year: 'numeric' }).format(eta)) + ' bij je huidige inleg en 7% per jaar' : '') + '</span><div class="meter"><div style="width:' + Math.min(100, now / next * 100).toFixed(1) + '%"></div></div></div>' : '') +
       (list.length ? '<ol class="ms">' + list.slice().reverse().map((m) => '<li><span class="ms-d">' + esc(fDM.format(m.t) + ' ' + String(new Date(m.t).getFullYear()).slice(2)) + '</span><span class="ms-t"><b>' + esc(m.title) + '</b><span class="muted small">' + esc(m.sub) + '</span></span></li>').join('') + '</ol>'
         : '<p class="muted">Na de eerste weekmeting verschijnen hier je mijlpalen.</p>') + '</section>';
   }
