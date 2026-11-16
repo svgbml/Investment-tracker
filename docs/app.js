@@ -38,7 +38,12 @@
 
   // ---------- Instellingen ----------
   const getToken = () => localStorage.getItem(LS_TOKEN) || '';
-  const getUrl = () => localStorage.getItem(LS_URL) || CFG.apiUrl || '';
+  const WEBAPP_RE = /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/;
+  const getUrl = () => {
+    const saved = localStorage.getItem(LS_URL) || '';
+    if (saved && !WEBAPP_RE.test(saved)) localStorage.removeItem(LS_URL);
+    return (WEBAPP_RE.test(saved) ? saved : '') || CFG.apiUrl || '';
+  };
 
   function openSettings() {
     $('in-token').value = getToken();
@@ -52,6 +57,11 @@
       const t = $('in-token').value.trim();
       const u = $('in-url').value.trim();
       if (t) localStorage.setItem(LS_TOKEN, t); else localStorage.removeItem(LS_TOKEN);
+      if (u && !WEBAPP_RE.test(u)) {
+        e.preventDefault();
+        alertUrl();
+        return;
+      }
       if (u) localStorage.setItem(LS_URL, u); else localStorage.removeItem(LS_URL);
       demo = false;
       load();
@@ -61,6 +71,13 @@
       showWelcome();
     }
   });
+
+  function alertUrl() {
+    const el = $('url-hint');
+    el.textContent = 'Dit is geen web-app-adres. Het moet beginnen met https://script.google.com/macros/s/ en eindigen op /exec. Laat het veld leeg om het standaardadres te gebruiken.';
+    el.classList.add('loss');
+    $('in-url').focus();
+  }
 
   $('btn-settings').addEventListener('click', openSettings);
   $('btn-welcome-settings').addEventListener('click', openSettings);

@@ -186,3 +186,6 @@ dialog p.small { margin: 0.3rem 0 0; }
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
+
+.advanced { margin-top: 1rem; }
+.advanced summary { cursor: pointer; color: var(--ink-2); font-size: 0.875rem; }

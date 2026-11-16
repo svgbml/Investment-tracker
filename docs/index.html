@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=5">
+  <link rel="stylesheet" href="style.css?v=6">
 </head>
 <body>
   <header class="top">
@@ -101,9 +101,12 @@
       <label for="in-token">Toegangscode</label>
       <input id="in-token" name="token" type="password" autocomplete="off" spellcheck="false" placeholder="Plak de code uit de sheet">
       <p class="muted small">De code wordt alleen in deze browser bewaard.</p>
-      <label for="in-url">Adres van de web-app</label>
-      <input id="in-url" name="url" type="url" spellcheck="false" placeholder="https://script.google.com/macros/s/.../exec">
-      <p class="muted small">Laat leeg om het standaardadres uit config.js te gebruiken.</p>
+      <details class="advanced">
+        <summary>Ander adres van de web-app gebruiken</summary>
+        <label for="in-url">Adres van de web-app</label>
+        <input id="in-url" name="url" type="url" spellcheck="false" placeholder="https://script.google.com/macros/s/.../exec">
+        <p id="url-hint" class="muted small">Alleen nodig als je de web-app opnieuw hebt gepubliceerd met een nieuw adres. Laat leeg voor het standaardadres.</p>
+      </details>
       <div class="dlg-actions">
         <button value="forget" class="btn ghost danger" type="submit">Code vergeten</button>
         <span class="spacer"></span>
@@ -133,7 +136,7 @@
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
-  <script src="config.js?v=5"></script>
-  <script src="app.js?v=5"></script>
+  <script src="config.js?v=6"></script>
+  <script src="app.js?v=6"></script>
 </body>
 </html>
