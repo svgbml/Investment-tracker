@@ -32,7 +32,7 @@
   // Taal: Nederlands (standaard) of Engels; getallen en datums volgen de gekozen taal
   const LANG = (() => { try { return localStorage.getItem('tracker.lang') === 'en' ? 'en' : 'nl'; } catch (e) { return 'nl'; } })();
   const LOCALE = LANG === 'en' ? 'en-GB' : 'nl-NL';
-  const VERSION = 'v33';
+  const VERSION = 'v35';
   const nf = (o) => new Intl.NumberFormat(LOCALE, o);
   const EUR = nf({ style: 'currency', currency: 'EUR' });
   const P2 = nf({ style: 'percent', minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -4915,7 +4915,7 @@
     const O = overlapModel();
     O.per.forEach((list, tk) => { const eurV = sum(list.map((x) => x.eur)); if (eurV > 0) add(tk, 'zit al voor ' + eur(eurV) + ' in je fondsen', eurV / Math.max(1, M.totalValue || 1) * 40, ''); });
     (data.etf ? Object.values(data.etf) : []).forEach((E) => (E.rows || []).forEach((r) => { const k = normTk(r[0]); if (cand.has(k) && !cand.get(k).name) cand.get(k).name = String(r[1] || '').replace(/\b(INC|CORP|CLASS [A-C]|LTD)\b\.?/g, '').trim(); }));
-    return [...cand.values()].sort((a, b) => b.w - a.w).slice(0, 6);
+    return [...cand.values()].sort((a, b) => b.w - a.w).slice(0, 10);
   }
   function watchSuggestTile() {
     if (!M) return '';

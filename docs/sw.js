@@ -3,8 +3,8 @@
  * Eerst het netwerk (zodat updates direct binnenkomen), bij geen verbinding de bewaarde versie.
  * Gegevens van de Worker gaan hier niet doorheen; de laatste stand bewaart de site zelf in de browser.
  */
-const CACHE = 'tracker-v34';
-const FILES = ['./', './index.html', './style.css?v=34', './app.js?v=34', './config.js?v=34', './manifest.webmanifest',
+const CACHE = 'tracker-v35';
+const FILES = ['./', './index.html', './style.css?v=35', './app.js?v=35', './config.js?v=35', './manifest.webmanifest',
   './icon-192.png', './icon-512.png', './apple-touch-icon.png', './favicon.png'];
 
 // Een nieuwe versie wacht tot de gebruiker op de site "Nu bijwerken" kiest (of alle vensters sluit)
