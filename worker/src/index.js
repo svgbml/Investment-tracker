@@ -76,6 +76,11 @@ export default {
     if (!envIn.WEB_TOKEN) {
       return json({ ok: false, error: 'De Worker heeft nog geen WEB_TOKEN. Voeg die toe als geheim bij Cloudflare (Settings > Variables and Secrets).' }, 401, cors);
     }
+    // Inloggen op een nieuw apparaat met de Trading 212-sleutel die al in deze Worker staat
+    if (url.pathname === '/api/login' && request.method === 'POST') {
+      try { return await loginWithT212(request, envIn, cors); }
+      catch (err) { return json({ ok: false, error: String(err && err.message || err) }, 500, cors); }
+    }
 
     if (!authorized(request, url, envIn)) {
       return json({ ok: false, error: 'Ongeldige of ontbrekende toegangscode.' }, 401, cors);
@@ -312,6 +317,28 @@ function json(obj, status, headers) {
     status: status || 200,
     headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...(headers || {}) },
   });
+}
+
+// Geeft de toegangscode terug als sleutel én secret gelijk zijn aan die van Trading 212 in deze Worker.
+// Zo hoef je op een nieuw apparaat de toegangscode niet te weten: alle andere koppelingen staan al in de Worker.
+// Maximaal 10 mislukte pogingen per uur (voor de hele Worker); de sleutel wordt nergens bewaard.
+async function loginWithT212(request, envIn, cors) {
+  await ensureSchema(envIn);
+  const body = await request.json().catch(() => ({}));
+  const key = String((body && body.key) || '').trim(), secret = String((body && body.secret) || '').trim();
+  const hour = new Date().toISOString().slice(0, 13);
+  let lim = {};
+  try { lim = JSON.parse((await getKv(envIn, 'login_fail')) || '{}'); } catch (e) { lim = {}; }
+  const fails = lim.h === hour ? lim.n || 0 : 0;
+  if (fails >= 10) return json({ ok: false, error: 'Te veel mislukte pogingen. Probeer het over een uur opnieuw, of gebruik je toegangscode.' }, 429, cors);
+  const env = await withKeys(envIn);
+  if (!env.T212_KEY || !env.T212_SECRET) return json({ ok: false, error: 'In deze Worker staat nog geen Trading 212-sleutel. Log in met je toegangscode en voeg de sleutel toe bij Koppelingen.' }, 409, cors);
+  const ok = key.length > 8 && secret.length > 8 && safeEqual(String(env.T212_KEY), key) && safeEqual(String(env.T212_SECRET), secret);
+  if (!ok) {
+    await setKv(envIn, 'login_fail', JSON.stringify({ h: hour, n: fails + 1 }));
+    return json({ ok: false, error: 'Deze sleutel en secret horen niet bij deze Worker. Controleer ze, en het adres van de Worker.' }, 401, cors);
+  }
+  return json({ ok: true, token: envIn.WEB_TOKEN, features: await featureStatus(env, envIn) }, 200, cors);
 }
 
 function safeEqual(a, b) {

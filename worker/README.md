@@ -36,6 +36,7 @@ Alle adressen vragen je toegangscode, als `?token=…` of als header `Authorizat
 | Agenda nu bijwerken (dividenden, kwartaalcijfers) | `POST /api/events` |
 | Orders (aan- en verkopen) nu ophalen | `POST /api/orders` |
 | Samenstelling van de indexfondsen nu ophalen / zelf toevoegen | `POST /api/etf` / `POST /api/etf-upload` met `{"key": "SP500" of "NDX", "csv": "…"}` |
+| Inloggen op een nieuw apparaat met de Trading 212-sleutel en -secret die al in de Worker staan; geeft de toegangscode terug (zonder toegangscode, max. 10 mislukte pogingen per uur) | `POST /api/login` |
 | Instellingen van de site (streefverdeling, inleg, doel, volglijst, notities bij aankopen `notes`, andere rekeningen `accounts`) | `GET` / `POST /api/settings` |
 | Status van koppelingen en functies | `GET /api/features` (alleen waar een sleutel staat, nooit de sleutel zelf) |
 | Sleutel opslaan of wissen | `POST /api/keys` met `{"name": "FINNHUB_KEY", "value": "…"}` (lege waarde wist) |

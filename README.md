@@ -16,6 +16,8 @@ Voor de basis heb je alleen een **gratis Cloudflare-account** en een **Trading 2
 3. **Website koppelen.** Open de [website](https://svgbml.github.io/Investment-tracker/), kies *Worker en toegangscode invullen*, vul het adres van je Worker in (`https://investment-tracker.JOUWNAAM.workers.dev/api/data`, te vinden bovenaan de Worker in Cloudflare) en je toegangscode.
 4. **Trading 212.** Maak in de Trading 212-app een API-sleutel met alleen leesrechten (*Instellingen → API*). Vul sleutel en secret in op de website onder *Instellingen → Koppelingen en functies*. De Worker doet direct een eerste meting.
 
+**Op een ander apparaat inloggen.** Al je sleutels staan in je Worker, niet in de browser. Op een nieuwe browser of telefoon kies je op de website *Inloggen met je Trading 212-sleutel*: vul je Worker-adres, API-sleutel en secret in. De Worker herkent de sleutel, geeft dat apparaat toegang en alle andere koppelingen werken meteen. De toegangscode invullen kan ook.
+
 Daarna meet de Worker op werkdagen elke 10 minuten (08:00–22:30), maakt hij elke zaterdag een weekoverzicht en haalt hij je orders en dividenden op. De tabellen in de database maakt hij zelf aan.
 
 Lukt de knop niet? Dan kan het ook met de hand: zie [worker/README.md](worker/README.md).

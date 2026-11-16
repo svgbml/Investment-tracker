@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=32">
+  <link rel="stylesheet" href="style.css?v=33">
 </head>
 <body data-page="home">
 
@@ -32,6 +32,16 @@
       <div class="welcome-actions">
         <button id="btn-demo" class="btn primary" type="button">Functies bekijken met voorbeeldgetallen</button>
         <button id="btn-welcome-settings" class="btn ghost" type="button">Mijn tracker koppelen</button>
+      </div>
+      <div class="login-card">
+        <h2>Al een tracker? Inloggen met je Trading 212-sleutel</h2>
+        <p class="muted small">Op een nieuwe browser of telefoon. Je Worker herkent de sleutel en geeft dit apparaat toegang; je andere koppelingen (FMP, Finnhub, SEC en de rest) staan al in de Worker en werken meteen. De sleutel wordt niet bewaard.</p>
+        <div class="login-form" data-login-form>
+          <label>Adres van je Worker<input data-l="url" type="url" spellcheck="false" placeholder="https://…workers.dev/api/data"></label>
+          <label>Trading 212 API-sleutel<input data-l="key" type="password" autocomplete="off" spellcheck="false"></label>
+          <label>API-secret<input data-l="secret" type="password" autocomplete="off" spellcheck="false"></label>
+          <div class="dlg-actions" style="justify-content:flex-start"><button type="button" class="btn primary" data-login-go>Inloggen</button><span class="small login-st" role="status"></span></div>
+        </div>
       </div>
       <ul class="feat-list">
         <li><b>Overzicht</b><span>Waarde, resultaat en grafieken per dag, week en positie.</span><i>Trading 212</i></li>
@@ -255,6 +265,15 @@
       <label for="in-token">Toegangscode</label>
       <input id="in-token" name="token" type="password" autocomplete="off" spellcheck="false" placeholder="Je toegangscode">
       <p class="muted small">De code wordt alleen in deze browser bewaard.</p>
+      <details class="advanced" id="login-box">
+        <summary>Toegangscode kwijt? Inloggen met je Trading 212-sleutel</summary>
+        <div class="login-form" data-login-form>
+          <p class="muted small">Gebruik dezelfde sleutel en secret die al in je Worker staan. Vul hieronder bij "Adres van je Worker" het adres in als dat niet het standaardadres is.</p>
+          <label>Trading 212 API-sleutel<input data-l="key" type="password" autocomplete="off" spellcheck="false"></label>
+          <label>API-secret<input data-l="secret" type="password" autocomplete="off" spellcheck="false"></label>
+          <div class="dlg-actions" style="justify-content:flex-start;margin-top:8px"><button type="button" class="btn ghost" data-login-go>Inloggen</button><span class="small login-st" role="status"></span></div>
+        </div>
+      </details>
       <details class="advanced" id="url-box">
         <summary>Adres van je Worker</summary>
         <label for="in-url">Adres van de Worker</label>
@@ -324,7 +343,7 @@
   <div id="tip" class="tip" role="status" hidden></div>
   <div id="print-area" aria-hidden="true"></div>
 
-  <script src="config.js?v=32"></script>
-  <script src="app.js?v=32"></script>
+  <script src="config.js?v=33"></script>
+  <script src="app.js?v=33"></script>
 </body>
 </html>

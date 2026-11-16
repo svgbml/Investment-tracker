@@ -32,7 +32,7 @@
   // Taal: Nederlands (standaard) of Engels; getallen en datums volgen de gekozen taal
   const LANG = (() => { try { return localStorage.getItem('tracker.lang') === 'en' ? 'en' : 'nl'; } catch (e) { return 'nl'; } })();
   const LOCALE = LANG === 'en' ? 'en-GB' : 'nl-NL';
-  const VERSION = 'v32';
+  const VERSION = 'v33';
   const nf = (o) => new Intl.NumberFormat(LOCALE, o);
   const EUR = nf({ style: 'currency', currency: 'EUR' });
   const P2 = nf({ style: 'percent', minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -5062,6 +5062,39 @@
     location.reload();
   });
   $$('[data-lang-pick]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.langPick === LANG)));
+
+  // ---------- Inloggen met de Trading 212-sleutel (nieuw apparaat) ----------
+  // De Worker vergelijkt sleutel en secret met wat hij al heeft en geeft dan de toegangscode terug.
+  // Alle andere koppelingen staan in de Worker, dus die werken op dit apparaat meteen. De sleutel zelf wordt niet bewaard.
+  document.querySelectorAll('[data-login-form] [data-l="url"]').forEach((i) => { i.value = localStorage.getItem(LS_URL) || CFG.apiUrl || ''; });
+  document.addEventListener('click', async (e) => {
+    const b = e.target.closest && e.target.closest('[data-login-go]');
+    if (!b) return;
+    const f = b.closest('[data-login-form]');
+    const st = f.querySelector('.login-st');
+    const say = (t, cls) => { st.textContent = t; st.className = 'small login-st ' + (cls || 'muted'); };
+    const v = (k) => { const i = f.querySelector('[data-l="' + k + '"]'); return i ? i.value.trim() : ''; };
+    const urlIn = f.querySelector('[data-l="url"]') ? v('url') : ($('in-url').value.trim() || getUrl());
+    const url = urlIn || CFG.apiUrl || '';
+    if (!/^https:\/\/[A-Za-z0-9.-]+\/api\/data$/.test(url)) { say('Vul het adres van je Cloudflare Worker in; het eindigt op /api/data.', 'loss'); return; }
+    if (!v('key') || !v('secret')) { say('Vul je API-sleutel en secret van Trading 212 in.', 'loss'); return; }
+    b.disabled = true; say('Bezig met inloggen…');
+    try {
+      const res = await fetch(url.replace(/\/api\/data$/, '/api/login'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: v('key'), secret: v('secret') }) });
+      const j = await res.json().catch(() => null);
+      if (!res.ok || !j || !j.ok || !j.token) throw new Error((j && j.error) || (res.status === 404 ? 'deze Worker kent inloggen met een sleutel nog niet; werk hem bij (Sync fork)' : 'de Worker gaf status ' + res.status));
+      localStorage.setItem(LS_TOKEN, j.token);
+      if (url !== CFG.apiUrl) localStorage.setItem(LS_URL, url); else localStorage.removeItem(LS_URL);
+      f.querySelectorAll('[data-l="key"],[data-l="secret"]').forEach((i) => { i.value = ''; });
+      const K = (j.features && j.features.keys) || {};
+      const on = [['FMP_KEY', 'FMP'], ['FINNHUB_KEY', 'Finnhub'], ['SEC_CONTACT', 'SEC'], ['FRED_KEY', 'FRED']].filter(([k]) => K[k]).map(([, n]) => n);
+      say('Ingelogd. ' + (on.length ? 'Al gekoppeld: Trading 212, ' + on.join(', ') + '.' : 'Trading 212 is gekoppeld.'), 'gain');
+      demo = false;
+      if ($('dlg-settings').open) $('dlg-settings').close();
+      load();
+    } catch (err) { say('Inloggen is mislukt: ' + err.message + '.', 'loss'); }
+    finally { b.disabled = false; }
+  });
 
   // ---------- Animaties aan of uit ----------
   function syncMotionButtons() {

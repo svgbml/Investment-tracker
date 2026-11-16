@@ -39,7 +39,7 @@ The user-facing language is **Dutch**: all UI text, code comments, commit messag
 - Schema changes go in the embedded `SCHEMA_SQL` (`ensureSchema` applies it). Use `CREATE … IF NOT EXISTS`.
 - FMP has a daily budget (counter in `kv` `fmp_calls`). Keep previous data when a fetch fails.
 - Record source failures with `noteExtError(env, source, msg)`; the site shows them under *Koppelingen*.
-- All `/api/*` routes require the `WEB_TOKEN`; only `/cal/<token>.ics` is public.
+- All `/api/*` routes require the `WEB_TOKEN`; only `/cal/<token>.ics` and `POST /api/login` are public. `/api/login` returns the `WEB_TOKEN` only when the posted Trading 212 key and secret match the ones in the Worker (constant-time compare, max 10 failures per hour, nothing stored).
 
 ## Site conventions
 
