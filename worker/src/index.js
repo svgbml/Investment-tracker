@@ -81,10 +81,10 @@ export default {
         }
       }
       if (url.pathname === '/api/market' && request.method === 'POST') {
-        const steps = Math.min(Number(url.searchParams.get('steps') || 1), 3);
+        // Eén stap per aanroep: Cloudflare staat 50 externe verzoeken per aanroep toe
         const msgs = [];
         if (url.searchParams.has('plan')) msgs.push(await planMarket(env));
-        for (let i = 0; i < steps; i++) msgs.push(await marketStep(env));
+        msgs.push(await marketStep(env));
         return json({ ok: true, message: msgs.join(' ') }, 200, cors);
       }
       if (url.pathname === '/api/events' && request.method === 'POST') {
@@ -698,6 +698,7 @@ async function planMarket(env) {
   const peerMap = new Map(peerRows.map((r) => [r.symbol, r]));
   const weekAgo = new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10);
   const symbols = new Set();
+  const later = [];
   for (const h of held) {
     symbols.add(h.symbol);
     const pr = peerMap.get(h.symbol);
@@ -707,15 +708,18 @@ async function planMarket(env) {
   const { results: hist } = await env.DB.prepare('SELECT symbol, COUNT(*) AS n FROM ext_prices GROUP BY symbol').all();
   const histN = new Map(hist.map((r) => [r.symbol, r.n]));
   const noHist = JSON.parse((await getKv(env, 'eod_unavailable')) || '[]');
+  const { results: fresh } = await env.DB.prepare('SELECT symbol FROM ext_profile WHERE updated = ?').bind(usDay).all();
+  const freshSet = new Set(fresh.map((r) => r.symbol));
   for (const sym of symbols) {
-    tasks.push('profile:' + sym);
-    if ((histN.get(sym) || 0) < 20 && !noHist.includes(sym)) tasks.push('eod:' + sym);
+    if (!freshSet.has(sym)) tasks.push('profile:' + sym);
+    if ((histN.get(sym) || 0) < 20 && !noHist.includes(sym)) later.push('eod:' + sym);
   }
   const { results: have } = await env.DB.prepare("SELECT DISTINCT day FROM ext_perf WHERE kind = 'sector'").all();
   const haveDays = new Set(have.map((r) => r.day));
   for (const d of prevWeekdays(usDay, PERF_BACKFILL_DAYS)) {
     if (!haveDays.has(d)) tasks.push('perf:' + d);
   }
+  tasks.push(...later);
   await setKv(env, 'mkt_queue', JSON.stringify(tasks));
   await setKv(env, 'mkt_planned', usDay);
   return `Markt: ${tasks.length} taken klaargezet.`;
@@ -740,11 +744,16 @@ async function marketStep(env) {
         calls++;
         const list = await fmp(env, '/stock-peers?symbol=' + encodeURIComponent(arg));
         // Voorkeur voor Amerikaanse noteringen (zonder beurs-achtervoegsel), grootste eerst
-        const us = list.filter((x) => x.symbol && !x.symbol.includes('.') && x.symbol !== arg);
-        const pick = (us.length >= 3 ? us : list.filter((x) => x.symbol && x.symbol !== arg))
+        // Andere aandelenklasse van hetzelfde bedrijf (GOOG bij GOOGL) telt niet als vergelijkbaar
+        const other = (x) => x.symbol && !x.symbol.startsWith(arg) && !arg.startsWith(x.symbol);
+        const us = list.filter((x) => other(x) && !x.symbol.includes('.'));
+        const pick = (us.length >= 3 ? us : list.filter(other))
           .sort((a, b) => num(b.mktCap) - num(a.mktCap)).slice(0, PEERS_PER_STOCK).map((x) => x.symbol);
         writes.push(env.DB.prepare('INSERT OR REPLACE INTO ext_peers (symbol, peers, updated) VALUES (?,?,?)').bind(arg, JSON.stringify(pick), parts(new Date()).day));
-        pick.forEach((sym) => { if (!queue.includes('profile:' + sym)) queue.push('profile:' + sym); if (!noHist.includes(sym)) queue.push('eod:' + sym); });
+        pick.forEach((sym) => {
+          if (!queue.includes('profile:' + sym)) queue.unshift('profile:' + sym);
+          if (!noHist.includes(sym) && !queue.includes('eod:' + sym)) queue.push('eod:' + sym);
+        });
       } else if (kind === 'profile') {
         calls++;
         const p = (await fmp(env, '/profile?symbol=' + encodeURIComponent(arg)))[0];
@@ -781,7 +790,7 @@ async function marketStep(env) {
       done++;
     } catch (e) {
       errors.push(task + ': ' + e.message);
-      if (/limiet/.test(e.message)) { queue.unshift(task); stop = true; }
+      if (/limiet|subrequests/i.test(e.message)) { queue.unshift(task); stop = true; }
     }
   }
   for (let i = 0; i < writes.length; i += 100) await env.DB.batch(writes.slice(i, i + 100));
@@ -802,7 +811,7 @@ async function marketData(env) {
   const heldSyms = new Map(held.map((h) => [h.symbol, h.ticker]));
   peerRows.forEach((r) => {
     if (!heldSyms.has(r.symbol)) return;
-    const list = JSON.parse(r.peers || '[]');
+    const list = JSON.parse(r.peers || '[]').filter((x) => !x.startsWith(r.symbol) && !r.symbol.startsWith(x));
     peers[heldSyms.get(r.symbol)] = list;
     list.forEach((x) => want.add(x));
   });
