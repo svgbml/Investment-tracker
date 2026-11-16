@@ -8,5 +8,21 @@
   },
   "devDependencies": {
     "wrangler": "^4.0.0"
+  },
+  "cloudflare": {
+    "bindings": {
+      "WEB_TOKEN": {
+        "description": "Kies een lange willekeurige code. Dit is je toegangscode voor de website."
+      },
+      "T212_KEY": {
+        "description": "Optioneel hier: je Trading 212 API-sleutel (alleen leesrechten). Kan ook later op de website onder **Koppelingen**."
+      },
+      "T212_SECRET": {
+        "description": "Optioneel hier: het bijbehorende API-secret. Kan ook later op de website."
+      },
+      "DB": {
+        "description": "D1-database voor je metingen en weken; wordt automatisch aangemaakt."
+      }
+    }
   }
 }

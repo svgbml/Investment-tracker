@@ -405,7 +405,7 @@ body[data-page="list"] .m-top, body[data-page="stats"] .m-top { background: rgba
 .m-nav button { width: 44px; height: 44px; border: 0; border-radius: 50%; background: rgba(255, 255, 255, .85); font-size: 18px; font-weight: 700; cursor: pointer; }
 .md .m-hero { padding-top: 6px; touch-action: pan-y; }
 .md .check { padding: 4px 16px 0; }
-.m-dtabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin: 4px 0 12px; padding: 4px; border-radius: 14px; background: #E9ECF1; }
+.m-dtabs { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; margin: 4px 0 12px; padding: 4px; border-radius: 14px; background: #E9ECF1; }
 .m-dtabs button { min-height: 40px; border: 0; border-radius: 10px; background: transparent; font-weight: 600; cursor: pointer; }
 .m-dtabs button[aria-selected="true"] { background: #FFFFFF; box-shadow: 0 1px 2px rgba(20, 24, 31, .12); }
 .md .foot { margin: 16px 2px 0; }
@@ -565,3 +565,45 @@ button.m-stat.clickable:active { background: var(--bg); }
 .etf-b b { min-width: 90px; }
 .etf-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
 .etf-acts .btn { cursor: pointer; }
+
+/* Koppelingen */
+#links-body { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
+.link-row { padding: 10px 12px; border-radius: 12px; background: var(--bg); }
+.link-h { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.link-h .tag { margin-left: auto; }
+.link-row p { margin-top: 4px; }
+.key-row { margin-top: 8px; }
+.key-row label { display: block; margin-bottom: 4px; color: var(--ink-2); }
+.key-in { display: flex; gap: 6px; flex-wrap: wrap; }
+.key-in input { flex: 1; min-width: 160px; }
+.key-in .btn { padding: 8px 12px; min-height: 0; }
+.link-row .check { margin-top: 8px; }
+
+.m-dtabs button { font-size: 13px; padding: 0 2px; }
+/* Onderzoek */
+.news { display: flex; flex-direction: column; }
+.news-i { display: flex; flex-direction: column; gap: 2px; padding: 9px 0; border-top: 1px solid var(--rule); color: var(--ink); text-decoration: none; }
+.news-i:first-child { border-top: 0; }
+.news-i:hover .news-t { text-decoration: underline; }
+.news-m { font-size: 12px; color: var(--ink-2); }
+.news-t { font-weight: 600; line-height: 1.35; }
+.rec-bar { display: flex; height: 14px; border-radius: 7px; overflow: hidden; gap: 2px; margin-top: 4px; }
+.rec-bar i { display: block; min-width: 3px; }
+.rec-leg { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 8px; font-size: 12px; color: var(--ink-2); }
+.rec-leg i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+.eps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 6px; }
+.eps-i { display: flex; flex-direction: column; align-items: center; gap: 3px; text-align: center; }
+.eps-b { position: relative; display: block; width: 100%; height: 56px; }
+.eps-b::after { content: ''; position: absolute; left: 0; right: 0; top: 50%; border-top: 1px solid #C9CED6; }
+.eps-b i { position: absolute; left: 20%; width: 60%; max-height: 50%; }
+.eps-b i.pos { bottom: 50%; background: var(--gain); border-radius: 4px 4px 0 0; }
+.eps-b i.neg { top: 50%; background: var(--loss); border-radius: 0 0 4px 4px; }
+.fin-bars { display: flex; align-items: flex-end; gap: 10px; height: 150px; }
+.fin-y { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%; }
+.fin-c { flex: 1; width: 100%; display: flex; align-items: flex-end; justify-content: center; gap: 3px; }
+.fin-c i { display: block; width: 38%; border-radius: 4px 4px 0 0; min-height: 2px; }
+.fin-c i.rev { background: #8FAEF0; }
+.fin-c i.net { background: var(--gain); }
+.fin-c i.neg { background: var(--loss); }
+.fx-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+.fx-head .v.big { font-size: 28px; font-weight: 700; }

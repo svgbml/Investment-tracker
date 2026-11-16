@@ -1,0 +1,4 @@
+# Geheimen voor de Worker. Alleen WEB_TOKEN is nodig; de rest kan ook via de website (Instellingen > Koppelingen).
+WEB_TOKEN=kies-een-lange-willekeurige-code
+T212_KEY=
+T212_SECRET=

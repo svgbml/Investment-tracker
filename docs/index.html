@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=19">
+  <link rel="stylesheet" href="style.css?v=20">
 </head>
 <body data-page="home">
 
@@ -26,9 +26,10 @@
     <div id="error" class="banner error" role="alert" hidden></div>
     <section id="welcome" class="welcome" hidden>
       <h1>Je beleggingen in één oogopslag</h1>
-      <p>Deze site toont je Trading 212-portefeuille, opgehaald door je Cloudflare Worker of door het script in je Google Sheet. Vul de toegangscode in die je daar hebt ingesteld.</p>
+      <p>Deze site toont je Trading 212-portefeuille, opgehaald door je eigen Cloudflare Worker. Je hebt alleen een gratis Cloudflare-account en een Trading 212 API-sleutel nodig; extra functies zet je later aan met gratis sleutels.</p>
+      <p class="small"><a href="https://github.com/svgbml/Investment-tracker#zelf-installeren" target="_blank" rel="noopener">Zo zet je je eigen tracker op</a>. Heb je hem al? Vul dan het adres van je Worker en je toegangscode in.</p>
       <div class="welcome-actions">
-        <button id="btn-welcome-settings" class="btn primary" type="button">Toegangscode invullen</button>
+        <button id="btn-welcome-settings" class="btn primary" type="button">Worker en toegangscode invullen</button>
         <button id="btn-demo" class="btn ghost" type="button">Voorbeeldgegevens bekijken</button>
       </div>
     </section>
@@ -86,6 +87,8 @@
           <div id="agenda" class="grid wide stagger"></div>
           <div class="section-head"><h2>Sectoren</h2><p class="muted small">Waar je aandelen in zitten en hoe die sectoren het doen</p></div>
           <div id="sectors" class="grid wide stagger"></div>
+          <div class="section-head"><h2>Valuta en koopkracht</h2><p class="muted small">Euro-dollarkoers en inflatie</p></div>
+          <div id="macro" class="grid wide stagger"></div>
           <div class="section-head"><h2>Weken</h2></div>
           <div id="weeks" class="grid wide stagger"></div>
           <div class="section-head"><h2>Patronen</h2><p class="muted small" id="patterns-note">Van de hele portefeuille</p></div>
@@ -117,7 +120,7 @@
       </div>
     </main>
 
-    <footer class="foot-page">Gegevens: Trading 212 Public API, via Cloudflare Worker of Google Sheets.</footer>
+    <footer class="foot-page">Gegevens: Trading 212 Public API via je eigen Cloudflare Worker; extra bronnen naar keuze (FMP, Finnhub, SEC EDGAR, ECB).</footer>
   </div>
 
   <!-- ===================== Telefoon ===================== -->
@@ -175,6 +178,8 @@
           <div id="m-stat-cards" class="m-grid2 stagger"></div>
           <div class="m-head"><h2>Sectoren</h2></div>
           <div id="m-sectors" class="m-stack stagger"></div>
+          <div class="m-head"><h2>Valuta en koopkracht</h2></div>
+          <div id="m-macro" class="m-stack stagger"></div>
           <div class="m-head"><h2>Patronen</h2></div>
           <div id="m-patterns" class="m-stack stagger"></div>
         </div>
@@ -207,11 +212,15 @@
       <label for="in-token">Toegangscode</label>
       <input id="in-token" name="token" type="password" autocomplete="off" spellcheck="false" placeholder="Je toegangscode">
       <p class="muted small">De code wordt alleen in deze browser bewaard.</p>
-      <details class="advanced">
-        <summary>Ander adres van de web-app gebruiken</summary>
-        <label for="in-url">Adres van de web-app</label>
+      <details class="advanced" id="url-box">
+        <summary>Adres van je Worker</summary>
+        <label for="in-url">Adres van de Worker</label>
         <input id="in-url" name="url" type="url" spellcheck="false" placeholder="https://…/api/data of …/exec">
-        <p id="url-hint" class="muted small">Het adres van je Cloudflare Worker (eindigt op /api/data) of van de Apps Script web-app (eindigt op /exec). Laat leeg voor het standaardadres.</p>
+        <p id="url-hint" class="muted small">Het adres van je Cloudflare Worker, eindigend op /api/data (bijvoorbeeld https://investment-tracker.jouwnaam.workers.dev/api/data). De oude Apps Script-web-app (eindigt op /exec) werkt ook. Leeg laten: het standaardadres van deze site.</p>
+      </details>
+      <details class="advanced" id="links-box">
+        <summary>Koppelingen en functies</summary>
+        <div id="links-body"><p class="muted small">Sla eerst je toegangscode op.</p></div>
       </details>
       <div class="install-box" id="install-box">
         <h3>Als app op je telefoon of computer</h3>
@@ -219,7 +228,7 @@
         <button type="button" id="btn-install" class="btn ghost" hidden>Installeren</button>
       </div>
       <details class="advanced" id="import-box">
-        <summary>Geschiedenis overnemen uit de Google Sheet</summary>
+        <summary>Optioneel: geschiedenis uit de oude Google Sheet</summary>
         <p class="muted small">Neemt je weken, dagen, uren en de metingen van de laatste dagen over in de Cloudflare Worker. Eén keer doen is genoeg; zet daarna Live tracking in de sheet uit.</p>
         <label for="in-sheet-url">Adres van de sheet-web-app</label>
         <input id="in-sheet-url" type="url" spellcheck="false" placeholder="https://script.google.com/macros/s/…/exec">
@@ -239,7 +248,7 @@
 
   <div id="tip" class="tip" role="status" hidden></div>
 
-  <script src="config.js?v=19"></script>
-  <script src="app.js?v=19"></script>
+  <script src="config.js?v=20"></script>
+  <script src="app.js?v=20"></script>
 </body>
 </html>

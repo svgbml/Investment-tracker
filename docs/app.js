@@ -94,6 +94,10 @@
     $('import-status').className = 'small muted';
     if (showImport === true || (M && M.canImport && !M.weeks.length)) box.open = true;
     if (!$('in-sheet-url').value) $('in-sheet-url').value = SHEET_RE.test(CFG.sheetUrl || '') ? CFG.sheetUrl : SHEET_RE.test(CFG.apiUrl || '') ? CFG.apiUrl : '';
+    if (!getToken()) $('url-box').open = true;
+    const F = data && data.features && data.features.has;
+    if (F && (!F.t212 || !F.fmp || !F.finnhub || !F.sec)) $('links-box').open = true;
+    loadLinks();
     $('dlg-settings').showModal();
   }
 
@@ -127,6 +131,7 @@
     if (e.key !== 'Enter' || e.target.tagName !== 'INPUT') return;
     e.preventDefault();
     if (e.target.closest('#import-box')) $('btn-import').click();
+    else if (e.target.dataset.key) { const b = document.querySelector('[data-savekey="' + e.target.dataset.key + '"]'); if (b) b.click(); }
     else $('form-settings').requestSubmit($('btn-save'));
   });
 
@@ -158,6 +163,95 @@
     } finally {
       btn.disabled = false;
     }
+  });
+
+
+  // ---------- Koppelingen en functies (sleutels voor extra bronnen) ----------
+  const LINKS = [
+    { id: 't212', title: 'Trading 212', need: 'vereist', what: 'Je posities, orders, dividenden en saldo. Alleen-lezen sleutel aanmaken in de Trading 212-app: Instellingen > API.',
+      keys: [['T212_KEY', 'API-sleutel'], ['T212_SECRET', 'API-secret']], href: 'https://docs.trading212.com/api' },
+    { id: 'fmp', title: 'Financial Modeling Prep', need: 'gratis sleutel', what: 'Agenda (kwartaalcijfers, dividenden), sector en branche, vergelijkbare bedrijven.',
+      keys: [['FMP_KEY', 'API-sleutel']], href: 'https://site.financialmodelingprep.com/register' },
+    { id: 'finnhub', title: 'Finnhub', need: 'gratis sleutel', what: 'Nieuws per aandeel, wat analisten vinden, verrassingen bij kwartaalcijfers en insiderhandel (Amerikaanse aandelen).',
+      keys: [['FINNHUB_KEY', 'API-sleutel']], href: 'https://finnhub.io/register' },
+    { id: 'sec', title: 'SEC EDGAR', need: 'e-mailadres', what: 'Bedrijfscijfers over meerdere jaren (omzet, winst, marge) uit de officiële jaarverslagen. De SEC vraagt een contactadres bij elk verzoek; dat blijft in je Worker.',
+      keys: [['SEC_CONTACT', 'Je e-mailadres']], flag: 'sec', href: 'https://www.sec.gov/search-filings/edgar-application-programming-interfaces' },
+    { id: 'fx', title: 'Euro-dollarkoers (ECB)', need: 'geen sleutel', what: 'Referentiekoersen van de Europese Centrale Bank via Frankfurter, voor het valuta-overzicht.', flag: 'fx', href: 'https://frankfurter.dev/' },
+    { id: 'inflation', title: 'Inflatie (ECB)', need: 'geen sleutel', what: 'De HICP-prijsindex voor Nederland en de eurozone, voor je rendement na inflatie.', flag: 'inflation', href: 'https://data.ecb.europa.eu/main-figures/inflation' },
+    { id: 'etfAuto', title: 'Fondssamenstelling automatisch (iShares)', need: 'geen sleutel', what: 'Probeert wekelijks de samenstelling van je indexfondsen op te halen. Lukt dat niet, dan kun je het bestand zelf toevoegen op Plannen.', flag: 'etfAuto' },
+  ];
+  let linkState = null;
+
+  async function workerCall(path, init) {
+    const res = await fetch(getUrl().replace(/\/api\/data$/, path), Object.assign({ headers: { Authorization: 'Bearer ' + getToken(), 'Content-Type': 'application/json' } }, init || {}));
+    const j = await res.json().catch(() => null);
+    if (!res.ok || !j || !j.ok) throw new Error((j && (j.error || j.message)) || 'de Worker gaf status ' + res.status);
+    return j;
+  }
+
+  function renderLinks(msg) {
+    const box = $('links-body');
+    if (!box) return;
+    if (demo) { box.innerHTML = '<p class="muted small">In de voorbeeldweergave staan alle functies aan met voorbeeldgegevens.</p>'; return; }
+    if (!isWorker() || !getToken()) { box.innerHTML = '<p class="muted small">Koppelingen werken met de Cloudflare Worker. Vul hierboven het adres van je Worker en je toegangscode in en kies Opslaan en laden.</p>'; return; }
+    if (!linkState) { box.innerHTML = '<p class="muted small">Bezig met laden…</p>'; return; }
+    const F = linkState;
+    const errFor = (id) => F.errors && F.errors[id === 'inflation' ? 'inflation' : id];
+    box.innerHTML = '<p class="muted small">De basis heeft alleen Trading 212 nodig. Extra functies zet je aan met een gratis sleutel of een schakelaar. Sleutels gaan naar je eigen Worker en worden nooit teruggestuurd naar de browser.</p>' +
+      LINKS.map((L) => {
+        const keysSet = (L.keys || []).map(([k]) => F.keys[k]);
+        const on = L.flag ? F.flags[L.flag] !== false && (!L.keys || keysSet.every(Boolean)) : keysSet.every(Boolean);
+        const err = errFor(L.id);
+        const st = err ? '<span class="tag loss">Fout</span>' : on ? '<span class="tag gain">Aan</span>' : '<span class="tag">Uit</span>';
+        return '<div class="link-row" data-link="' + L.id + '"><div class="link-h"><b>' + esc(L.title) + '</b><span class="muted small">' + esc(L.need) + '</span>' + st + '</div>' +
+          '<p class="small muted">' + esc(L.what) + (L.href ? ' <a href="' + esc(L.href) + '" target="_blank" rel="noopener">Meer</a>' : '') + '</p>' +
+          (err ? '<p class="small loss">' + esc(err.msg) + '</p>' : '') +
+          (L.keys || []).map(([k, lbl]) => {
+            const where = F.keys[k];
+            return '<div class="key-row"><label class="small" for="key-' + k + '">' + esc(lbl) + '</label>' +
+              (where === 'cloudflare' ? '<span class="small muted">Ingesteld als geheim bij Cloudflare.</span>'
+                : '<span class="key-in"><input id="key-' + k + '" data-key="' + k + '" type="' + (k === 'SEC_CONTACT' ? 'email' : 'password') + '" autocomplete="off" spellcheck="false" placeholder="' + (where ? 'Ingesteld; vul in om te vervangen' : 'Niet ingesteld') + '">' +
+                  '<button type="button" class="btn ghost" data-savekey="' + k + '">Opslaan</button>' + (where ? '<button type="button" class="btn ghost danger" data-delkey="' + k + '">Wissen</button>' : '') + '</span>') + '</div>';
+          }).join('') +
+          (L.flag ? '<label class="check small"><input type="checkbox" data-flag="' + L.flag + '"' + (F.flags[L.flag] !== false ? ' checked' : '') + '> Gebruiken</label>' : '') + '</div>';
+      }).join('') + '<p class="small plan-status" id="links-status" role="status">' + esc(msg || '') + '</p>';
+  }
+
+  async function loadLinks() {
+    if (demo || !isWorker() || !getToken()) { renderLinks(); return; }
+    linkState = null; renderLinks();
+    try { linkState = (await workerCall('/api/features', { method: 'GET' })).features; renderLinks(); }
+    catch (err) { $('links-body').innerHTML = '<p class="small loss">Koppelingen konden niet worden geladen: ' + esc(err.message) + '.</p>'; }
+  }
+
+  async function afterLinkChange(note) {
+    renderLinks(note + ' Bezig met ophalen…');
+    try {
+      await workerCall('/api/market?plan=1', { method: 'POST' });
+      renderLinks(note + ' De eerste gegevens zijn opgehaald; de rest volgt binnen een uur buiten de meettijden.');
+      load();
+    } catch (err) { renderLinks(note + ' Ophalen lukte nog niet: ' + err.message + '. De Worker probeert het later opnieuw.'); }
+  }
+
+  $('links-body').addEventListener('click', async (e) => {
+    const sv = e.target.closest('[data-savekey]'), dl = e.target.closest('[data-delkey]');
+    if (!sv && !dl) return;
+    const name = (sv || dl).dataset[sv ? 'savekey' : 'delkey'];
+    const value = sv ? ($('key-' + name).value || '').trim() : '';
+    if (sv && !value) { renderLinks('Vul eerst een waarde in.'); return; }
+    try {
+      linkState = (await workerCall('/api/keys', { method: 'POST', body: JSON.stringify({ name, value }) })).features;
+      if (name.startsWith('T212')) { renderLinks(sv ? 'Opgeslagen.' : 'Gewist.'); if (linkState.keys.T212_KEY && linkState.keys.T212_SECRET) { try { await workerCall('/api/run', { method: 'POST' }); } catch (err) { renderLinks('Opgeslagen, maar de eerste meting lukte niet: ' + err.message + '.'); return; } load(); } }
+      else await afterLinkChange(sv ? 'Opgeslagen.' : 'Gewist.');
+    } catch (err) { renderLinks('Mislukt: ' + err.message); }
+  });
+  $('links-body').addEventListener('change', async (e) => {
+    const cb = e.target.closest('input[data-flag]');
+    if (!cb) return;
+    try {
+      linkState = (await workerCall('/api/features', { method: 'POST', body: JSON.stringify({ features: { [cb.dataset.flag]: cb.checked } }) })).features;
+      if (cb.checked) await afterLinkChange('Aangezet.'); else { renderLinks('Uitgezet.'); load(); }
+    } catch (err) { renderLinks('Mislukt: ' + err.message); }
   });
 
   $$('.btn-settings').forEach((b) => b.addEventListener('click', () => openSettings(false)));
@@ -1026,7 +1120,7 @@
       ['Beweegt mee met portefeuille', corrText(S.corr, S.n)],
       ['Gevoeligheid', isNum(S.beta) ? N2.format(S.beta) + '× de portefeuille' : 'na ' + MIN_DAYS_CORR + ' dagen'],
     ]) + '</section>';
-    return { S, kpis, rangeTile, posTile, histTile, agendaTile: companyAgenda(c), tradeTile: companyTrades(c), market: companyMarket(c), patterns: patternTiles(c.tk, S) };
+    return { S, kpis, rangeTile, posTile, histTile, agendaTile: companyAgenda(c), tradeTile: companyTrades(c), market: companyMarket(c), research: companyResearch(c), patterns: patternTiles(c.tk, S) };
   }
 
   const FOOT = 'Dagresultaten zijn de verandering ten opzichte van het slot van de vorige handelsdag (of de eerste meting als die er niet is). Dagen die meer dan 25% bewegen, tellen niet mee: dat is bijna altijd een aankoop of verkoop. ' +
@@ -1846,6 +1940,206 @@
     });
   }
 
+
+  // ---------- Onderzoek per bedrijf: nieuws, analisten, insiders, bedrijfscijfers ----------
+  const FEAT = () => (data && data.features) || { flags: {}, has: {} };
+  const offTile = (title, text) => '<section class="tile pad"><h3>' + esc(title) + '</h3><p class="muted">' + esc(text) + '</p>' +
+    (demo ? '' : '<button type="button" class="linklike small" data-act="links">Koppelingen openen</button>') + '</section>';
+  const INSIDER_CODES = { P: 'Koop', S: 'Verkoop', M: 'Opties omgezet', A: 'Toegekend', F: 'Ingehouden (belasting)', G: 'Geschonken', D: 'Teruggegeven', C: 'Omgezet', X: 'Opties omgezet' };
+  const bigNum = (v, unit) => {
+    if (!isNum(v)) return '–';
+    const cur = unit && unit !== 'USD' ? ' ' + unit : ' $';
+    const a = Math.abs(v), sg = v < 0 ? '−' : '';
+    if (a >= 1e12) return sg + N1.format(a / 1e12) + ' bln' + cur;
+    if (a >= 1e9) return sg + N1.format(a / 1e9) + ' mld' + cur;
+    if (a >= 1e6) return sg + NI.format(a / 1e6) + ' mln' + cur;
+    return sg + NI.format(a) + cur;
+  };
+
+  function companyResearch(c) {
+    const F = FEAT();
+    const isFund = ETF_RE.test(c.name) || BENCHES.some((b) => b[1].test(c.tk));
+    if (isFund) return ['<section class="tile pad"><h3>Nieuws en cijfers</h3><p class="muted">Voor fondsen zijn er geen bedrijfsnieuws, analisten of jaarcijfers; kijk bij de bedrijven erin (Plannen > Werkelijke spreiding).</p></section>'];
+    const R = (data.research || {})[c.tk];
+    const tiles = [];
+    const finnhubOff = !F.has.finnhub && !demo;
+    const wait = 'De gegevens worden opgehaald buiten de meettijden; kom straks terug.';
+    // Nieuws
+    if (finnhubOff) tiles.push(offTile('Nieuws', 'Zet Finnhub aan (gratis sleutel) om het laatste nieuws per aandeel te zien.'));
+    else if (!R) tiles.push(offTile('Nieuws', wait));
+    else {
+      const news = R.news || [];
+      tiles.push('<section class="tile pad"><h3>Nieuws</h3>' + (news.length ? '<div class="news">' + news.map((n) =>
+        '<a class="news-i" href="' + esc(n.url) + '" target="_blank" rel="noopener"><span class="news-m">' + esc(fD.format(n.t) + (n.source ? ', ' + n.source : '')) + '</span><span class="news-t">' + esc(n.headline) + '</span></a>').join('') + '</div>'
+        : '<p class="muted">Geen nieuws in de afgelopen tien dagen' + (c.cur && c.cur !== 'USD' ? ' (Finnhub heeft nieuws alleen voor Noord-Amerikaanse bedrijven)' : '') + '.</p>') +
+        '<p class="sub" style="margin-top:8px">Koppen en links van Finnhub; het artikel opent bij de bron.</p></section>');
+    }
+    // Analisten
+    if (finnhubOff) tiles.push(offTile('Wat analisten vinden', 'Zet Finnhub aan (gratis sleutel) om aanbevelingen van analisten en kwartaalverrassingen te zien.'));
+    else if (R) {
+      const rec = (R.rec || [])[0], old = (R.rec || [])[3] || (R.rec || [])[R.rec ? R.rec.length - 1 : 0];
+      const parts = rec ? [['Sterk kopen', rec.sb, '#0B7A4B'], ['Kopen', rec.b, '#5FB58A'], ['Houden', rec.h, '#C9CED6'], ['Verkopen', rec.s, '#E3A79C'], ['Sterk verkopen', rec.ss, '#B4311F']] : [];
+      const tot = sum(parts.map((x) => x[1] || 0));
+      const buyShare = (r) => { const t = (r.sb || 0) + (r.b || 0) + (r.h || 0) + (r.s || 0) + (r.ss || 0); return t ? ((r.sb || 0) + (r.b || 0)) / t : null; };
+      const trend = rec && old && old !== rec && isNum(buyShare(old)) ? buyShare(rec) - buyShare(old) : null;
+      const eps = (R.eps || []).slice().reverse();
+      const mx = Math.max(1e-9, ...eps.map((x) => Math.abs(x.pct || 0)));
+      tiles.push('<section class="tile pad"><h3>Wat analisten vinden</h3>' +
+        (rec && tot ? '<div class="rec-bar" role="img" aria-label="' + esc(parts.map((x) => x[0] + ' ' + x[1]).join(', ')) + '">' + parts.filter((x) => x[1]).map((x) =>
+            '<i style="flex:' + x[1] + ';background:' + x[2] + '" data-tip="' + esc(x[0] + ': ' + x[1]) + '"></i>').join('') + '</div>' +
+          '<div class="rec-leg">' + parts.map((x) => '<span><i style="background:' + x[2] + '"></i>' + esc(x[0]) + ' <b>' + (x[1] || 0) + '</b></span>').join('') + '</div>' +
+          '<p class="sub" style="margin-top:6px">' + esc(P1.format(buyShare(rec)) + ' van ' + tot + ' analisten adviseert kopen (' + fMonY.format(ymd(rec.period)) + ')') +
+          (isNum(trend) ? esc(Math.abs(trend) < 0.01 ? ', gelijk aan enkele maanden eerder.' : ', ' + (trend > 0 ? 'meer' : 'minder') + ' dan enkele maanden eerder (' + spct1(trend).replace('%', ' pp').replace('+', '+') + ').') : '.') + '</p>'
+          : '<p class="muted">Geen aanbevelingen gevonden.</p>') +
+        (eps.length ? '<h3 style="margin-top:14px">Kwartaalcijfers tegenover verwachting</h3><div class="eps">' + eps.map((x) =>
+          '<div class="eps-i"><span class="muted small">' + esc(x.period ? fMonY.format(ymd(x.period)) : '') + '</span>' +
+          '<span class="eps-b"><i class="' + ((x.pct || 0) < 0 ? 'neg' : 'pos') + '" style="height:' + (Math.abs(x.pct || 0) / mx * 50).toFixed(0) + '%"></i></span>' +
+          '<b class="' + tone(x.pct) + '">' + esc(isNum(x.pct) ? spct1(x.pct / 100) : '–') + '</b><span class="muted small">' + esc(isNum(x.actual) ? N2.format(x.actual) + ' / ' + N2.format(x.estimate) : '') + '</span></div>').join('') + '</div>' +
+          '<p class="sub" style="margin-top:6px">Winst per aandeel: werkelijk / verwacht, en het verschil.</p>' : '') + '</section>');
+    }
+    // Insiders
+    if (finnhubOff) tiles.push(offTile('Insiderhandel', 'Zet Finnhub aan (gratis sleutel) om te zien of bestuurders zelf aandelen kopen of verkopen.'));
+    else if (R) {
+      if ((R.denied || []).includes('insider')) tiles.push(offTile('Insiderhandel', 'Insiderhandel zit niet in je Finnhub-abonnement.'));
+      else {
+        const ins = R.insider || [];
+        const ps = ins.filter((x) => x.code === 'P' || x.code === 'S');
+        const netSh = sum(ps.map((x) => x.change || 0));
+        const netVal = sum(ps.map((x) => (x.change || 0) * (x.price || 0)));
+        const buyers = new Set(ins.filter((x) => x.code === 'P').map((x) => x.name)).size, sellers = new Set(ins.filter((x) => x.code === 'S').map((x) => x.name)).size;
+        tiles.push('<section class="tile pad"><h3>Insiderhandel</h3>' + (ins.length ? kvList([
+            ['Laatste 6 maanden, kopen en verkopen', ps.length ? (netSh >= 0 ? 'per saldo gekocht' : 'per saldo verkocht') : 'geen', ps.length ? (netSh >= 0 ? 'gain' : 'loss') : ''],
+            ['Waarde (koop min verkoop)', ps.length ? bigNum(netVal, 'USD') : '–', tone(netVal)],
+            ['Kopers en verkopers', buyers + ' en ' + sellers],
+          ]) + '<div class="tx-list" style="margin-top:8px">' + ins.slice(0, 6).map((x) =>
+            '<div class="tx"><span class="tag' + (x.code === 'P' ? ' gain' : x.code === 'S' ? ' loss' : '') + '">' + esc(INSIDER_CODES[x.code] || x.code || '?') + '</span>' +
+            '<span class="tx-m"><b>' + esc(x.name || '') + '</b><span class="sub">' + esc(x.date ? fD.format(ymd(x.date)) + ' ' + x.date.slice(0, 4) : '') + '</span></span>' +
+            '<span class="tx-v">' + esc(isNum(x.change) ? sgn(x.change, NI) + ' st.' : '') + (isNum(x.price) && x.price > 0 ? '<span class="sub">à $' + esc(N2.format(x.price)) + '</span>' : '') + '</span></div>').join('') + '</div>' +
+          '<p class="sub" style="margin-top:8px">Uit meldingen bij de toezichthouder. Verkopen gebeuren vaak volgens vaste plannen of voor belasting; kopen met eigen geld zegt meestal meer.</p>'
+          : '<p class="muted">Geen meldingen in de afgelopen 6 maanden.</p>') + '</section>');
+      }
+    }
+    // Bedrijfscijfers
+    const Fin = (data.fin || {})[c.tk];
+    if (!F.has.sec && !demo) tiles.push(offTile('Bedrijfscijfers', 'Vul bij Koppelingen een e-mailadres in voor SEC EDGAR (gratis) om omzet en winst over meerdere jaren te zien.'));
+    else if (!Fin) tiles.push(offTile('Bedrijfscijfers', wait));
+    else if (Fin.none) tiles.push('<section class="tile pad"><h3>Bedrijfscijfers</h3><p class="muted">' + esc(Fin.none) + '</p></section>');
+    else tiles.push(finTile(Fin));
+    return tiles;
+  }
+
+  function finTile(Fin) {
+    const S = Fin.series || {};
+    const rev = new Map((S.rev && S.rev.rows) || []), net = new Map((S.net && S.net.rows) || []), op = new Map((S.op && S.op.rows) || []), eps = new Map((S.eps && S.eps.rows) || []);
+    const years = [...new Set([...rev.keys(), ...net.keys()])].sort((a, b) => a - b).slice(-6);
+    const unit = (S.rev && S.rev.unit) || (S.net && S.net.unit) || 'USD';
+    const mx = Math.max(1, ...years.map((y) => Math.max(Math.abs(rev.get(y) || 0), Math.abs(net.get(y) || 0))));
+    const ly = years[years.length - 1], py = years[years.length - 2];
+    const growth = ly && py && rev.get(py) ? rev.get(ly) / rev.get(py) - 1 : null;
+    const margin = ly && rev.get(ly) && isNum(net.get(ly)) ? net.get(ly) / rev.get(ly) : null;
+    return '<section class="tile pad"><h3>Bedrijfscijfers per jaar</h3>' +
+      '<div class="fin-bars" role="img" aria-label="Omzet en winst per jaar">' + years.map((y) => {
+        const r = rev.get(y), n = net.get(y);
+        return '<div class="fin-y" data-tip="' + esc(y + ': omzet ' + bigNum(r, unit) + ', winst ' + bigNum(n, unit) + (isNum(r) && isNum(n) && r ? ' (marge ' + P1.format(n / r) + ')' : '')) + '">' +
+          '<span class="fin-c"><i class="rev" style="height:' + (Math.abs(r || 0) / mx * 100).toFixed(1) + '%"></i><i class="' + ((n || 0) < 0 ? 'neg' : 'net') + '" style="height:' + (Math.abs(n || 0) / mx * 100).toFixed(1) + '%"></i></span>' +
+          '<span class="muted small">' + y + '</span></div>';
+      }).join('') + '</div>' +
+      '<div class="legend" style="margin-top:8px"><span><i style="background:#8FAEF0"></i>Omzet</span><span><i style="background:' + C.gain + '"></i>Nettowinst</span></div>' +
+      '<div style="margin-top:10px">' + kvList([
+        ['Omzet ' + (ly || ''), bigNum(rev.get(ly), unit)],
+        ['Groei omzet t.o.v. ' + (py || 'vorig jaar'), isNum(growth) ? spct1(growth) : '–', tone(growth)],
+        ['Nettowinst en marge', ly ? bigNum(net.get(ly), unit) + (isNum(margin) ? ' (' + P1.format(margin) + ')' : '') : '–', tone(net.get(ly))],
+        ['Bedrijfsresultaat', ly && isNum(op.get(ly)) ? bigNum(op.get(ly), unit) : '–'],
+        ['Winst per aandeel (verwaterd)', ly && isNum(eps.get(ly)) ? N2.format(eps.get(ly)) + (unit === 'USD' ? ' $' : ' ' + unit) : '–'],
+      ]) + '</div><p class="sub" style="margin-top:8px">Kalenderjaren uit de jaarverslagen bij de SEC (' + esc(unit) + '). Bijgewerkt ' + esc(Fin.updated || '') + '.</p></section>';
+  }
+
+  // ---------- Valuta en koopkracht ----------
+  function usdExposure() {
+    let direct = 0, viaFunds = 0;
+    M.companies.forEach((c) => {
+      if (BENCHES.slice(0, 2).some((b) => b[1].test(c.tk) || b[2].test(c.name))) viaFunds += c.value;
+      else if (c.cur === 'USD') direct += c.value;
+    });
+    return { direct, viaFunds, total: direct + viaFunds };
+  }
+
+  function fxTile() {
+    const F = FEAT();
+    if (!demo && F.flags.fx === false) return offTile('Euro en dollar', 'Het valuta-overzicht staat uit. Zet het aan bij Koppelingen (geen sleutel nodig).');
+    const fx = data.fx;
+    if (!fx || !fx.rates || !(fx.rates.USD || []).length) return offTile('Euro en dollar', 'De koersen van de ECB worden één keer per dag opgehaald; dat is nog niet gebeurd.');
+    const pts = fx.rates.USD.map(([d, v]) => ({ t: ymd(d), v }));
+    const now = pts[pts.length - 1];
+    const at = (days) => { const t = now.t - days * DAY; return pts.filter((p) => p.t <= t).pop() || pts[0]; };
+    const m1 = at(30), y1 = at(365);
+    const usdBuys = M.tx.trades.filter((x) => x.side === 'BUY' && x.cur === 'USD' && isNum(x.fxRate) && x.fxRate > 0.5);
+    const avgRate = usdBuys.length ? sum(usdBuys.map((x) => x.fxRate * x.net)) / sum(usdBuys.map((x) => x.net)) : null;
+    const E = usdExposure();
+    const scen = E.total * (1 - 1 / 1.1);
+    return '<section class="tile pad"><h3>Euro en dollar</h3>' +
+      '<div class="fx-head"><span class="v big">' + esc(N4.format(now.v)) + '</span><span class="muted small">dollar per euro, ' + esc(fD.format(now.t)) + '</span></div>' +
+      '<div class="chart" data-chart="fx" style="height:120px"></div><div class="xlabels" data-x="fx"></div>' +
+      kvList([
+        ['Afgelopen maand', spct((now.v / m1.v) - 1) + ' ' + (now.v > m1.v ? '(euro duurder)' : now.v < m1.v ? '(dollar duurder)' : '')],
+        ['Afgelopen jaar', spct((now.v / y1.v) - 1)],
+        ['Jouw gemiddelde aankoopkoers', isNum(avgRate) ? N4.format(avgRate) + ' (' + (now.v > avgRate ? 'dollar nu goedkoper: kost je geld' : 'dollar nu duurder: levert je geld op') + ')' : '–', isNum(avgRate) ? (now.v > avgRate ? 'loss' : 'gain') : ''],
+        ['Dollar-blootstelling', eur(E.total) + ' (' + (M.totalValue ? P1.format(E.total / M.totalValue) : '–') + ' van je beleggingen)'],
+        ['Als de dollar 10% minder waard wordt', '≈ −' + eur(scen), 'loss'],
+      ]) +
+      '<p class="sub" style="margin-top:8px">Een hogere koers betekent een duurdere euro: je Amerikaanse beleggingen zijn dan minder euro waard. Blootstelling: aandelen in dollar plus je fondsen op Amerikaanse indexen. ECB-referentiekoersen via Frankfurter.</p></section>';
+  }
+
+  function hicpSeries(area) {
+    const h = data.hicp && data.hicp.series && data.hicp.series[area];
+    return (h || []).map(([ym, v]) => ({ ym, t: ymd(ym + '-15'), v })).filter((p) => p.t != null);
+  }
+
+  function inflationTile() {
+    const F = FEAT();
+    if (!demo && F.flags.inflation === false) return offTile('Na inflatie', 'Inflatie staat uit. Zet het aan bij Koppelingen (geen sleutel nodig).');
+    const nl = hicpSeries('NL'), ez = hicpSeries('U2');
+    if (nl.length < 13) return offTile('Na inflatie', 'De inflatiecijfers van de ECB worden één keer per dag opgehaald; dat is nog niet gebeurd.');
+    const last = nl[nl.length - 1];
+    const yearAgo = nl.find((p) => p.ym === (Number(last.ym.slice(0, 4)) - 1) + last.ym.slice(4));
+    const infl = yearAgo ? last.v / yearAgo.v - 1 : null;
+    const ezLast = ez[ez.length - 1], ezYear = ez.find((p) => ezLast && p.ym === (Number(ezLast.ym.slice(0, 4)) - 1) + ezLast.ym.slice(4));
+    // Rendement zonder stortingen sinds de eerste weekmeting, tegenover de prijsstijging in dezelfde periode
+    const W = M.weeks.filter((w) => isNum(w.weekResultPct));
+    let idx = 1; W.forEach((w) => { idx *= 1 + w.weekResultPct; });
+    const start = M.weeks[0];
+    const startIdx = start ? nl.filter((p) => p.t <= start.t).pop() : null;
+    const priceRise = startIdx ? last.v / startIdx.v - 1 : null;
+    const nominal = W.length ? idx - 1 : null;
+    const real = isNum(nominal) && isNum(priceRise) ? (1 + nominal) / (1 + priceRise) - 1 : null;
+    const dep = M.lastWeek && isNum(M.lastWeek.netDeposits) ? M.lastWeek.netDeposits : null;
+    return '<section class="tile pad"><h3>Na inflatie</h3>' +
+      '<div class="fx-head"><span class="v big">' + esc(isNum(infl) ? P1.format(infl) : '–') + '</span><span class="muted small">inflatie Nederland, 12 maanden tot ' + esc(fMonY.format(last.t)) + '</span></div>' +
+      '<div class="chart" data-chart="hicp" style="height:110px"></div><div class="xlabels" data-x="hicp"></div>' +
+      kvList([
+        ['Eurozone', ezYear ? P1.format(ezLast.v / ezYear.v - 1) : '–'],
+        ['Jouw rendement zonder stortingen', isNum(nominal) ? spct1(nominal) + ' sinds ' + fDM.format(start.t) : 'na de tweede weekmeting', tone(nominal)],
+        ['Prijsstijging in die periode', isNum(priceRise) ? spct1(priceRise) : '–'],
+        ['Rendement na inflatie', isNum(real) ? spct1(real) : '–', tone(real)],
+        ['Je netto inleg na inflatie', isNum(dep) && isNum(priceRise) ? eur(dep / (1 + priceRise)) + ' koopkracht (van ' + eur(dep) + ')' : '–'],
+      ]) +
+      '<p class="sub" style="margin-top:8px">HICP-prijsindex (2025 = 100) van de ECB. De nieuwste maand kan ontbreken tot de ECB hem publiceert.</p></section>';
+  }
+
+  function drawMacro(root) {
+    const fh = root.querySelector('[data-chart="fx"]');
+    if (fh && data.fx) {
+      const pts = data.fx.rates.USD.map(([d, v]) => ({ t: ymd(d), v }));
+      lineChart(fh, [{ pts, color: C.accent, width: 2.5, area: true, alpha: 0.08, fmt: (v) => N4.format(v) + ' $' }], { top: 0.1, bottom: 0.1, xl: root.querySelector('[data-x="fx"]'), xcount: 3, xfmt: (t) => fMonY.format(t), tfmt: (t) => fD.format(t) });
+    }
+    const hh = root.querySelector('[data-chart="hicp"]');
+    if (hh) {
+      const nl = hicpSeries('NL').slice(-37), ez = hicpSeries('U2').slice(-37);
+      if (nl.length > 1) lineChart(hh, [{ pts: nl, color: C.loss, width: 2.5, label: 'Nederland', fmt: (v) => N1.format(v) }, { pts: ez, color: C.ink2, dash: true, width: 2, label: 'Eurozone', fmt: (v) => N1.format(v) }],
+        { top: 0.1, bottom: 0.1, xl: root.querySelector('[data-x="hicp"]'), xcount: 3, xfmt: (t) => fMonY.format(t), tfmt: (t) => fMonY.format(t) });
+    }
+  }
+
   // ---------- Desktop ----------
   function renderHome() {
     const T = M.tot;
@@ -1876,6 +2170,8 @@
 
     fill('agenda', agendaTiles());
     fill('sectors', sectorTiles());
+    fill('macro', [fxTile(), inflationTile()]);
+    drawMacro($('macro'));
     fill('weeks', weekCards());
     drawWeekChart($('weeks'));
     const S = statsFor(TOTAL);
@@ -1992,6 +2288,8 @@
       '<div class="wrap' + sw + '">' +
         '<div class="grid">' + I.kpis.join('') + '</div>' +
         '<div class="grid wide" style="margin-top:16px">' + I.rangeTile + I.posTile + I.tradeTile + I.histTile + I.agendaTile + '</div>' +
+        '<div class="section-head"><h2>Nieuws, analisten en cijfers</h2></div>' +
+        '<div class="grid wide">' + I.research.join('') + '</div>' +
         '<div class="section-head"><h2>Sector en vergelijkbare bedrijven</h2></div>' +
         '<div class="grid wide">' + I.market.tiles.join('') + '</div>' +
         (I.market.table ? '<div style="margin-top:16px">' + I.market.table + '</div>' : '') +
@@ -2078,6 +2376,8 @@
     $('m-stats-note').textContent = statsNote(S);
     fill('m-stat-cards', statCards(S));
     fill('m-sectors', sectorTiles());
+    fill('m-macro', [fxTile(), inflationTile()]);
+    drawMacro($('m-macro'));
     fill('m-patterns', patternTiles(TOTAL, S));
   }
 
@@ -2085,9 +2385,9 @@
     const { prev, next } = detailNav(c);
     const I = companyInfo(c);
     const sw = swapDir ? ' swap-' + swapDir : '';
-    const tabs = [['pos', 'Positie'], ['cmp', 'Vergelijk'], ['hist', 'Historie'], ['pat', 'Patronen']];
+    const tabs = [['pos', 'Positie'], ['res', 'Onderzoek'], ['cmp', 'Vergelijk'], ['hist', 'Historie'], ['pat', 'Patronen']];
     const panel = ui.mTab === 'hist' ? I.histTile : ui.mTab === 'pat' ? '<div class="m-stack">' + I.patterns.join('') + '</div>'
-      : ui.mTab === 'cmp' ? I.market.tiles.join('') + I.market.table : I.rangeTile + I.posTile + I.tradeTile + I.agendaTile;
+      : ui.mTab === 'cmp' ? I.market.tiles.join('') + I.market.table : ui.mTab === 'res' ? I.research.join('') : I.rangeTile + I.posTile + I.tradeTile + I.agendaTile;
     return '<div class="md">' +
       '<div class="m-dtop"><button type="button" class="m-back" data-act="back">‹ Terug</button><span class="t">' + esc(c.tk) + '</span>' +
         '<div class="m-nav"><button type="button" data-act="prev" aria-label="Vorige: ' + esc(prev.name) + '">‹</button><button type="button" data-act="next" aria-label="Volgende: ' + esc(next.name) + '">›</button></div></div>' +
@@ -2430,7 +2730,9 @@
 
   // Klik op een tegel, rij of legenda-regel met een ticker: inzoomen
   document.addEventListener('click', (e) => {
-    if (!e.target.closest || ov.contains(e.target)) return;
+    if (!e.target.closest) return;
+    if (e.target.closest('[data-act="links"]')) { openSettings(false); $('links-box').open = true; $('links-box').scrollIntoView({ block: 'nearest' }); return; }
+    if (ov.contains(e.target)) return;
     const imp = e.target.closest('[data-act="import"]');
     if (imp) { openSettings(true); return; }
     if (!e.target.closest('#app, #m-main')) return;
@@ -2734,14 +3036,47 @@
         ['ASML', 'ASML HOLDING ADR', 'Information Technology', 0.9], ['TTWO', 'TAKE TWO INTERACTIVE SOFTWARE INC', 'Communication', 0.3]]) },
     };
 
-    return {
+    // Onderzoek, bedrijfscijfers, wisselkoers en inflatie (voorbeelden)
+    const research = {}, fin = {};
+    book.filter((x) => !['VUAG', 'SXRV'].includes(x[0])).forEach(([tk, name], i) => {
+      const day = (n) => { const d = new Date(now); d.setDate(d.getDate() - n); return d.getTime(); };
+      research[tk] = {
+        news: [1, 2, 4, 7].map((n, k) => ({ t: day(n), headline: 'Voorbeeldbericht ' + (k + 1) + ' over ' + name + ' (geen echt nieuws)', source: 'Voorbeeldbron', url: '#' })),
+        rec: [0, 1, 2, 3].map((k) => ({ period: dIn(-30 * k).slice(0, 8) + '01', sb: 6 + ((i + k) % 5), b: 12 + ((i * 3 + k) % 7), h: 6 + (i % 6), s: (i + k) % 3, ss: (i % 4 === 0) ? 1 : 0 })),
+        eps: [0, 1, 2, 3].map((k) => { const est = +(1 + rnd() * 3).toFixed(2); const pct = +((rnd() - 0.35) * 14).toFixed(1); return { period: dIn(-91 * k - 40), actual: +(est * (1 + pct / 100)).toFixed(2), estimate: est, pct }; }),
+        insider: [3, 11, 25, 48, 77].map((n, k) => ({ name: ['Voorbeeld, A.', 'Voorbeeld, B.', 'Voorbeeld, C.'][k % 3], date: dIn(-n), code: ['S', 'M', 'S', 'P', 'F'][(k + i) % 5], change: (k + i) % 5 === 3 ? 800 : -1200 - k * 300, price: +(50 + rnd() * 300).toFixed(2), shares: 10000 })),
+      };
+      const base = (5 + rnd() * 300) * 1e9, margin = 0.05 + rnd() * 0.3;
+      const yrs = [2020, 2021, 2022, 2023, 2024, 2025];
+      let r = base;
+      const rows = yrs.map((y) => { r *= 1 + (rnd() * 0.25 - 0.02); return [y, Math.round(r)]; });
+      fin[tk] = { updated: dIn(-2), series: {
+        rev: { unit: tk === 'TSM' ? 'TWD' : 'USD', rows: rows.map(([y, v]) => [y, tk === 'TSM' ? v * 30 : v]) },
+        net: { unit: tk === 'TSM' ? 'TWD' : 'USD', rows: rows.map(([y, v], k) => [y, Math.round((tk === 'TSM' ? v * 30 : v) * (margin + (rnd() - 0.5) * 0.06) * (tk === 'SPCX' && k < 3 ? -0.4 : 1))]) },
+        op: { unit: 'USD', rows: rows.map(([y, v]) => [y, Math.round(v * (margin + 0.05))]) },
+        eps: { unit: 'USD/shares', rows: rows.map(([y], k) => [y, +(1 + k * 0.6 + rnd()).toFixed(2)]) },
+      } };
+    });
+    fin.ASML = { updated: dIn(-2), none: 'Voorbeeld: geen SEC-gegevens voor dit bedrijf.' };
+    const fxRates = { USD: [], GBP: [] };
+    let rU = 1.06, rG = 0.84;
+    for (let k = 400; k >= 0; k--) { const d = new Date(now); d.setDate(d.getDate() - k); if (!(d.getDay() % 6)) continue; rU *= 1 + gauss() * 0.003 + 0.00012; rG *= 1 + gauss() * 0.002; fxRates.USD.push([iso(d).slice(0, 10), +rU.toFixed(4)]); fxRates.GBP.push([iso(d).slice(0, 10), +rG.toFixed(4)]); }
+    const hser = (rate, end) => { const out = []; let v = end; const d = new Date(now); d.setDate(1); d.setMonth(d.getMonth() - 1); for (let k = 0; k < 72; k++) { out.unshift([d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'), +v.toFixed(2)]); v /= 1 + rate / 12 + gauss() * 0.002; d.setMonth(d.getMonth() - 1); } return out; };
+    const extraDemo = {
+      research, fin,
+      fx: { updated: iso(now), source: 'Voorbeeld', rates: fxRates },
+      hicp: { updated: iso(now), source: 'Voorbeeld', series: { NL: hser(0.034, 101.9), U2: hser(0.026, 101.3) } },
+      features: { flags: { fx: true, inflation: true, sec: true, etfAuto: true }, has: { fmp: true, finnhub: true, sec: true, t212: true } },
+    };
+
+    return Object.assign({
       ok: true, generated: iso(now), currency: 'EUR', weeks, positionsDate: iso(now), positions, today, events, market,
       orders: { columns: ['time', 'ticker', 'name', 'side', 'qty', 'price', 'currency', 'fxRate', 'net', 'realised', 'feeFx', 'feeOther', 'kind'], rows: orders },
       posExtra, etf, peil: [], settings: {},
       intraday: { columns: ['time', 'ticker', 'value'], rows: intraday },
       hours: { columns: ['hour', 'ticker', 'open', 'close', 'low', 'high', 'avg'], rows: hours },
       days: { columns: ['date', 'ticker', 'open', 'close', 'low', 'high', 'avg', 'range', 'rangePct'], rows: days },
-    };
+    }, extraDemo);
   }
 
 
