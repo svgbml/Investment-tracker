@@ -31,6 +31,7 @@
   const P1 = nf({ style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1 });
   const N2 = nf({ minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const N4 = nf({ maximumFractionDigits: 4 });
+  const N1 = nf({ maximumFractionDigits: 1 });
   const NI = nf({ maximumFractionDigits: 0 });
   const fDT = new Intl.DateTimeFormat('nl-NL', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
   const fD = new Intl.DateTimeFormat('nl-NL', { weekday: 'short', day: 'numeric', month: 'short' });
@@ -313,6 +314,7 @@
     const allT = seriesOf(TOTAL).daily;
     m.since = allT.length ? allT[0].t : m.lastT;
     m.canImport = !demo && isWorker();
+    m.ev = deriveEvents(data.events, m);
     return m;
   }
 
@@ -795,7 +797,71 @@
       stat('Tot hoogste gemeten', dd == null ? '–' : dd >= -0.0005 ? 'Op het hoogste punt' : spct1(dd), isNum(T.ath) ? 'hoogste ' + eur(T.ath) + ' sinds ' + fDM.format(M.since) : '', dd != null && dd < -0.0005 ? 'loss' : ''),
       stat('Grootste 3 posities', top3.length ? P1.format(top3w) : '–', top3.map((c) => c.tk).join(', ') + ' samen', '', '<div class="meter" aria-hidden="true"><div style="width:' + (top3w * 100).toFixed(1) + '%"></div></div>'),
       stat('Vrij saldo', last && isNum(last.cash) ? eur(last.cash) : '–', last && isNum(last.cash) && last.accountValue ? P1.format(last.cash / last.accountValue) + ' van je accountwaarde' : noWeeks),
-    ];
+    ].concat(moreStatCards(S, wr));
+  }
+
+  // Extra kerncijfers: terugval, markt, spreiding, weken en dividend
+  function moreStatCards(S, wr) {
+    const out = [];
+    // Grootste terugval: van een piek naar het laagste punt daarna, op de dagresultaten (aankopen tellen niet mee)
+    let idx = 1, peak = 1, mdd = 0, peakT = null, ddFrom = null, ddTo = null;
+    const ddPts = [];
+    S.returns.forEach((d) => {
+      idx *= 1 + d.pct;
+      if (idx > peak) { peak = idx; peakT = d.t; }
+      const dd = idx / peak - 1;
+      if (dd < mdd) { mdd = dd; ddFrom = peakT; ddTo = d.t; }
+      ddPts.push({ t: d.t, v: dd });
+    });
+    out.push(stat('Grootste terugval', S.n >= MIN_DAYS_SD ? (mdd < -0.0005 ? spct1(mdd) : 'Geen') : '–',
+      S.n < MIN_DAYS_SD ? tooFew(S.n, MIN_DAYS_SD) : mdd < -0.0005 ? 'van piek tot dal' + (ddFrom ? ', ' + fDM.format(ddFrom) + ' tot ' + fDM.format(ddTo) : ' vanaf de start') : 'nog geen daling na een piek',
+      mdd < -0.0005 ? 'loss' : '', S.n >= MIN_DAYS_SD ? spark(ddPts, C.loss) : ''));
+
+    // Jij tegenover de markt over dezelfde dagen
+    const b = M.bench;
+    if (b) {
+      const bm = new Map(dailyReturns(b.c.tk).map((d) => [dayKey(d.t), d.pct]));
+      const pairs = S.returns.filter((d) => bm.has(dayKey(d.t)));
+      let mine = 1, mkt = 1;
+      const diffPts = pairs.map((d) => { mine *= 1 + d.pct; mkt *= 1 + bm.get(dayKey(d.t)); return { t: d.t, v: mine - mkt }; });
+      const diff = mine - mkt;
+      out.push(stat('Jij tegenover de markt', pairs.length >= MIN_DAYS_BEST ? sgn(diff * 100, N2) + ' pp' : '–',
+        pairs.length >= MIN_DAYS_BEST ? 'jij ' + spct1(mine - 1) + ', ' + b.label + ' ' + spct1(mkt - 1) + ' over ' + days(pairs.length) : tooFew(pairs.length, MIN_DAYS_BEST),
+        pairs.length >= MIN_DAYS_BEST ? tone(diff) : '', pairs.length >= MIN_DAYS_BEST ? spark([{ t: pairs[0].t - DAY, v: 0 }].concat(diffPts), toneColor(diff)) : ''));
+    }
+
+    // Spreiding: met hoeveel even grote posities je portefeuille overeenkomt
+    const ws = M.companies.map((c) => c.weight || 0);
+    const hhi = sum(ws.map((w) => w * w));
+    const eff = hhi > 0 ? 1 / hhi : null;
+    out.push(stat('Spreiding', eff ? '≈ ' + N1.format(eff) + ' posities' : '–',
+      eff ? 'zo gespreid als ' + Math.round(eff) + ' even grote posities; je hebt er ' + M.companies.length : '', '',
+      eff ? '<div class="meter" aria-hidden="true"><div style="width:' + Math.min(100, (eff / M.companies.length) * 100).toFixed(1) + '%"></div></div>' : ''));
+
+    // Posities in de plus
+    const withRes = M.companies.filter((c) => isNum(c.unreal));
+    const plus = withRes.filter((c) => c.unreal > 0).length;
+    const bestP = withRes.slice().sort((x, y) => (y.resultPct || 0) - (x.resultPct || 0))[0];
+    out.push(stat('Posities in de plus', withRes.length ? plus + ' van ' + withRes.length : '–',
+      bestP ? 'beste ' + bestP.tk + ' ' + spct1(bestP.resultPct) : '', '', withRes.length ? split(plus, withRes.length - plus) : ''));
+
+    // Beste en slechtste week in euro
+    const best = wr.reduce((x, w) => (!x || w.weekResult > x.weekResult ? w : x), null);
+    const worst = wr.reduce((x, w) => (!x || w.weekResult < x.weekResult ? w : x), null);
+    out.push(stat('Beste week', best ? seur(best.weekResult) : '–',
+      best ? 'tot ' + fDM.format(best.t) + '. Slechtste ' + seur(worst.weekResult) + ' tot ' + fDM.format(worst.t) : 'Na de tweede weekmeting', best ? tone(best.weekResult) : ''));
+
+    // Gemiddelde dag
+    const avg = S.n ? mean(S.returns.map((d) => d.pct)) : null;
+    out.push(stat('Gemiddelde dag', isNum(avg) ? spct(avg) : '–', isNum(avg) ? '≈ ' + seur(avg * M.totalValue) + ' bij je huidige waarde' : 'Nog geen dagen gemeten', tone(avg)));
+
+    // Dividend
+    const E = M.ev;
+    out.push(stat('Dividend, 12 maanden', E.loaded ? eur(E.last12) : '–',
+      !E.loaded ? 'na de eerste dagelijkse ophaalronde' : E.received.length ? (isNum(E.yieldOnCost) ? P2.format(E.yieldOnCost) + ' op je inleg' : '') : 'nog geen uitkering ontvangen', E.last12 > 0 ? 'gain' : ''));
+    out.push(stat('Dividend komende 90 dagen', E.loaded ? '≈ ' + eur(E.next90) : '–',
+      E.loaded ? E.divs.filter((d) => d.t <= dayStart(Date.now()) + 90 * DAY).length + ' uitkeringen aangekondigd of verwacht' : 'na de eerste dagelijkse ophaalronde'));
+    return out;
   }
 
   function statsNote(S) {
@@ -934,11 +1000,166 @@
       ['Beweegt mee met portefeuille', corrText(S.corr, S.n)],
       ['Gevoeligheid', isNum(S.beta) ? N2.format(S.beta) + '× de portefeuille' : 'na ' + MIN_DAYS_CORR + ' dagen'],
     ]) + '</section>';
-    return { S, kpis, rangeTile, posTile, histTile, patterns: patternTiles(c.tk, S) };
+    return { S, kpis, rangeTile, posTile, histTile, agendaTile: companyAgenda(c), patterns: patternTiles(c.tk, S) };
   }
 
   const FOOT = 'Dagresultaten zijn de verandering ten opzichte van het slot van de vorige handelsdag (of de eerste meting als die er niet is). Dagen die meer dan 25% bewegen, tellen niet mee: dat is bijna altijd een aankoop of verkoop. ' +
     '“Hoogste” en “laagste” zijn gemeten sinds de tracker meet. Koers en aankoopprijs zijn in euro en volgen uit waarde, inleg en aantal. “Beweegt mee” is de correlatie van de dagresultaten met die van je hele portefeuille; “gevoeligheid” geeft aan hoeveel sterker of zwakker het bedrijf meestal beweegt.';
+
+
+  // ---------- Agenda: dividenden en kwartaalcijfers ----------
+  const ymd = (s) => { const a = String(s || '').slice(0, 10).split('-').map(Number); return a.length === 3 && a.every(isNum) ? new Date(a[0], a[1] - 1, a[2]).getTime() : null; };
+  const fDay = new Intl.DateTimeFormat('nl-NL', { day: 'numeric' });
+  const fMon = new Intl.DateTimeFormat('nl-NL', { month: 'short' });
+  const fMonY = new Intl.DateTimeFormat('nl-NL', { month: 'short', year: '2-digit' });
+  const FREQ_DAYS = { monthly: 30.4, quarterly: 91.3, 'semi-annual': 182.6, semiannual: 182.6, annual: 365.25, yearly: 365.25 };
+
+  function whenText(t) {
+    const n = Math.round((t - dayStart(Date.now())) / DAY);
+    if (n === 0) return 'vandaag';
+    if (n === 1) return 'morgen';
+    if (n < 0) return Math.abs(n) + ' dagen geleden';
+    return n < 14 ? 'over ' + n + ' dagen' : 'over ' + Math.round(n / 7) + ' weken';
+  }
+
+  // Zet de ruwe gegevens van de Worker om: ontvangen, aangekondigd en (op basis van eerdere uitkeringen) verwacht
+  function deriveEvents(ev, m) {
+    const today = dayStart(Date.now());
+    const E = { loaded: !!ev, fmp: !!(ev && ev.fmp), updated: ev && ev.updated ? new Date(ev.updated).getTime() : null, errors: (ev && ev.errors) || [] };
+    const held = (tk) => m.byTk.get(tk);
+    E.received = ((ev && ev.received) || []).map((d) => Object.assign({}, d, { t: ymd(d.date) }))
+      .filter((d) => d.t != null && isNum(d.amount)).sort((a, b) => a.t - b.t);
+    E.total = sum(E.received.map((d) => d.amount));
+    E.last12 = sum(E.received.filter((d) => d.t > today - 365 * DAY).map((d) => d.amount));
+    const first = new Date(today); first.setDate(1);
+    E.months = [];
+    for (let i = 11; i >= 0; i--) {
+      const s = new Date(first.getFullYear(), first.getMonth() - i, 1).getTime();
+      const e = new Date(first.getFullYear(), first.getMonth() - i + 1, 1).getTime();
+      E.months.push({ t: s, v: sum(E.received.filter((d) => d.t >= s && d.t < e).map((d) => d.amount)) });
+    }
+    E.byTk = new Map();
+    E.received.forEach((d) => E.byTk.set(d.ticker, (E.byTk.get(d.ticker) || 0) + d.amount));
+
+    const up = [];
+    ((ev && ev.dividends) || []).forEach((d) => {
+      if (!held(d.ticker) || !d.announced) return;
+      const pay = ymd(d.payDate), ex = ymd(d.exDate);
+      const t = pay != null ? pay : ex;
+      if (t == null || t < today) return;
+      up.push({ tk: d.ticker, t, ex, pay, eur: d.estEur, perShare: d.perShare, kind: 'Aangekondigd', gross: true });
+    });
+    // Verwacht uit je eigen uitkeringen: zelfde tussenpoos, bedrag geschaald naar je huidige aantal
+    const hist = new Map();
+    E.received.forEach((d) => { if (!hist.has(d.ticker)) hist.set(d.ticker, []); hist.get(d.ticker).push(d); });
+    hist.forEach((list, tk) => {
+      if (!held(tk) || up.some((u) => u.tk === tk) || list.length < 2) return;
+      const gaps = list.slice(1).map((d, i) => d.t - list[i].t).filter((g) => g > 20 * DAY && g < 400 * DAY).sort((a, b) => a - b);
+      if (!gaps.length) return;
+      const gap = gaps[Math.floor(gaps.length / 2)];
+      const last = list[list.length - 1];
+      let t = last.t + gap;
+      while (t < today) t += gap;
+      if (t - today > 200 * DAY) return;
+      const q = held(tk).qty;
+      up.push({ tk, t, pay: t, eur: last.qty && q ? last.amount * q / last.qty : last.amount, kind: 'Verwacht', gross: false });
+    });
+    // Verwacht uit de laatste uitkering bij FMP, als je dit aandeel nog geen dividend hebt ontvangen
+    ((ev && ev.dividends) || []).forEach((d) => {
+      if (!held(d.ticker) || d.announced || up.some((u) => u.tk === d.ticker)) return;
+      const per = FREQ_DAYS[String(d.frequency || '').toLowerCase()];
+      const lastEx = ymd(d.lastEx);
+      if (!per || lastEx == null) return;
+      let t = lastEx + per * DAY;
+      while (t < today) t += per * DAY;
+      if (t - today > 200 * DAY) return;
+      up.push({ tk: d.ticker, t, ex: t, eur: d.estEur, perShare: d.perShare, kind: 'Verwacht', gross: true, exOnly: true });
+    });
+    E.divs = up.sort((a, b) => a.t - b.t);
+    E.next90 = sum(E.divs.filter((u) => u.t <= today + 90 * DAY && isNum(u.eur)).map((u) => u.eur));
+    E.earn = ((ev && ev.earnings) || []).filter((e) => held(e.ticker)).map((e) => ({ tk: e.ticker, t: ymd(e.date), epsEst: e.epsEst, revEst: e.revEst }))
+      .filter((e) => e.t != null && e.t >= today).sort((a, b) => a.t - b.t);
+    E.lastEarn = new Map(((ev && ev.lastEarnings) || []).map((e) => [e.ticker, Object.assign({}, e, { t: ymd(e.date) })]));
+    const cost = sum(m.companies.map((c) => (isNum(c.cost) ? c.cost : 0)));
+    E.yieldOnCost = cost > 0 && E.received.length ? E.last12 / cost : null;
+    return E;
+  }
+
+  function agRow(tk, t, title, sub, amt, tag) {
+    const c = M.byTk.get(tk);
+    return '<button type="button" class="ag-row" data-ticker="' + esc(tk) + '" aria-label="' + esc((c ? c.name : tk) + ', ' + fD.format(t) + ', ' + sub) + '">' +
+      '<span class="ag-date"><b>' + esc(fDay.format(t)) + '</b><span>' + esc(fMon.format(t).replace('.', '')) + '</span></span>' +
+      '<span class="ag-main"><span class="ag-t">' + esc(title) + '</span>' +
+      '<span class="ag-s">' + (tag ? '<span class="tag' + (tag === 'Aangekondigd' ? ' gain' : '') + '">' + esc(tag) + '</span> ' : '') + esc(sub) + '</span></span>' + (amt ? '<span class="ag-amt">' + esc(amt) + '</span>' : '') + '</button>';
+  }
+
+  function surpriseText(le) {
+    if (!le || !isNum(le.eps) || !isNum(le.epsEst) || !le.epsEst) return '';
+    const d = (le.eps - le.epsEst) / Math.abs(le.epsEst);
+    return Math.abs(d) < 0.005 ? 'gelijk aan de verwachting' : spct1(d) + (d > 0 ? ' boven' : ' onder') + ' de verwachting';
+  }
+
+  function agendaTiles() {
+    const E = M.ev;
+    if (!E.loaded) {
+      return ['<p class="empty">De agenda met dividenden en kwartaalcijfers wordt één keer per dag opgehaald door de Worker (rond 06:15). ' +
+        'Dat is nog niet gebeurd; na de eerste keer staat hier wat eraan komt.</p>'];
+    }
+    const nameOf = (tk) => { const c = M.byTk.get(tk); return c ? c.name : tk; };
+    const earn = E.earn.slice(0, 6);
+    const earnBody = !E.fmp
+      ? '<p class="muted">Data van kwartaalcijfers komen van Financial Modeling Prep. Daarvoor is een gratis sleutel nodig; de README legt uit hoe je die toevoegt.</p>'
+      : earn.length ? '<div class="ag-list">' + earn.map((e) => agRow(e.tk, e.t, e.tk + ' ' + nameOf(e.tk),
+          whenText(e.t) + (isNum(e.epsEst) ? ', verwachte winst per aandeel ' + N2.format(e.epsEst) : ''), '', '')).join('') + '</div>' +
+          (E.earn.length > earn.length ? '<p class="sub" style="margin-top:8px">En nog ' + (E.earn.length - earn.length) + ' later.</p>' : '')
+        : '<p class="muted">Geen aangekondigde kwartaalcijfers gevonden voor je aandelen.</p>';
+    const divs = E.divs.slice(0, 6);
+    const divBody = divs.length
+      ? '<div class="ag-list">' + divs.map((d) => agRow(d.tk, d.t, d.tk + ' ' + nameOf(d.tk),
+          (d.exOnly ? 'ex-dividend ' : d.pay ? 'uitbetaling ' : 'ex-dividend ') + whenText(d.t) +
+          (d.ex && d.pay && d.ex !== d.pay ? ', ex-dividend ' + fDM.format(d.ex) : ''),
+          isNum(d.eur) ? '≈ ' + eur(d.eur) : '', d.kind)).join('') + '</div>' +
+          '<p class="sub" style="margin-top:8px">Komende 90 dagen ongeveer ' + esc(eur(E.next90)) + '. Aangekondigde bedragen zijn bruto (voor bronbelasting); verwachte bedragen volgen je eerdere netto uitkeringen.</p>'
+      : '<p class="muted">' + (E.fmp ? 'Geen aangekondigde of verwachte dividenden in de komende maanden.' : 'Nog geen dividend ontvangen om een verwachting op te baseren. Met een FMP-sleutel zie je ook aangekondigde dividenden.') + '</p>';
+    const top = [...E.byTk.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3);
+    const recBody = E.received.length
+      ? '<p class="v big">' + esc(eur(E.last12)) + '</p><p class="sub">ontvangen in de laatste 12 maanden' + (isNum(E.yieldOnCost) ? ', ' + esc(P2.format(E.yieldOnCost)) + ' op je inleg' : '') + '</p>' +
+        '<div style="margin-top:12px">' + bars(E.months.map((x) => ({ v: x.v, color: C.gain, tip: fMonY.format(x.t) + ': ' + eur(x.v) })), true) +
+        barLabels(E.months.map((x, i) => (i % 3 === 0 ? fMon.format(x.t).replace('.', '') : ''))) + '</div>' +
+        '<p class="sub" style="margin-top:8px">Sinds de eerste uitkering ' + esc(eur(E.total)) + '. Meeste van ' + esc(top.map(([tk, v]) => tk + ' (' + eur(v) + ')').join(', ')) + '.</p>'
+      : '<p class="muted">Nog geen dividend ontvangen.</p>';
+    const upd = E.updated ? '<p class="sub" style="margin-top:10px">Opgehaald ' + esc(fDT.format(E.updated)) + (E.errors.length ? '. ' + E.errors.length + ' onderdelen gaven een fout.' : '.') + '</p>' : '';
+    return [
+      '<section class="tile pad"><h3>Kwartaalcijfers</h3>' + earnBody + (E.fmp ? upd : '') + '</section>',
+      '<section class="tile pad"><h3>Dividend dat eraan komt</h3>' + divBody + '</section>',
+      '<section class="tile pad"><h3>Ontvangen dividend</h3>' + recBody + (E.fmp ? '' : upd) + '</section>',
+    ];
+  }
+
+  // Agenda van één bedrijf
+  function companyAgenda(c) {
+    const E = M.ev;
+    if (!E.loaded) return '';
+    const e = E.earn.find((x) => x.tk === c.tk);
+    const le = E.lastEarn.get(c.tk);
+    const d = E.divs.find((x) => x.tk === c.tk);
+    const rec = E.received.filter((x) => x.ticker === c.tk);
+    const isFund = ETF_RE.test(c.name) || BENCHES.some((b) => b[1].test(c.tk));
+    const rows = [];
+    if (!isFund) {
+      rows.push(['Volgende kwartaalcijfers', e ? fD.format(e.t) + ', ' + whenText(e.t) : E.fmp ? 'nog niet aangekondigd' : 'vraagt een FMP-sleutel']);
+      if (e && isNum(e.epsEst)) rows.push(['Verwachte winst per aandeel', N2.format(e.epsEst)]);
+      if (le) rows.push(['Vorige cijfers', fDM.format(le.t) + (isNum(le.eps) ? ', winst per aandeel ' + N2.format(le.eps) : '')]);
+      if (le && surpriseText(le)) rows.push(['Ten opzichte van verwachting', surpriseText(le), le.eps >= le.epsEst ? 'gain' : 'loss']);
+    }
+    rows.push(['Volgend dividend', d ? fD.format(d.t) + (isNum(d.eur) ? ', ≈ ' + eur(d.eur) : '') + (d.kind === 'Verwacht' ? ' (verwacht)' : '') : isFund ? 'fonds herbelegt of keert niet uit' : 'geen bekend']);
+    rows.push(['Ontvangen dividend', rec.length ? eur(sum(rec.map((x) => x.amount))) + ' in ' + rec.length + (rec.length === 1 ? ' uitkering' : ' uitkeringen') : 'nog niets']);
+    if (rec.length && isNum(c.cost) && c.cost > 0) {
+      const y = sum(rec.filter((x) => x.t > dayStart(Date.now()) - 365 * DAY).map((x) => x.amount)) / c.cost;
+      rows.push(['Dividendrendement op inleg', P2.format(y) + ' per jaar']);
+    }
+    return '<section class="tile pad"><h3>Agenda</h3>' + kvList(rows) + '</section>';
+  }
 
   // ---------- Desktop ----------
   function renderHome() {
@@ -968,6 +1189,7 @@
     fill('movers', mv.up.length ? mv.up.map((c) => moverTile(c, c.changePct > 0 ? 'Stijger' : 'Beste')).concat([marketTile(mv)], mv.down.map((c) => moverTile(c, c.changePct < 0 ? 'Daler' : 'Zwakste')))
       : ['<p class="empty">Nog geen metingen van vandaag.</p>']);
 
+    fill('agenda', agendaTiles());
     fill('weeks', weekCards());
     drawWeekChart($('weeks'));
     const S = statsFor(TOTAL);
@@ -1083,7 +1305,7 @@
       '</div>' +
       '<div class="wrap' + sw + '">' +
         '<div class="grid">' + I.kpis.join('') + '</div>' +
-        '<div class="grid wide" style="margin-top:16px">' + I.rangeTile + I.posTile + I.histTile + '</div>' +
+        '<div class="grid wide" style="margin-top:16px">' + I.rangeTile + I.posTile + I.histTile + I.agendaTile + '</div>' +
         '<div class="section-head"><h2>Patronen</h2></div>' +
         '<div class="grid">' + I.patterns.join('') + '</div>' +
         '<p class="foot">' + esc(FOOT) + '</p>' +
@@ -1125,6 +1347,7 @@
     fill('m-movers', (mv.up.length ? mv.up.map(row).concat(market ? [market] : [], mv.down.map(row))
       : ['<p class="m-sub" style="padding:16px">Nog geen metingen van vandaag.</p>'])
       .concat(['<a class="m-more" href="#bedrijven">Alle ' + M.companies.length + ' bedrijven</a>']));
+    fill('m-agenda', agendaTiles());
     fill('m-weeks', weekCards());
     drawWeekChart($('m-weeks'));
   }
@@ -1173,7 +1396,7 @@
     const I = companyInfo(c);
     const sw = swapDir ? ' swap-' + swapDir : '';
     const tabs = [['pos', 'Positie'], ['hist', 'Historie'], ['pat', 'Patronen']];
-    const panel = ui.mTab === 'hist' ? I.histTile : ui.mTab === 'pat' ? '<div class="m-stack">' + I.patterns.join('') + '</div>' : I.rangeTile + I.posTile;
+    const panel = ui.mTab === 'hist' ? I.histTile : ui.mTab === 'pat' ? '<div class="m-stack">' + I.patterns.join('') + '</div>' : I.rangeTile + I.posTile + I.agendaTile;
     return '<div class="md">' +
       '<div class="m-dtop"><button type="button" class="m-back" data-act="back">‹ Terug</button><span class="t">' + esc(c.tk) + '</span>' +
         '<div class="m-nav"><button type="button" data-act="prev" aria-label="Vorige: ' + esc(prev.name) + '">‹</button><button type="button" data-act="next" aria-label="Volgende: ' + esc(next.name) + '">›</button></div></div>' +
@@ -1734,8 +1957,23 @@
     const unrealSum = sum(positions.map((p) => p.unrealized));
     weeks.forEach((w, i) => { w.unrealized = r2(unrealSum * (0.6 + 0.4 * (i + 1) / weeks.length)); delete w.boughtKO; });
 
+    // Agenda: datums ten opzichte van vandaag
+    const dIn = (n) => { const d = new Date(now); d.setDate(d.getDate() + n); return iso(d).slice(0, 10); };
+    const events = {
+      updated: iso(now), fmp: true, errors: [],
+      received: [
+        ['KO', -320, 0.41], ['KO', -229, 0.43], ['KO', -138, 0.43], ['KO', -47, 0.86], ['MSFT', -250, 0.12], ['MSFT', -160, 0.13], ['MSFT', -68, 0.13],
+        ['AAPL', -190, 0.05], ['AAPL', -99, 0.05], ['AAPL', -8, 0.05], ['TSM', -120, 0.16], ['TSM', -30, 0.17],
+      ].map(([ticker, n, amount]) => ({ ticker, date: dIn(n), amount, perShare: null, qty: null })),
+      earnings: [['AAPL', 6, 2.35], ['MSFT', 9, 3.1], ['META', 12, 6.7], ['GOOGL', 15, 2.6], ['AMZN', 19, 1.9], ['ASML', 23, 5.6], ['TSM', 27, 2.7], ['PLTR', 34, 0.21], ['KO', 41, 0.6]]
+        .map(([ticker, n, epsEst]) => ({ ticker, symbol: ticker, date: dIn(n), epsEst, revEst: null })),
+      lastEarnings: [{ ticker: 'AAPL', date: dIn(-84), eps: 1.85, epsEst: 1.77 }, { ticker: 'MSFT', date: dIn(-81), eps: 3.46, epsEst: 3.66 }],
+      dividends: [{ ticker: 'KO', exDate: dIn(10), payDate: dIn(29), perShare: 0.51, estEur: 0.92, announced: true },
+        { ticker: 'ASML', exDate: dIn(4), payDate: dIn(16), perShare: 1.6, estEur: 0.24, announced: true }],
+    };
+
     return {
-      ok: true, generated: iso(now), currency: 'EUR', weeks, positionsDate: iso(now), positions, today,
+      ok: true, generated: iso(now), currency: 'EUR', weeks, positionsDate: iso(now), positions, today, events,
       intraday: { columns: ['time', 'ticker', 'value'], rows: intraday },
       hours: { columns: ['hour', 'ticker', 'open', 'close', 'low', 'high', 'avg'], rows: hours },
       days: { columns: ['date', 'ticker', 'open', 'close', 'low', 'high', 'avg', 'range', 'rangePct'], rows: days },

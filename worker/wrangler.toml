@@ -4,7 +4,8 @@ compatibility_date = "2026-11-01"
 
 # Elke 10 minuten (UTC). De Worker meet zelf alleen op werkdagen 08:00–22:30 Amsterdamse tijd.
 [triggers]
-crons = ["*/10 * * * *"]
+crons = ["*/10 * * * *", "17 5 * * *"]
+# De tweede (05:17 UTC) haalt 1x per dag dividenden en kwartaalcijfers op.
 
 [[d1_databases]]
 binding = "DB"
@@ -22,3 +23,4 @@ ALLOWED_ORIGIN = "https://svgbml.github.io"
 #   npx wrangler secret put T212_KEY
 #   npx wrangler secret put T212_SECRET
 #   npx wrangler secret put WEB_TOKEN
+#   npx wrangler secret put FMP_KEY   (optioneel: aankomende kwartaalcijfers en dividenden)

@@ -446,3 +446,20 @@ button.m-stat.clickable:active { background: var(--bg); }
 .hbars .pos { position: absolute; left: 50%; top: 0; bottom: 0; border-radius: 0 4px 4px 0; background: var(--gain); }
 .hbars .neg { position: absolute; right: 50%; top: 0; bottom: 0; border-radius: 4px 0 0 4px; background: var(--loss); }
 @keyframes spinin { from { opacity: 0; transform: rotate(-60deg) scale(.92); } to { opacity: 1; transform: none; } }
+
+/* Agenda: kwartaalcijfers en dividenden */
+.ag-list { display: flex; flex-direction: column; }
+.ag-row {
+  display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 4px; border: 0; border-top: 1px solid var(--rule);
+  background: transparent; color: var(--ink); text-align: left; cursor: pointer; font: inherit;
+}
+.ag-row:first-child { border-top: 0; }
+.ag-row:hover { background: var(--bg); }
+.ag-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ag-date { flex: none; width: 44px; display: flex; flex-direction: column; align-items: center; padding: 5px 0; border-radius: 10px; background: var(--band); line-height: 1.1; }
+.ag-date b { font-size: 18px; }
+.ag-date span { font-size: 12px; color: var(--band-ink); }
+.ag-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ag-t { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ag-s { font-size: 13px; color: var(--ink-2); }
+.ag-amt { flex: none; font-weight: 600; }

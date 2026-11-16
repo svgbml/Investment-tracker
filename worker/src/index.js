@@ -9,7 +9,10 @@
  *  - Zaterdag rond 09:00: weeksnapshot (accountwaarde, netto stortingen, cash, kostprijs, posities).
  *  - GET /api/data levert dezelfde JSON als de Apps Script-versie, zodat de website ongewijzigd werkt.
  *
- * Geheimen (stel je zelf in bij Cloudflare): T212_KEY, T212_SECRET, WEB_TOKEN.
+ *  - Eén keer per dag (aparte cron): ontvangen dividenden uit Trading 212 en, als FMP_KEY is ingesteld,
+ *    aankomende kwartaalcijfers en dividenden van Financial Modeling Prep (kv 'events').
+ *
+ * Geheimen (stel je zelf in bij Cloudflare): T212_KEY, T212_SECRET, WEB_TOKEN, optioneel FMP_KEY.
  */
 
 const TZ = 'Europe/Amsterdam';
@@ -19,9 +22,21 @@ const LIVE_END = '22:30';
 const KEEP_INTRADAY_MS = 3 * 864e5;
 const HOUR_MS = 3600e3;
 const TOTAL = 'TOTAAL';
+const EVENTS_CRON = '17 5 * * *';
+const FMP_BASE = 'https://financialmodelingprep.com/stable';
+const ETF_RE = /\b(ETF|UCITS|iShares|Vanguard|SPDR|Xtrackers|Amundi|Invesco|WisdomTree|Lyxor)\b|\((Acc|Dist)\)/i;
+// Trading 212-ticker -> beurssymbool bij FMP, waar die afwijken
+const SYMBOL_MAP = { FB: 'META' };
 
 export default {
   async scheduled(event, env, ctx) {
+    if (event.cron === EVENTS_CRON) {
+      ctx.waitUntil(refreshEvents(env).catch(async (e) => {
+        console.error('events', e);
+        try { await setKv(env, 'last_error', new Date().toISOString() + ' events: ' + String(e && e.message || e)); } catch (_) {}
+      }));
+      return;
+    }
     ctx.waitUntil(tick(env, new Date(event.scheduledTime), false)
       .then(() => setKv(env, 'last_cron', new Date().toISOString()))
       .catch(async (e) => {
@@ -62,6 +77,9 @@ export default {
           const body = await request.json();
           return json({ ok: true, pending: await addPending(env, Number(body.amount)) }, 200, cors);
         }
+      }
+      if (url.pathname === '/api/events' && request.method === 'POST') {
+        return json({ ok: true, message: await refreshEvents(env) }, 200, cors);
       }
       if (url.pathname === '/api/import' && request.method === 'POST') {
         const body = await request.json();
@@ -411,7 +429,7 @@ async function buildData(env) {
   });
 
   const { results: intra } = await env.DB.prepare(
-    'SELECT ts, ticker, name, value, unrealized, qty FROM intraday ORDER BY ts'
+    'SELECT ts, ticker, name, value, unrealized, qty, price FROM intraday ORDER BY ts'
   ).all();
 
   // Posities: laatste meting, anders laatste weeksnapshot
@@ -422,7 +440,7 @@ async function buildData(env) {
     positions = intra.filter((r) => r.ts === lastTs && r.ticker !== TOTAL).map((r) => ({
       ticker: r.ticker, name: r.name, value: r.value, unrealized: r.unrealized,
       cost: r2(r.value - r.unrealized), resultPct: r.value - r.unrealized ? r.unrealized / (r.value - r.unrealized) : 0,
-      quantity: r.qty,
+      quantity: r.qty, price: r.price,
     }));
   } else {
     const last = await env.DB.prepare('SELECT MAX(date) AS d FROM positions').first();
@@ -482,9 +500,13 @@ async function buildData(env) {
     'SELECT day, ticker, open, close, low, high, avg, range, range_pct FROM days ORDER BY day'
   ).all();
 
+  let events = null;
+  try { events = JSON.parse((await getKv(env, 'events')) || 'null'); } catch (e) { events = null; }
+
   return {
     ok: true,
     generated: isoLocal(now),
+    events,
     currency: 'EUR',
     weeks,
     positionsDate,
@@ -499,6 +521,88 @@ async function buildData(env) {
 }
 
 // ---------- Eenmalig overnemen uit de Google Sheet ----------
+
+// ---------- Aankomende gebeurtenissen (1x per dag) ----------
+
+// Ontvangen dividenden komen uit Trading 212. Aankomende kwartaalcijfers en dividenden komen van
+// Financial Modeling Prep (gratis sleutel, 250 verzoeken per dag); per aandeel 2 verzoeken.
+async function refreshEvents(env) {
+  const today = parts(new Date()).day;
+  const out = { updated: isoLocal(Date.now()), fmp: !!env.FMP_KEY, errors: [], received: [], earnings: [], dividends: [], lastEarnings: [] };
+
+  const positions = await t212(env, '/api/v0/equity/positions');
+  const held = positions.map((p) => {
+    const qty = num(p.quantity), price = num(p.currentPrice), value = num(p.walletImpact.currentValue);
+    return {
+      ticker: shortTicker(p.instrument.ticker), raw: p.instrument.ticker, name: p.instrument.name, qty, value,
+      eurPerUnit: qty && price ? value / (qty * price) : null, // koers in eigen munt -> euro
+      etf: ETF_RE.test(p.instrument.name || ''),
+    };
+  });
+
+  try {
+    const divs = await t212All(env, '/api/v0/equity/history/dividends?limit=50');
+    out.received = divs.map((d) => ({
+      ticker: shortTicker(d.ticker || (d.instrument && d.instrument.ticker) || ''),
+      date: String(d.paidOn || '').slice(0, 10), amount: r2(num(d.amount)),
+      perShare: num(d.grossAmountPerShare) || null, qty: num(d.quantity) || null,
+    })).filter((d) => d.date).sort((a, b) => a.date.localeCompare(b.date));
+  } catch (e) { out.errors.push('Dividendgeschiedenis: ' + e.message); }
+
+  if (env.FMP_KEY) {
+    for (const h of held.filter((x) => !x.etf)) {
+      const sym = SYMBOL_MAP[h.ticker] || h.ticker;
+      try {
+        const er = await fmp(env, '/earnings?symbol=' + encodeURIComponent(sym));
+        const fut = er.filter((x) => x.date && x.date >= today).sort((a, b) => a.date.localeCompare(b.date));
+        const past = er.filter((x) => x.date && x.date < today && x.epsActual != null).sort((a, b) => b.date.localeCompare(a.date));
+        if (fut[0]) out.earnings.push({ ticker: h.ticker, symbol: sym, date: fut[0].date,
+          epsEst: numOrNull(fut[0].epsEstimated), revEst: numOrNull(fut[0].revenueEstimated) });
+        if (past[0]) out.lastEarnings.push({ ticker: h.ticker, date: past[0].date, eps: numOrNull(past[0].epsActual),
+          epsEst: numOrNull(past[0].epsEstimated), rev: numOrNull(past[0].revenueActual), revEst: numOrNull(past[0].revenueEstimated) });
+      } catch (e) { out.errors.push(sym + ' cijfers: ' + e.message); if (/limiet|401|403/.test(e.message)) break; }
+      try {
+        const dv = await fmp(env, '/dividends?symbol=' + encodeURIComponent(sym));
+        const per = (x) => numOrNull(x.dividend != null ? x.dividend : x.adjDividend);
+        const up = dv.filter((x) => (x.paymentDate || x.date) >= today).sort((a, b) => String(a.date).localeCompare(String(b.date)));
+        const last = dv.filter((x) => x.date && x.date < today).sort((a, b) => b.date.localeCompare(a.date))[0];
+        for (const x of up.slice(0, 2)) {
+          const ps = per(x);
+          out.dividends.push({ ticker: h.ticker, symbol: sym, exDate: x.date || null, payDate: x.paymentDate || null,
+            perShare: ps, frequency: x.frequency || null,
+            estEur: ps != null && h.eurPerUnit ? r2(ps * h.qty * h.eurPerUnit) : null, announced: true });
+        }
+        if (!up.length && last && per(last) != null) {
+          out.dividends.push({ ticker: h.ticker, symbol: sym, exDate: null, payDate: null, lastEx: last.date,
+            perShare: per(last), frequency: last.frequency || null,
+            estEur: h.eurPerUnit ? r2(per(last) * h.qty * h.eurPerUnit) : null, announced: false });
+        }
+      } catch (e) { out.errors.push(sym + ' dividend: ' + e.message); if (/limiet|401|403/.test(e.message)) break; }
+    }
+  }
+  out.earnings.sort((a, b) => a.date.localeCompare(b.date));
+  await setKv(env, 'events', JSON.stringify(out));
+  await setKv(env, 'data_cache', JSON.stringify(await buildData(env)));
+  return `Gebeurtenissen bijgewerkt: ${out.earnings.length} cijferdata, ${out.dividends.length} dividenden, ` +
+    `${out.received.length} ontvangen dividenden${out.errors.length ? ' (' + out.errors.length + ' fouten)' : ''}.`;
+}
+
+async function fmp(env, path) {
+  const sep = path.includes('?') ? '&' : '?';
+  const res = await fetch(FMP_BASE + path + sep + 'apikey=' + encodeURIComponent(env.FMP_KEY));
+  if (res.status === 429) throw new Error('FMP-limiet bereikt');
+  if (res.status === 401 || res.status === 403 || res.status === 402) throw new Error('FMP gaf ' + res.status + ' (sleutel of abonnement)');
+  if (!res.ok) throw new Error('FMP gaf ' + res.status);
+  const j = await res.json();
+  if (j && !Array.isArray(j)) {
+    const msg = j['Error Message'] || j.error || j.message;
+    if (msg) throw new Error(/limit/i.test(msg) ? 'FMP-limiet bereikt' : String(msg).slice(0, 120));
+    return [];
+  }
+  return j || [];
+}
+
+const numOrNull = (x) => (x === null || x === undefined || x === '' || !isFinite(Number(x)) ? null : Number(x));
 
 async function importFromSheet(env, url, token) {
   if (!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(url || '')) {
