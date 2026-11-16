@@ -311,7 +311,7 @@
       ];
     }
     const empty = !sets.some((s) => s.data.length);
-    drawLine('chart-detail', sets, { time: true, legend: detailRange !== 'intraday', empty: empty });
+    drawLine('chart-detail', sets, { time: true, legend: detailRange !== 'intraday', compact: detailRange === 'intraday', empty: empty });
 
     const stats = [
       ['Nu', r.current, eur], ['Laagste vandaag', r.low, eur], ['Hoogste vandaag', r.high, eur],
