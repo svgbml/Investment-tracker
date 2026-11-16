@@ -88,7 +88,7 @@ Na de agenda zet de Worker elke ochtend taken klaar die hij buiten de meettijden
 - **SEC EDGAR** (`SEC_CONTACT`, wekelijks): omzet, nettowinst, bedrijfsresultaat en winst per aandeel per kalenderjaar uit de XBRL-gegevens (`companyconcept`). Elk verzoek draagt `investment-tracker (jouw e-mailadres)` als User-Agent, zoals de SEC vraagt. Alleen bedrijven die bij de SEC rapporteren.
 - **Euro-dollarkoers** (geen sleutel): ECB-referentiekoersen van 400 dagen via Frankfurter.
 - **Inflatie** (geen sleutel): HICP-index (2025 = 100) van de ECB voor Nederland en de eurozone.
-- **Indexen** (geen sleutel): S&P 500 en Nasdaq-100 (koersindex, zonder dividend) van FRED, voor "wat als alles in de index had gezeten" en als koershistorie voor de risicoberekening van indexfondsen.
+- **Indexen**: S&P 500 en Nasdaq-100 (koersindex, zonder dividend) van FRED, zonder sleutel via de downloadlink of met `FRED_KEY` via de officiële API, voor "wat als alles in de index had gezeten" en als koershistorie voor de risicoberekening van indexfondsen.
 - **Koersdoel en nieuwsstemming** (Finnhub `price-target` en `news-sentiment`), als je abonnement ze toestaat.
 - **Volglijst**: symbolen uit `settings.watchlist` (maximaal 20) krijgen dezelfde gegevens als je posities: profiel, koersen, agenda en Finnhub/SEC.
 

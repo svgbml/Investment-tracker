@@ -241,7 +241,7 @@ async function ensureSchema(env) {
 }
 
 // Sleutels die via de website zijn ingevuld; een geheim bij Cloudflare gaat altijd voor
-const KEY_NAMES = ['T212_KEY', 'T212_SECRET', 'FMP_KEY', 'FINNHUB_KEY', 'SEC_CONTACT'];
+const KEY_NAMES = ['T212_KEY', 'T212_SECRET', 'FMP_KEY', 'FINNHUB_KEY', 'SEC_CONTACT', 'FRED_KEY'];
 
 async function withKeys(env) {
   let stored = {};
@@ -1139,10 +1139,19 @@ async function externalTask(env, kind, arg) {
   if (kind === 'idx') {
     // Dagkoersen van de S&P 500 en de Nasdaq-100 (koersindex, in dollars) uit FRED van de Federal Reserve Bank of St. Louis
     const out = { updated: isoLocal(Date.now()), source: 'FRED (Federal Reserve Bank of St. Louis)', series: {} };
+    const since = ymdUTC(Date.now() - 400 * 864e5);
     for (const id of ['SP500', 'NASDAQ100']) {
-      const res = await fetch('https://fred.stlouisfed.org/graph/fredgraph.csv?id=' + id + '&cosd=' + ymdUTC(Date.now() - 400 * 864e5),
+      if (env.FRED_KEY) {
+        // Officiële FRED-API (gratis sleutel)
+        const res = await fetch('https://api.stlouisfed.org/fred/series/observations?series_id=' + id + '&observation_start=' + since + '&file_type=json&api_key=' + encodeURIComponent(env.FRED_KEY));
+        if (!res.ok) { await noteExtError(env, 'indices', 'FRED-API gaf ' + res.status + (res.status === 400 ? ' (controleer de sleutel)' : '')); continue; }
+        const j = await res.json().catch(() => null);
+        out.series[id] = ((j && j.observations) || []).filter((o) => /^\d{4}-\d{2}-\d{2}$/.test(o.date) && o.value !== '.' && isFinite(Number(o.value))).map((o) => [o.date, Number(o.value)]);
+        continue;
+      }
+      const res = await fetch('https://fred.stlouisfed.org/graph/fredgraph.csv?id=' + id + '&cosd=' + since,
         { headers: { 'User-Agent': 'investment-tracker (persoonlijke beleggingstracker)' } });
-      if (!res.ok) { await noteExtError(env, 'indices', 'FRED gaf ' + res.status); continue; }
+      if (!res.ok) { await noteExtError(env, 'indices', 'FRED gaf ' + res.status + ' op de downloadlink. Met een gratis FRED-sleutel (FRED_KEY) gebruikt de Worker de officiële API.'); break; }
       out.series[id] = (await res.text()).trim().split(/\r?\n/).slice(1).map((l) => l.split(','))
         .filter((c) => /^\d{4}-\d{2}-\d{2}$/.test(c[0]) && isFinite(Number(c[1])) && c[1] !== '').map((c) => [c[0], Number(c[1])]);
     }
