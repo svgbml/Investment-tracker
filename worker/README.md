@@ -36,7 +36,7 @@ Alle adressen vragen je toegangscode, als `?token=…` of als header `Authorizat
 | Agenda nu bijwerken (dividenden, kwartaalcijfers) | `POST /api/events` |
 | Orders (aan- en verkopen) nu ophalen | `POST /api/orders` |
 | Samenstelling van de indexfondsen nu ophalen / zelf toevoegen | `POST /api/etf` / `POST /api/etf-upload` met `{"key": "SP500" of "NDX", "csv": "…"}` |
-| Instellingen van de site (streefverdeling, inleg, doel) | `GET` / `POST /api/settings` |
+| Instellingen van de site (streefverdeling, inleg, doel, volglijst, notities bij aankopen `notes`, andere rekeningen `accounts`) | `GET` / `POST /api/settings` |
 | Status van koppelingen en functies | `GET /api/features` (alleen waar een sleutel staat, nooit de sleutel zelf) |
 | Sleutel opslaan of wissen | `POST /api/keys` met `{"name": "FINNHUB_KEY", "value": "…"}` (lege waarde wist) |
 | Functie zonder sleutel aan/uit | `POST /api/features` met `{"features": {"fx": true, "inflation": true, "sec": true, "etfAuto": true, "indices": true}}` |
@@ -90,6 +90,8 @@ Na de agenda zet de Worker elke ochtend taken klaar die hij buiten de meettijden
 - **Inflatie** (geen sleutel): HICP-index (2025 = 100) van de ECB voor Nederland en de eurozone.
 - **Indexen**: S&P 500 en Nasdaq-100 (koersindex, zonder dividend) van FRED, zonder sleutel via de downloadlink of met `FRED_KEY` via de officiële API, voor "wat als alles in de index had gezeten" en als koershistorie voor de risicoberekening van indexfondsen.
 - **Koersdoel en nieuwsstemming** (Finnhub `price-target` en `news-sentiment`), als je abonnement ze toestaat.
+- **Marktnieuws** (Finnhub `news?category=general`), één keer per dag, voor de nieuwspagina (`marketNews` in `/api/data`). Per aandeel bewaart de Worker ook wekelijks het gemiddelde koersdoel (`targetHist`), zodat de site later kan nagaan of koersdoelen uitkwamen.
+- **Waardering** (FMP `ratios-ttm` en `ratios`, per aandeel één keer per week; `sector-pe-snapshot` één keer per dag): koers-winstverhouding en dividendrendement, in `market.valuation` en `market.sectorPe`. Geeft FMP 402 (niet in het abonnement), dan stopt de Worker ermee (`val_denied`) en rekent de site de K/W uit SEC-cijfers.
 - **Volglijst**: symbolen uit `settings.watchlist` (maximaal 20) krijgen dezelfde gegevens als je posities: profiel, koersen, agenda en Finnhub/SEC.
 
 ## Agenda in Google Agenda

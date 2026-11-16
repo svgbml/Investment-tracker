@@ -795,6 +795,7 @@ async function buildData(env) {
     fx: extra.fx || null,
     hicp: extra.hicp || null,
     idx: extra.idx || null,
+    marketNews: extra.marketNews || null,
     features: { flags: extra.flags || {}, has: extra.has || {} },
     currency: 'EUR',
     weeks,
@@ -981,6 +982,28 @@ async function saveSettings(env, body) {
   if (body && Array.isArray(body.watchlist)) {
     clean.watchlist = [...new Set(body.watchlist.map((x) => String(x || '').trim().toUpperCase()).filter((x) => /^[A-Z0-9][A-Z0-9.\-]{0,11}$/.test(x)))].slice(0, 20);
   }
+  // Aankoopdagboek: korte notitie per aankoop (sleutel = ticker|tijdstip in ms)
+  if (body && body.notes && typeof body.notes === 'object') {
+    clean.notes = {};
+    Object.entries(body.notes).slice(0, 400).forEach(([k, v]) => {
+      const txt = String(v == null ? '' : v).replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 500);
+      if (/^[A-Za-z0-9.@_-]{1,20}\|\d{9,14}$/.test(k) && txt) clean.notes[k] = txt;
+    });
+  }
+  // Andere rekeningen of brokers, met de hand of uit een CSV ingevoerd
+  if (body && Array.isArray(body.accounts)) {
+    const n = (x, lo, hi) => { const v = Number(x); return isFinite(v) && v >= lo && v < hi ? Math.round(v * 1e6) / 1e6 : null; };
+    const s = (x, len) => String(x == null ? '' : x).replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, len);
+    clean.accounts = body.accounts.slice(0, 10).map((a) => ({
+      id: /^[a-z0-9]{1,16}$/.test(a && a.id) ? a.id : Math.random().toString(36).slice(2, 10),
+      name: s(a && a.name, 40) || 'Rekening', broker: s(a && a.broker, 40), cash: n(a && a.cash, -1e9, 1e9) || 0,
+      updated: /^\d{4}-\d{2}-\d{2}$/.test(a && a.updated) ? a.updated : null,
+      holdings: (Array.isArray(a && a.holdings) ? a.holdings : []).slice(0, 80).map((h) => ({
+        name: s(h && h.name, 60), tk: s(h && h.tk, 20).toUpperCase(), isin: s(h && h.isin, 12).toUpperCase(),
+        qty: n(h && h.qty, 0, 1e9), value: n(h && h.value, 0, 1e9), cost: n(h && h.cost, 0, 1e9),
+      })).filter((h) => h.name && h.value != null),
+    }));
+  }
   if (body && body.features && typeof body.features === 'object') {
     clean.features = Object.assign({}, cur.features || {});
     Object.keys(FEATURE_DEFAULTS).forEach((k) => { if (typeof body.features[k] === 'boolean') clean.features[k] = body.features[k]; });
@@ -1076,11 +1099,12 @@ async function extraData(env) {
     out.orders = results.map((r) => [isoLocal(r.ts), r.ticker, r.name, r.side, r.qty, r.price, r.currency, r.fx_rate, r.net, r.realised, r.fee_fx, r.fee_other, r.kind]);
   }
   out.research = {}; out.fin = {}; out.fx = null; out.hicp = null;
-  const { results: ext } = await env.DB.prepare("SELECT key, value FROM kv WHERE key LIKE 'rs\\_%' ESCAPE '\\' OR key LIKE 'fin\\_%' ESCAPE '\\' OR key IN ('fx', 'hicp', 'idx')").all();
+  const { results: ext } = await env.DB.prepare("SELECT key, value FROM kv WHERE key LIKE 'rs\\_%' ESCAPE '\\' OR key LIKE 'fin\\_%' ESCAPE '\\' OR key IN ('fx', 'hicp', 'idx', 'market_news')").all();
   ext.forEach((r) => {
     try {
       const v = JSON.parse(r.value);
-      if (r.key === 'fx') out.fx = v; else if (r.key === 'hicp') out.hicp = v; else if (r.key === 'idx') out.idx = v;
+      if (r.key === 'market_news') out.marketNews = v;
+      else if (r.key === 'fx') out.fx = v; else if (r.key === 'hicp') out.hicp = v; else if (r.key === 'idx') out.idx = v;
       else if (r.key.startsWith('rs_')) out.research[r.key.slice(3)] = v; else out.fin[r.key.slice(4)] = v;
     } catch (e) { /* overslaan */ }
   });
@@ -1158,6 +1182,17 @@ async function externalTask(env, kind, arg) {
     if (Object.keys(out.series).length) { await setKv(env, 'idx', JSON.stringify(out)); await noteExtError(env, 'indices', null); }
     return 2;
   }
+  if (kind === 'fhnews') {
+    // Algemeen marktnieuws van Finnhub (gratis sleutel), voor de nieuwspagina
+    if (!env.FINNHUB_KEY) return 0;
+    const r = await getJson(FINNHUB_BASE + '/news?category=general&token=' + encodeURIComponent(env.FINNHUB_KEY));
+    if (r.status === 401) { await noteExtError(env, 'finnhub', 'Finnhub-sleutel ongeldig (401).'); return 1; }
+    if (!r.ok) return 1;
+    const items = (Array.isArray(r.body) ? r.body : []).filter((n) => n.headline && /^https:\/\//.test(n.url || '')).sort((a, c) => c.datetime - a.datetime).slice(0, 30)
+      .map((n) => ({ t: n.datetime * 1000, headline: String(n.headline).slice(0, 220), summary: String(n.summary || '').slice(0, 300), source: n.source || '', url: n.url, related: String(n.related || '').slice(0, 60) }));
+    await setKv(env, 'market_news', JSON.stringify({ updated: isoLocal(Date.now()), items }));
+    return 1;
+  }
   if (kind === 'fh') return finnhubTask(env, arg);
   if (kind === 'sec') return secTask(env, arg);
   return 0;
@@ -1210,6 +1245,13 @@ async function finnhubTask(env, tk) {
     }
   }
   out.denied = denied;
+  // Koersdoel-geschiedenis (één per week), zodat de site later kan nagaan of koersdoelen uitkwamen
+  if (out.target && isFinite(out.target.mean)) {
+    const th = Array.isArray(prev.targetHist) ? prev.targetHist.slice() : [];
+    const last = th[th.length - 1];
+    if (!last || last.d <= ymdUTC(Date.now() - 6 * 864e5)) th.push({ d: today, mean: out.target.mean });
+    out.targetHist = th.slice(-60);
+  }
   await setKv(env, 'rs_' + tk, JSON.stringify(out));
   await noteExtError(env, 'finnhub', null);
   return calls;
@@ -1371,7 +1413,7 @@ async function planMarket(env) {
   if (flags.fx) tasks.push('fx');
   if (flags.inflation) tasks.push('hicp');
   if (flags.indices) tasks.push('idx');
-  if (env.FINNHUB_KEY) all.forEach((h) => tasks.push('fh:' + h.ticker));
+  if (env.FINNHUB_KEY) { tasks.push('fhnews'); all.forEach((h) => tasks.push('fh:' + h.ticker)); }
   if (flags.sec && env.SEC_CONTACT) {
     const { results: fins } = await env.DB.prepare("SELECT key, value FROM kv WHERE key LIKE 'fin\\_%' ESCAPE '\\'").all();
     const age = new Map(fins.map((r) => { try { return [r.key.slice(4), JSON.parse(r.value).updated || '']; } catch (e) { return [r.key.slice(4), '']; } }));
@@ -1404,6 +1446,14 @@ async function planMarket(env) {
     if (!freshSet.has(sym)) tasks.push('profile:' + sym);
     if ((histN.get(sym) || 0) < 20 && !noHist.includes(sym)) later.push('eod:' + sym);
   }
+  // Waardering (koers-winstverhouding, dividendrendement): per aandeel één keer per week, sectorgemiddelden één keer per dag
+  const { results: vals } = await env.DB.prepare("SELECT key, value FROM kv WHERE key LIKE 'val\\_%' ESCAPE '\\'").all();
+  const valAge = new Map(vals.map((r) => { try { return [r.key.slice(4), JSON.parse(r.value).updated || '']; } catch (e) { return [r.key.slice(4), '']; } }));
+  if ((await getKv(env, 'val_denied')) !== '1') {
+    held.concat(watch).forEach((h) => { if ((valAge.get(h.symbol) || '') < weekAgo) later.push('ratios:' + h.symbol); });
+    let spe = null; try { spe = JSON.parse((await getKv(env, 'sector_pe')) || 'null'); } catch (e) { spe = null; }
+    if (!spe || spe.date < usDay) later.push('secpe:' + usDay);
+  }
   const { results: have } = await env.DB.prepare("SELECT DISTINCT day FROM ext_perf WHERE kind = 'sector'").all();
   const haveDays = new Set(have.map((r) => r.day));
   for (const d of prevWeekdays(usDay, PERF_BACKFILL_DAYS)) {
@@ -1430,7 +1480,7 @@ async function marketStep(env) {
     const ci = task.indexOf(':');
     const kind = ci < 0 ? task : task.slice(0, ci), arg = ci < 0 ? '' : task.slice(ci + 1);
     try {
-      if (kind === 'fx' || kind === 'hicp' || kind === 'idx' || kind === 'fh' || kind === 'sec') {
+      if (kind === 'fx' || kind === 'hicp' || kind === 'idx' || kind === 'fh' || kind === 'fhnews' || kind === 'sec') {
         calls += await externalTask(env, kind, arg);
       } else if (!env.FMP_KEY) {
         // FMP-taak zonder sleutel: overslaan
@@ -1474,6 +1524,35 @@ async function marketStep(env) {
         } catch (e) {
           if (/402/.test(e.message)) { if (!noHist.includes(arg)) noHist.push(arg); } else throw e;
         }
+      } else if (kind === 'ratios') {
+        // Koers-winstverhouding en dividendrendement: nu (TTM) en per boekjaar
+        calls += 2;
+        const pick = (o, keys) => { for (const k of keys) { const v = numOrNull(o && o[k]); if (v != null) return v; } return null; };
+        let ttm = null, hist = [];
+        try {
+          ttm = (await fmp(env, '/ratios-ttm?symbol=' + encodeURIComponent(arg)))[0] || null;
+          hist = await fmp(env, '/ratios?symbol=' + encodeURIComponent(arg) + '&limit=5');
+        } catch (e) {
+          if (/402/.test(e.message)) { await setKv(env, 'val_denied', '1'); queue = queue.filter((t) => !/^(ratios|secpe):/.test(t)); throw new Error('waardering zit niet in het FMP-abonnement'); }
+          throw e;
+        }
+        const out = {
+          updated: parts(new Date()).day,
+          pe: ttm ? pick(ttm, ['priceToEarningsRatioTTM', 'peRatioTTM']) : null,
+          dy: ttm ? pick(ttm, ['dividendYieldTTM', 'dividendYielTTM']) : null,
+          hist: hist.map((r) => [String(r.fiscalYear || r.calendarYear || String(r.date || '').slice(0, 4)), pick(r, ['priceToEarningsRatio', 'priceEarningsRatio']), pick(r, ['dividendYield'])])
+            .filter((r) => /^\d{4}$/.test(r[0])).sort((a, b) => a[0].localeCompare(b[0])),
+        };
+        writes.push(env.DB.prepare('INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)').bind('val_' + arg, JSON.stringify(out)));
+      } else if (kind === 'secpe') {
+        calls++;
+        let rows = [];
+        try { rows = await fmp(env, '/sector-pe-snapshot?date=' + arg); }
+        catch (e) { if (/402/.test(e.message)) { rows = []; } else throw e; }
+        const acc = {};
+        rows.forEach((r) => { const pe = numOrNull(r.pe); if (r.sector && pe != null && pe > 0) (acc[r.sector] = acc[r.sector] || []).push(pe); });
+        const avg = Object.fromEntries(Object.entries(acc).map(([k, a]) => [k, Math.round(a.reduce((s, x) => s + x, 0) / a.length * 10) / 10]));
+        writes.push(env.DB.prepare('INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)').bind('sector_pe', JSON.stringify({ date: arg, sectors: avg })));
       } else if (kind === 'perf') {
         calls += 2;
         const sec = await fmp(env, '/sector-performance-snapshot?date=' + arg);
@@ -1532,10 +1611,16 @@ async function marketData(env) {
     if (!tgt) return;
     ((tgt[r.name] = tgt[r.name] || {})[r.exchange] = tgt[r.name][r.exchange] || []).push([r.day, r.change]);
   });
+  const { results: valRows } = await env.DB.prepare("SELECT key, value FROM kv WHERE key LIKE 'val\\_%' ESCAPE '\\'").all();
+  const valuation = {};
+  valRows.forEach((r) => { const sym = r.key.slice(4); if (!want.has(sym)) return; try { valuation[sym] = JSON.parse(r.value); } catch (e) { /* overslaan */ } });
+  let sectorPe = null;
+  try { sectorPe = JSON.parse((await getKv(env, 'sector_pe')) || 'null'); } catch (e) { sectorPe = null; }
   return {
     symbols: Object.fromEntries(held.map((h) => [h.ticker, h.symbol])),
     watch: watch.map((w) => w.symbol),
-    peers, profiles, prices, sectors, industries: inds,
+    peers, profiles, prices, sectors, industries: inds, valuation, sectorPe,
+    valDenied: (await getKv(env, 'val_denied')) === '1',
     updated: await getKv(env, 'mkt_planned'),
   };
 }

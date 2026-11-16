@@ -13,11 +13,11 @@
   <meta name="apple-mobile-web-app-title" content="Beleggen">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>Investeringstracker</title>
-  <script>try{var t=localStorage.getItem('tracker.theme')||'auto';document.documentElement.dataset.theme=(t==='dark'||(t==='auto'&&matchMedia('(prefers-color-scheme: dark)').matches))?'dark':'light';}catch(e){}</script>
+  <script>try{var t=localStorage.getItem('tracker.theme')||'auto';document.documentElement.dataset.theme=(t==='dark'||(t==='auto'&&matchMedia('(prefers-color-scheme: dark)').matches))?'dark':'light';var m=localStorage.getItem('tracker.motion')||'auto';document.documentElement.dataset.motion=(m==='off'||(m==='auto'&&matchMedia('(prefers-reduced-motion: reduce)').matches))?'off':'on';if(localStorage.getItem('tracker.lang')==='en')document.documentElement.lang='en';}catch(e){}</script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=30">
+  <link rel="stylesheet" href="style.css?v=32">
 </head>
 <body data-page="home">
 
@@ -25,6 +25,7 @@
   <div id="notices">
     <div id="demo-banner" class="banner" hidden>Je bekijkt de functies met voorbeeldgetallen. <a href="https://github.com/svgbml/Investment-tracker#zelf-installeren" target="_blank" rel="noopener">Eigen tracker opzetten</a> of <button id="btn-demo-exit" class="linklike" type="button">mijn eigen gegevens laden</button></div>
     <div id="error" class="banner error" role="alert" hidden></div>
+    <div id="update-banner" class="banner update" role="status" hidden>Er is een nieuwe versie van de tracker. <button type="button" class="btn primary" data-upd="now">Nu bijwerken</button> <button type="button" class="linklike" data-upd="later">Later</button></div>
     <section id="welcome" class="welcome" hidden>
       <h1>Je beleggingen in één oogopslag</h1>
       <p>Deze site toont je Trading 212-portefeuille, opgehaald door je eigen Cloudflare Worker. Geen sleutel? Kijk dan eerst rond met voorbeeldgetallen; alles werkt, alleen de bedragen zijn verzonnen.</p>
@@ -55,10 +56,12 @@
         <span class="pill" aria-hidden="true"></span>
         <a href="#overzicht" data-page="home" aria-current="page">Overzicht</a>
         <a href="#bedrijven" data-page="list">Bedrijven</a>
+        <a href="#nieuws" data-page="news">Nieuws</a>
         <a href="#plannen" data-page="plan">Plannen</a>
       </nav>
       <div class="top-actions">
         <span class="updated"></span>
+        <button class="icon-btn btn-install-top" type="button" aria-label="Installeren als app" title="Installeren als app" hidden><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg></button>
         <button class="icon-btn btn-hide" type="button" aria-pressed="false" aria-label="Bedragen verbergen"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/><path class="slash" d="M4 4l16 16"/></svg></button>
         <button class="icon-btn btn-refresh" type="button" aria-label="Gegevens vernieuwen">
           <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5"/></svg>
@@ -112,7 +115,7 @@
 
       <div id="page-list" class="page" hidden>
         <div class="wrap">
-          <div class="list-head"><div><h1>Bedrijven</h1><p id="list-sub" class="muted"></p></div></div>
+          <div class="list-head"><div><h1>Bedrijven</h1><p id="list-sub" class="muted"></p></div><button type="button" class="btn ghost" data-ticker="@compare">Twee aandelen vergelijken</button></div>
           <div class="controls">
             <label class="sr-only" for="list-search">Zoek een bedrijf</label>
             <input id="list-search" class="search" type="search" placeholder="Zoek op naam of ticker" autocomplete="off">
@@ -124,6 +127,16 @@
           <div class="section-head"><h2>Volglijst</h2><p class="muted small">Aandelen die je volgt zonder ze te hebben</p></div>
           <div id="watch-add"></div>
           <div id="watch-grid" class="grid stagger"></div>
+          <div id="watch-sugg" style="margin-top:16px"></div>
+          <div class="section-head"><h2>Waardering</h2><p class="muted small">Koers-winstverhouding en dividendrendement tegenover de eigen geschiedenis en de sector</p></div>
+          <div id="val-grid"></div>
+        </div>
+      </div>
+
+      <div id="page-news" class="page" hidden>
+        <div class="wrap">
+          <div class="list-head"><div><h1>Nieuws</h1><p class="muted">Nieuws over je beleggingen en de markt, analisten en insiderhandel</p></div></div>
+          <div id="news-body"></div>
         </div>
       </div>
 
@@ -185,6 +198,13 @@
         <div class="m-head"><h2>Volglijst</h2></div>
         <div id="m-watch-add" class="m-list-tools"></div>
         <div id="m-watch-rows" class="m-card m-rows stagger" style="margin:0 16px 24px"></div>
+        <div class="m-body" style="padding-top:0"><div id="m-watch-sugg" class="m-stack"></div>
+          <div style="margin:12px 0"><button type="button" class="btn ghost" data-ticker="@compare">Twee aandelen vergelijken</button></div>
+          <div class="m-head" style="padding:0"><h2>Waardering</h2></div><div id="m-val" class="m-stack"></div></div>
+      </section>
+
+      <section id="m-news" class="m-view" hidden>
+        <div class="m-body"><div id="m-news-body"></div></div>
       </section>
 
       <section id="m-plan" class="m-view" hidden>
@@ -213,6 +233,8 @@
         <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l5-5 4 3 8-9"/></svg>Overzicht</a>
       <a href="#bedrijven" data-page="list">
         <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><rect x="13" y="13" width="7" height="7" rx="2"/></svg>Bedrijven</a>
+      <a href="#nieuws" data-page="news">
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h8M8 17h5"/></svg>Nieuws</a>
       <a href="#statistieken" data-page="stats">
         <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 20V11M12 20V4M19 20v-6"/></svg>Statistieken</a>
       <a href="#plannen" data-page="plan">
@@ -250,11 +272,35 @@
           <button type="button" data-theme-pick="dark" aria-pressed="false">Donker</button>
           <button type="button" data-theme-pick="auto" aria-pressed="true">Automatisch</button>
         </div>
+        <h3 style="margin-top:14px">Animaties</h3>
+        <div class="seg light" role="group" aria-label="Animaties">
+          <button type="button" data-motion-pick="on" aria-pressed="false">Aan</button>
+          <button type="button" data-motion-pick="off" aria-pressed="false">Uit</button>
+          <button type="button" data-motion-pick="auto" aria-pressed="true">Automatisch</button>
+        </div>
+        <p class="muted small" id="motion-note" style="margin-top:6px"></p>
+        <h3 style="margin-top:14px">Taal</h3>
+        <div class="seg light" role="group" aria-label="Taal / Language">
+          <button type="button" data-lang-pick="nl" aria-pressed="true">Nederlands</button>
+          <button type="button" data-lang-pick="en" aria-pressed="false">English</button>
+        </div>
+        <p class="muted small" style="margin-top:6px">In het Engels zijn menu's, koppen, knoppen en labels vertaald; langere uitleg blijft voorlopig Nederlands.</p>
       </div>
       <div class="install-box" id="install-box">
         <h3>Als app op je telefoon of computer</h3>
         <p class="muted small" id="install-text">Zet de tracker op je beginscherm; hij opent dan als losse app en toont zonder verbinding de laatst geladen stand.</p>
         <button type="button" id="btn-install" class="btn ghost" hidden>Installeren</button>
+        <details class="advanced" style="margin-top:8px"><summary>Zo installeer je hem</summary>
+          <p class="muted small"><b>Windows of Mac (Chrome of Edge):</b> klik in de adresbalk op het installatiepictogram, of kies in het menu "Apps" en dan "Deze site installeren als app".<br>
+          <b>Android (Chrome):</b> menu ⋮ en dan "App installeren" of "Toevoegen aan startscherm".<br>
+          <b>iPhone en iPad (Safari):</b> deelknop en dan "Zet op beginscherm".</p></details>
+      </div>
+      <div class="install-box" id="update-box">
+        <h3>Updates</h3>
+        <p class="muted small">Versie <b id="app-version"></b>. De site en de app zoeken zelf naar een nieuwe versie (bij openen en elk half uur) en vragen dan of je wilt bijwerken.</p>
+        <div class="dlg-actions" style="margin-top:8px;justify-content:flex-start"><button type="button" class="btn ghost" data-upd="check">Controleren op updates</button></div>
+        <p class="small" id="upd-status" role="status"></p>
+        <p class="muted small">Je eigen Worker bijwerken: open je kopie van de repository op GitHub en kies <b>Sync fork</b>; Cloudflare bouwt de nieuwe versie dan vanzelf.</p>
       </div>
       <details class="advanced" id="import-box">
         <summary>Optioneel: geschiedenis uit de oude Google Sheet</summary>
@@ -278,7 +324,7 @@
   <div id="tip" class="tip" role="status" hidden></div>
   <div id="print-area" aria-hidden="true"></div>
 
-  <script src="config.js?v=30"></script>
-  <script src="app.js?v=30"></script>
+  <script src="config.js?v=32"></script>
+  <script src="app.js?v=32"></script>
 </body>
 </html>

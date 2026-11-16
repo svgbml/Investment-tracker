@@ -28,6 +28,10 @@ Zet ze aan op de website onder *Instellingen → Koppelingen en functies*. Sleut
 |---|---|---|
 | Posities, weken, orders, dividend, valuta-effect, statistieken, plannen | Trading 212 | API-sleutel en secret (vereist) |
 | Risico-indicatie (1 tot 7) met rekenvoorbeelden om het risico te verlagen, opbouw van je resultaat, overzicht van stortingen, wat beweegt samen, jaaroverzicht (ook als PDF), mijlpalen, bedragen verbergen, donkere modus | Trading 212 (berekend op de site) | niets extra |
+| Inleg-assistent (wat kopen voor je streefverdeling en een lagere risicoklasse), scenario's (tech −20%, dollar −10%, eerdere crashes), dividendkalender per maand met groei per aandeel, belastinghulp box 3 (waarde 1 januari, dividend, bronbelasting), kostenoverzicht, aankoopdagboek, twee aandelen vergelijken, overlap met je indexfondsen, weekoverzicht delen als afbeelding of e-mail (ook zonder bedragen), andere rekeningen of brokers (met de hand of CSV), Engels, animaties aan/uit, updates binnen de app | Trading 212 (berekend op de site) | niets extra |
+| Waardering: koers-winstverhouding en dividendrendement tegenover de eigen geschiedenis en de sector | Financial Modeling Prep | gratis sleutel (`FMP_KEY`); zonder waarderingsdata rekent de site de K/W uit SEC-cijfers |
+| Nieuwspagina met marktnieuws, analisten per bedrijf, betrouwbaarheid van analisten en suggesties, insiderhandel | Finnhub | gratis sleutel (`FINNHUB_KEY`) |
+| Suggesties om te volgen | FMP (vergelijkbare bedrijven) en de samenstelling van je indexfondsen | gratis sleutel (`FMP_KEY`) of een fondsbestand |
 | Agenda (kwartaalcijfers, dividenden), sector en branche, vergelijkbare bedrijven | [Financial Modeling Prep](https://site.financialmodelingprep.com/register) | gratis sleutel (`FMP_KEY`) |
 | Volglijst (aandelen die je niet hebt), agenda in Google Agenda | Financial Modeling Prep | gratis sleutel (`FMP_KEY`) |
 | Nieuws per aandeel, wat analisten vinden, koersdoel, nieuwsstemming, kwartaalverrassingen, insiderhandel | [Finnhub](https://finnhub.io/register) | gratis sleutel (`FINNHUB_KEY`); koersdoel en stemming alleen als je abonnement ze toestaat |
@@ -44,7 +48,10 @@ Zet ze aan op de website onder *Instellingen → Koppelingen en functies*. Sleut
   - **Overzicht**: grafiek van de totale waarde, kerncijfers (klik op Accountwaarde voor de verdeling), 2 stijgers, de markt en 2 dalers, agenda, sectoren, valuta en koopkracht, weken, patronen en statistieken.
   - **Bedrijven**: alle posities als tegels met grafiek, zoeken, filteren en sorteren.
   - **Bedrijfspagina** (`#bedrijf/TICKER`): grafiek, positie, valuta-effect, transacties, historie, agenda, nieuws, analisten, insiderhandel, bedrijfscijfers, sector en vergelijkbare bedrijven, patronen.
-  - **Plannen**: streefverdeling met inlegadvies, vooruitblik, werkelijke spreiding, stand op 1 januari, export naar CSV.
+  - **Bedrijven** heeft ook een knop om twee aandelen te vergelijken, een waarderingstabel en suggesties om te volgen.
+  - **Nieuws**: nieuws over je posities, volglijst en de markt, analisten per bedrijf met betrouwbaarheid, suggesties volgens analisten en insiderhandel.
+  - **Plannen**: streefverdeling, inleg-assistent, vooruitblik, scenario's, dividendkalender, belastinghulp box 3, kostenoverzicht, aankoopdagboek, overlap met fondsen, werkelijke spreiding, andere rekeningen, weekoverzicht delen, export naar CSV.
+  - **Instellingen**: thema, animaties (automatisch, aan of uit; "automatisch" volgt "minder beweging" van je apparaat), taal (Nederlands of Engels), installeren als app en controleren op updates.
   - Eigen indeling op de telefoon, installeerbaar als app, en zonder verbinding de laatst geladen stand.
 - `apps-script/`: de oudere versie als Google Sheet (optioneel). Via de website kun je die geschiedenis eenmalig overnemen in de Worker.
 
