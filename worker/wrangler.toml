@@ -1,0 +1,21 @@
+name = "investment-tracker"
+main = "src/index.js"
+compatibility_date = "2026-11-01"
+
+# Elke 10 minuten (UTC). De Worker meet zelf alleen op werkdagen 08:00–22:30 Amsterdamse tijd.
+[triggers]
+crons = ["*/10 * * * *"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "investment-tracker"
+database_id = "VUL-HIER-HET-DATABASE-ID-IN"
+
+[vars]
+T212_BASE = "https://live.trading212.com"
+ALLOWED_ORIGIN = "https://svgbml.github.io"
+
+# Geheimen (niet in dit bestand!), instellen met:
+#   npx wrangler secret put T212_KEY
+#   npx wrangler secret put T212_SECRET
+#   npx wrangler secret put WEB_TOKEN

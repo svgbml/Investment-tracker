@@ -38,7 +38,8 @@
 
   // ---------- Instellingen ----------
   const getToken = () => localStorage.getItem(LS_TOKEN) || '';
-  const WEBAPP_RE = /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/;
+  // Toegestaan: de Apps Script web-app (…/exec) of de Cloudflare Worker (…/api/data)
+  const WEBAPP_RE = /^(https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec|https:\/\/[A-Za-z0-9.-]+\/api\/data)$/;
   const getUrl = () => {
     const saved = localStorage.getItem(LS_URL) || '';
     if (saved && !WEBAPP_RE.test(saved)) localStorage.removeItem(LS_URL);
@@ -74,7 +75,7 @@
 
   function alertUrl() {
     const el = $('url-hint');
-    el.textContent = 'Dit is geen web-app-adres. Het moet beginnen met https://script.google.com/macros/s/ en eindigen op /exec. Laat het veld leeg om het standaardadres te gebruiken.';
+    el.textContent = 'Dit adres wordt niet herkend. Gebruik het adres van de Apps Script web-app (eindigt op /exec) of van je Cloudflare Worker (eindigt op /api/data). Laat het veld leeg om het standaardadres te gebruiken.';
     el.classList.add('loss');
     $('in-url').focus();
   }
