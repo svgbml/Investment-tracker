@@ -856,11 +856,16 @@
       return '<div class="bars single">' + items.map((it) =>
         '<div class="col" data-tip="' + esc(it.tip) + '"><div class="b" style="height:' + h(it.v) + '%;background:' + it.color + '"></div></div>').join('') + '</div>';
     }
+    // Boven en onder de nullijn krijgen ruimte naar verhouding, zodat er geen lege helft overblijft
+    const mxP = Math.max(0, ...items.map((it) => (isNum(it.v) && it.v > 0 ? it.v : 0)));
+    const mxN = Math.max(0, ...items.map((it) => (isNum(it.v) && it.v < 0 ? -it.v : 0)));
+    const fu = Math.max(0.08, mxP / mx), fd = Math.max(0.08, mxN / mx);
+    const hu = (v) => (mxP ? (v / mxP * 100).toFixed(1) : 0), hd = (v) => (mxN ? (-v / mxN * 100).toFixed(1) : 0);
     return '<div class="bars">' + items.map((it) => {
       const v = it.v;
       return '<div class="col" data-tip="' + esc(it.tip) + '">' +
-        '<div class="half up"><div class="b' + (isNum(v) && v > 0 ? '' : ' none') + '" style="height:' + (v > 0 ? h(v) : 0) + '%"></div></div>' +
-        '<div class="half down"><div class="b' + (isNum(v) && v < 0 ? '' : ' none') + '" style="height:' + (v < 0 ? h(v) : 0) + '%"></div></div></div>';
+        '<div class="half up" style="flex:' + fu.toFixed(3) + '"><div class="b' + (isNum(v) && v > 0 ? '' : ' none') + '" style="height:' + (v > 0 ? hu(v) : 0) + '%"></div></div>' +
+        '<div class="half down" style="flex:' + fd.toFixed(3) + '"><div class="b' + (isNum(v) && v < 0 ? '' : ' none') + '" style="height:' + (v < 0 ? hd(v) : 0) + '%"></div></div></div>';
     }).join('') + '</div>';
   }
 
@@ -3623,6 +3628,7 @@
   function showPage(p, animate, force) {
     if (mode === 'd' && p === 'stats') p = 'home';
     const prev = ui.page;
+    if (typeof foldSoon === 'function') setTimeout(foldSoon, 0);
     ui.page = p;
     document.body.dataset.page = p;
     $$('.pillnav a, .m-tabs a').forEach((a) => {
@@ -3676,7 +3682,57 @@
     else { renderHome(); renderList(); }
     renderPlan();
     renderWatch();
+    foldSoon();
   }
+
+  // ---------- Panelen inklappen: lange tegels op de beginpagina's starten compact ----------
+  const unfolded = new Set();
+  const FOLD_ROOTS = ['page-home', 'm-home', 'm-stats'];
+  let foldTimer = null;
+  function foldSoon() { cancelAnimationFrame(foldTimer); foldTimer = requestAnimationFrame(() => requestAnimationFrame(foldAll)); }
+  function foldAll() {
+    const H = mode === 'm' ? 300 : 320;
+    FOLD_ROOTS.forEach((rid) => {
+      const root = $(rid);
+      if (!root || root.hidden || !root.offsetParent) return;
+      root.querySelectorAll('.tile.pad, .m-stack > .tile').forEach((t, i) => {
+        if (t.closest('.grid.stats, .m-grid2, #kpis, #movers')) return;
+        const h3 = t.querySelector('h3');
+        const key = rid + ':' + (h3 ? h3.textContent : i);
+        t.dataset.foldKey = key;
+        const btn = t.querySelector(':scope > .fold-btn');
+        const isBtn = t.tagName === 'BUTTON';
+        const wasFolded = t.classList.contains('folded');
+        t.classList.remove('folded');
+        const full = t.scrollHeight;
+        if (full <= H + 90) { t.classList.remove('fold'); if (btn) btn.remove(); return; }
+        t.classList.add('fold');
+        t.style.setProperty('--fold-h', H + 'px');
+        const open = unfolded.has(key);
+        if (!open || (wasFolded && !open)) t.classList.add('folded');
+        if (isBtn) return; // een klikbare tegel opent zijn eigen pagina met alles
+        const b = btn || Object.assign(document.createElement('button'), { type: 'button', className: 'fold-btn' });
+        b.dataset.fold = key;
+        b.setAttribute('aria-expanded', open ? 'true' : 'false');
+        b.textContent = open ? 'Minder tonen' : 'Meer tonen';
+        if (!btn) t.appendChild(b);
+      });
+    });
+  }
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-fold]');
+    if (!b) return;
+    const t = b.closest('.tile');
+    const key = b.dataset.fold;
+    const open = !unfolded.has(key);
+    if (open) unfolded.add(key); else unfolded.delete(key);
+    t.classList.toggle('folded', !open);
+    b.textContent = open ? 'Minder tonen' : 'Meer tonen';
+    b.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (!open) { const r = t.getBoundingClientRect(); if (r.top < 0) t.scrollIntoView({ block: 'start', behavior: reduceMotion() ? 'auto' : 'smooth' }); }
+  });
+  let foldResize = null;
+  window.addEventListener('resize', () => { clearTimeout(foldResize); foldResize = setTimeout(foldAll, 200); });
 
   function render() {
     $('welcome').hidden = true;

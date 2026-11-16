@@ -17,22 +17,30 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=26">
+  <link rel="stylesheet" href="style.css?v=27">
 </head>
 <body data-page="home">
 
   <!-- Meldingen en welkom: verhuizen naar de weergave die actief is -->
   <div id="notices">
-    <div id="demo-banner" class="banner" hidden>Je bekijkt voorbeeldgegevens. <button id="btn-demo-exit" class="linklike" type="button">Mijn eigen gegevens laden</button></div>
+    <div id="demo-banner" class="banner" hidden>Je bekijkt de functies met voorbeeldgetallen. <a href="https://github.com/svgbml/Investment-tracker#zelf-installeren" target="_blank" rel="noopener">Eigen tracker opzetten</a> of <button id="btn-demo-exit" class="linklike" type="button">mijn eigen gegevens laden</button></div>
     <div id="error" class="banner error" role="alert" hidden></div>
     <section id="welcome" class="welcome" hidden>
       <h1>Je beleggingen in één oogopslag</h1>
-      <p>Deze site toont je Trading 212-portefeuille, opgehaald door je eigen Cloudflare Worker. Je hebt alleen een gratis Cloudflare-account en een Trading 212 API-sleutel nodig; extra functies zet je later aan met gratis sleutels.</p>
-      <p class="small"><a href="https://github.com/svgbml/Investment-tracker#zelf-installeren" target="_blank" rel="noopener">Zo zet je je eigen tracker op</a>. Heb je hem al? Vul dan het adres van je Worker en je toegangscode in.</p>
+      <p>Deze site toont je Trading 212-portefeuille, opgehaald door je eigen Cloudflare Worker. Geen sleutel? Kijk dan eerst rond met voorbeeldgetallen; alles werkt, alleen de bedragen zijn verzonnen.</p>
       <div class="welcome-actions">
-        <button id="btn-welcome-settings" class="btn primary" type="button">Worker en toegangscode invullen</button>
-        <button id="btn-demo" class="btn ghost" type="button">Voorbeeldgegevens bekijken</button>
+        <button id="btn-demo" class="btn primary" type="button">Functies bekijken met voorbeeldgetallen</button>
+        <button id="btn-welcome-settings" class="btn ghost" type="button">Mijn tracker koppelen</button>
       </div>
+      <ul class="feat-list">
+        <li><b>Overzicht</b><span>Waarde, resultaat en grafieken per dag, week en positie.</span><i>Trading 212</i></li>
+        <li><b>Risico</b><span>Klasse 1 tot 7, wat samen beweegt en wat het risico verlaagt.</span><i>Trading 212</i></li>
+        <li><b>Plannen</b><span>Streefverdeling, vooruitblik, jaaroverzicht en mijlpalen.</span><i>Trading 212</i></li>
+        <li><b>Agenda en sectoren</b><span>Kwartaalcijfers, dividenden en vergelijkbare bedrijven.</span><i>gratis FMP-sleutel</i></li>
+        <li><b>Nieuws en analisten</b><span>Nieuws, koersdoelen, stemming en insiderhandel.</span><i>gratis Finnhub-sleutel</i></li>
+        <li><b>Valuta en inflatie</b><span>Euro-dollarkoers, rendement na inflatie, vergelijking met de index.</span><i>geen sleutel</i></li>
+      </ul>
+      <p class="small"><a href="https://github.com/svgbml/Investment-tracker#zelf-installeren" target="_blank" rel="noopener">Zo zet je je eigen tracker op</a>: een gratis Cloudflare-account en een Trading 212 API-sleutel zijn genoeg voor de basis.</p>
     </section>
   </div>
 
@@ -270,7 +278,7 @@
   <div id="tip" class="tip" role="status" hidden></div>
   <div id="print-area" aria-hidden="true"></div>
 
-  <script src="config.js?v=26"></script>
-  <script src="app.js?v=26"></script>
+  <script src="config.js?v=27"></script>
+  <script src="app.js?v=27"></script>
 </body>
 </html>
