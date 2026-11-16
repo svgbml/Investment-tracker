@@ -44,7 +44,7 @@
   let hideAmounts = (() => { try { return localStorage.getItem('tracker.hide') === '1'; } catch (e) { return false; } })();
   const HIDDEN = '€ ••••';
   const eur = (v) => (!isNum(v) ? '–' : hideAmounts ? HIDDEN : EUR.format(v));
-  const sgn = (v, f) => (!isNum(v) ? '–' : (v > 0 ? '+' : v < 0 ? '−' : '') + f.format(Math.abs(v)));
+  const sgn = (v, f) => (!isNum(v) ? '–' : (v > 0 ? '+\u2060' : v < 0 ? '−\u2060' : '') + f.format(Math.abs(v)));
   const seur = (v) => (hideAmounts && isNum(v) ? (v > 0 ? '+' : v < 0 ? '−' : '') + HIDDEN : sgn(v, EUR));
   const spct = (v) => sgn(v, P2);
   const spct1 = (v) => sgn(v, P1);
@@ -957,16 +957,18 @@
     return [
       clickable(stat('Accountwaarde', eur(M.accountNow), M.cash != null ? 'beleggingen ' + eur(M.totalValue) + ' + ' + eur(M.cash) + ' vrij saldo' : 'alleen beleggingen; vrij saldo volgt na een weekmeting', '',
         spark(wk('accountValue').concat(M.lastT ? [{ t: M.lastT, v: M.accountNow }] : []), C.accent)), '@account', 'Accountwaarde: bekijk waar je geld zit'),
-      stat('Netto gestort', last ? eur(last.netDeposits) : '–', last ? (isNum(last.newDeposits) && last.newDeposits ? seur(last.newDeposits) + ' in de laatste week' : 'geen storting in de laatste week') : none, '', spark(wk('netDeposits'), C.ink2)),
-      stat('Totaal resultaat', last ? seur(last.totalResult) : '–', last ? spct(last.totalResultPct) + ' op je inleg' : none, last ? tone(last.totalResult) : '', spark(wk('totalResult'), toneColor(last && last.totalResult))),
-      stat('Ongerealiseerd', seur(unreal), 'open posities, nu', tone(unreal), spark(wk('unrealized'), toneColor(unreal))),
+      last ? clickable(stat('Netto gestort', eur(last.netDeposits), isNum(last.newDeposits) && last.newDeposits ? seur(last.newDeposits) + ' in de laatste week' : 'geen storting in de laatste week', '', spark(wk('netDeposits'), C.ink2)), DEP, 'Netto gestort: bekijk je stortingen', 'Stortingen')
+        : stat('Netto gestort', '–', none, '', ''),
+      last ? clickable(stat('Totaal resultaat', seur(last.totalResult), spct(last.totalResultPct) + ' op je inleg', tone(last.totalResult), spark(wk('totalResult'), toneColor(last.totalResult))), RES, 'Totaal resultaat: bekijk waar het vandaan komt', 'Opbouw')
+        : stat('Totaal resultaat', '–', none, '', ''),
+      clickable(stat('Ongerealiseerd', seur(unreal), 'open posities, nu', tone(unreal), spark(wk('unrealized'), toneColor(unreal))), RES, 'Ongerealiseerd: bekijk het per positie', 'Per positie'),
     ];
   }
 
   // Maak van een kaart een knop die inzoomt
-  function clickable(html, key, label) {
+  function clickable(html, key, label, more) {
     return html.replace(/^<section class="([^"]*)">/, '<button type="button" class="$1 clickable" data-ticker="' + key + '" aria-label="' + esc(label) + '">')
-      .replace(/<\/section>$/, '<span class="more" aria-hidden="true">Verdeling ›</span></button>');
+      .replace(/<\/section>$/, '<span class="more" aria-hidden="true">' + esc(more || 'Verdeling') + ' ›</span></button>');
   }
 
   function statCards(S) {
@@ -986,7 +988,7 @@
       stat('Weken met winst', wr.length ? posW + ' van ' + wr.length : '–', wr.length ? P1.format(posW / wr.length) + ' van de weken' : noWeeks, '', wr.length ? split(posW, wr.length - posW) : ''),
       stat('Dagen gestegen', S.n ? S.up + ' van ' + S.n : '–', S.n ? streakText(S) : 'Nog geen dagen gemeten', '', S.n ? split(S.up, S.down) : ''),
       stat('Beste dag', S.best ? spct(S.best.pct) : '–', S.best ? fD.format(S.best.t) + '. Slechtste: ' + spct(S.worst.pct) + ' op ' + fD.format(S.worst.t) : tooFew(S.n, MIN_DAYS_BEST), tone(S.best && S.best.pct)),
-      stat('Beweeglijkheid', isNum(S.sd) ? '± ' + P1.format(S.sd) + ' per dag' : '–', isNum(S.sd) ? 'gemiddelde afwijking van het dagresultaat' : tooFew(S.n, MIN_DAYS_SD)),
+      clickable(stat('Beweeglijkheid', isNum(S.sd) ? '± ' + P1.format(S.sd) + ' per dag' : '–', isNum(S.sd) ? 'gemiddelde afwijking van het dagresultaat' : tooFew(S.n, MIN_DAYS_SD)), RISK, 'Beweeglijkheid: bekijk je risico en wat het verlaagt', 'Risico'),
       stat('Tot hoogste gemeten', dd == null ? '–' : dd >= -0.0005 ? 'Op het hoogste punt' : spct1(dd), isNum(T.ath) ? 'hoogste ' + eur(T.ath) + ' sinds ' + fDM.format(M.since) : '', dd != null && dd < -0.0005 ? 'loss' : ''),
       stat('Grootste 3 posities', top3.length ? P1.format(top3w) : '–', top3.map((c) => c.tk).join(', ') + ' samen', '', '<div class="meter" aria-hidden="true"><div style="width:' + (top3w * 100).toFixed(1) + '%"></div></div>'),
       stat('Vrij saldo', last && isNum(last.cash) ? eur(last.cash) : '–', last && isNum(last.cash) && last.accountValue ? P1.format(last.cash / last.accountValue) + ' van je accountwaarde' : noWeeks),
@@ -2663,7 +2665,7 @@
     const beta = bw > 0.5 ? sum(profBeta.filter((x) => isNum(x.b)).map((x) => x.w * x.b)) / bw : null;
     const fundsW = sum(M.companies.filter((c) => ETF_RE.test(c.name) || BENCHES.some((b) => b[1].test(c.tk))).map((c) => c.weight || 0));
     const ws = M.companies.map((c) => c.weight || 0);
-    M._risk = { items, coverage, simVol, wkVol, wkN: wk.length, vol, cls: srri(vol), useSim, mdd: port.length ? mdd : null, simIdx, badDay, nDays: pr.length,
+    M._risk = { items, coverage, simVol, wkVol, wkN: wk.length, vol, cls: srri(vol), useSim, mdd: port.length ? mdd : null, simIdx, badDay, nDays: pr.length, days: port.map((x) => x.day), fx,
       mat, C2, usd: E.total && total ? E.total / total : null, beta, fundsW, top: Math.max(0, ...ws), effN: sum(ws.map((w) => w * w)) ? 1 / sum(ws.map((w) => w * w)) : null,
       missing: items.filter((x) => x.n < 60).map((x) => x.c.tk) };
     return M._risk;
@@ -2675,7 +2677,7 @@
       '<div class="srri-l"><span>laag risico, meestal lager rendement</span><span>hoog risico, mogelijk hoger rendement</span></div>';
   }
 
-  function riskTiles() {
+  function riskTiles(plain) {
     const R = riskModel();
     const total = M.totalValue || 0;
     const ind = '<section class="tile pad risk-main"><h3>Risico-indicatie</h3>' +
@@ -2691,6 +2693,7 @@
         (R.useSim ? 'Berekend met je huidige verdeling over ' + R.nDays + ' handelsdagen, in euro.' : 'Berekend met je eigen weekrendementen; er is nog te weinig koershistorie van je posities.') +
         (R.missing.length ? ' Zonder koershistorie: ' + esc(R.missing.join(', ')) + ' (' + P1.format(1 - R.coverage) + ' van je beleggingen).' : '') +
         ' De officiële berekening gebruikt 5 jaar; dit is een indicatie, geen voorspelling.</p></section>';
+    const indBtn = plain ? ind : clickable(ind, RISK, 'Risico-indicatie: bekijk wat het risico verlaagt', 'Wat het verlaagt');
 
     const fac = '<section class="tile pad"><h3>Waar het risico vandaan komt</h3>' + kvList([
       ['Grootste positie', R.top ? P1.format(R.top) + ' van je beleggingen' : '–', R.top > 0.3 ? 'loss' : ''],
@@ -2725,7 +2728,7 @@
           ['Gemiddelde samenhang', avgC.length ? N2.format(mean(avgC.map((x) => x.v))) : '–'],
         ]) + '</div><p class="sub" style="margin-top:8px">Correlatie van de dagrendementen in euro over het laatste jaar, van −1 (tegengesteld) tot 1 (precies samen). Posities die sterk samen bewegen, spreiden je risico weinig.</p></section>';
     } else heat = '<section class="tile pad"><h3>Wat beweegt samen</h3><p class="muted">Hiervoor is van minstens 3 posities koershistorie nodig. Die komt van FMP (koersen), FRED (indexen) of de eigen metingen van de tracker.</p></section>';
-    return [ind, fac, heat];
+    return [indBtn, fac, heat];
   }
 
   function companyRisk(c) {
@@ -3007,8 +3010,11 @@
 
   // ---------- Accountwaarde: waar zit je geld? ----------
   const ACC = '@account';
-  const hasView = (k) => k === ACC || (M && M.byTk.has(k)) || (isWatchKey(k) && M && watchSyms().includes(k.slice(1)));
-  const viewHash = (k) => (k === ACC ? '#accountwaarde' : isWatchKey(k) ? '#volg/' + encodeURIComponent(k.slice(1)) : '#bedrijf/' + encodeURIComponent(k));
+  const RISK = '@risk', RES = '@result', DEP = '@deposits';
+  const PSEUDO = { '@account': 'accountwaarde', '@risk': 'risico', '@result': 'resultaat', '@deposits': 'stortingen' };
+  const isPseudo = (k) => Object.prototype.hasOwnProperty.call(PSEUDO, k);
+  const hasView = (k) => isPseudo(k) || (M && M.byTk.has(k)) || (isWatchKey(k) && M && watchSyms().includes(k.slice(1)));
+  const viewHash = (k) => (isPseudo(k) ? '#' + PSEUDO[k] : isWatchKey(k) ? '#volg/' + encodeURIComponent(k.slice(1)) : '#bedrijf/' + encodeURIComponent(k));
   const PIE = ['#1E3A8A', '#2B5BD7', '#5B86E5', '#8FAEF0', '#0E7490', '#4FB3C8', '#6D28D9', '#A78BFA'];
   const CASH = '#0B7A4B', REST = '#C9CED6';
   const ETF_RE = /\bETF\b|UCITS|\((Acc|Dist)\)|iShares|Vanguard|Xtrackers|Amundi|SPDR|Invesco|Lyxor/i;
@@ -3094,9 +3100,266 @@
       '<div class="wrap"><div class="grid wide">' + tiles.slice(0, 2).join('') + secTile + '</div><div class="grid wide" style="margin-top:16px">' + tiles[2] + tiles[3] + realisedTile() + '</div></div>';
   }
 
+  // ---------- Uitklapweergaven: risico, resultaat, stortingen ----------
+  function pseudoPage(title, head, desk, mob) {
+    if (mode === 'm') {
+      return '<div class="md"><div class="m-dtop"><button type="button" class="m-back" data-act="back">‹ Terug</button><span class="t">' + esc(title) + '</span><span></span></div>' +
+        '<div class="m-hero"><div class="m-swipe">' + head + '</div></div>' +
+        '<div class="m-body"><div class="m-stack">' + (mob || desk.flat()).join('') + '</div></div></div>';
+    }
+    return '<div class="band" style="padding-bottom:24px"><div class="d-top"><button type="button" class="btn dark" data-act="back">← Terug</button></div>' +
+      '<div class="hero-head"><div>' + head + '</div></div></div>' +
+      '<div class="wrap">' + desk.map((row) => '<div class="grid wide" style="margin-top:16px">' + row.join('') + '</div>').join('') + '</div>';
+  }
+  function pseudoHead(label, value, sub, cls) {
+    return '<p class="hero-label">' + esc(label) + '</p><h2 id="d-title" class="' + (mode === 'm' ? 'm-value' : 'hero-value') + (cls ? ' ' + cls : '') + '">' + esc(value) + '</h2>' +
+      '<p class="' + (mode === 'm' ? 'base' : 'hero-change muted') + '" style="' + (mode === 'm' ? 'padding:6px 0 0' : '') + '">' + esc(sub) + '</p>';
+  }
+
+  const isFundC = (c) => ETF_RE.test(c.name) || BENCHES.some((b) => b[1].test(c.tk));
+
+  // Rekenvoorbeelden: hoe verandert de beweeglijkheid als de verdeling anders is (koersen van het laatste jaar)
+  function riskIdeas(R) {
+    const total = M.totalValue || 0;
+    const out = [];
+    const hist = R.items.filter((x) => x.n >= 60);
+    // Bestemming in de voorbeelden: een breed indexfonds dat je al hebt, anders de S&P 500 (FRED) in euro
+    const ownIdx = hist.find((x) => BENCHES.some((b) => b[1].test(x.c.tk) || b[2].test(x.c.name)) && !/nasdaq/i.test(x.c.name) && !BENCHES[1][1].test(x.c.tk));
+    let idxR = ownIdx ? ownIdx.rets : null, idxName = ownIdx ? ownIdx.c.tk : 'een breed indexfonds (S&P 500)';
+    if (!idxR && data.idx && data.idx.series && data.idx.series.SP500) {
+      const days = [...R.fx.keys()].sort(); let j = 0, last = null, prev = null; idxR = new Map();
+      data.idx.series.SP500.forEach(([d, v]) => { while (j < days.length && days[j] <= d) { last = R.fx.get(days[j]); j++; } if (!last) return; const e = v / last; if (prev) { const r = e / prev - 1; if (Math.abs(r) < 0.5) idxR.set(d, r); } prev = e; });
+      if (idxR.size < 60) idxR = null;
+    }
+    const sim = (wOf, wIdx) => {
+      const ws = hist.map((x) => [x, wOf(x)]);
+      const totW = sum(ws.map((p) => p[1])) + (idxR && wIdx ? wIdx : 0);
+      const rs = [];
+      R.days.forEach((d) => {
+        let sw = 0, sr = 0;
+        ws.forEach(([x, w]) => { if (!w) return; const r = x.rets.get(d); if (isNum(r)) { sw += w; sr += w * r; } });
+        if (idxR && wIdx) { const r = idxR.get(d); if (isNum(r)) { sw += wIdx; sr += wIdx * r; } }
+        if (sw > 0 && sw >= totW * 0.8) rs.push(sr / sw);
+      });
+      return rs.length >= 60 ? stdev(rs) * Math.sqrt(252) : null;
+    };
+    const base = R.days && R.days.length >= 60 ? sim((x) => x.w, 0) : null;
+    const canIdx = !!idxR && isNum(base);
+    const monthly = isNum(M.settings && M.settings.monthly) && M.settings.monthly > 0 ? M.settings.monthly : (typeof monthlyGuess === 'function' ? monthlyGuess() : null);
+    const viaInleg = (D) => (D > 0 ? ' Zonder te verkopen: ongeveer ' + eur(D) + ' nieuwe inleg in andere posities' + (isNum(monthly) && monthly > 0 ? ', ' + Math.max(1, Math.ceil(D / monthly)) + ' maanden bij ' + eur(monthly) + ' per maand' : '') + '.' : '');
+    const stocks = M.companies.filter((c) => !isFundC(c));
+
+    // 1. Grootste aanjager van het risico
+    const drv = R.items.filter((x) => isNum(x.contrib) && !isFundC(x.c) && x.w >= 0.04).sort((a, b) => (b.contrib - b.w / (R.coverage || 1)) - (a.contrib - a.w / (R.coverage || 1)))[0];
+    if (drv && drv.contrib > (drv.w / (R.coverage || 1)) * 1.2) {
+      out.push({ title: 'De grootste risicobron kleiner maken: ' + drv.c.tk,
+        text: drv.c.tk + ' is ' + P1.format(drv.w) + ' van je beleggingen, maar ' + P1.format(drv.contrib) + ' van het risico' + (isNum(drv.vol) ? ' (zelf ' + P1.format(drv.vol) + ' per jaar)' : '') + '. In het voorbeeld gaat de helft naar ' + idxName + '.',
+        to: canIdx ? sim((x) => (x === drv ? x.w / 2 : x.w), drv.w / 2) : null, tk: drv.c.tk });
+    }
+    // 2. Geen los aandeel boven de 10%
+    const big = stocks.filter((c) => (c.weight || 0) > 0.10).sort((a, b) => b.weight - a.weight);
+    if (big.length) {
+      const excess = sum(hist.filter((x) => !isFundC(x.c) && x.w > 0.10).map((x) => x.w - 0.10));
+      out.push({ title: 'Geen los aandeel groter dan 10%',
+        text: big.map((c) => c.tk + ' ' + P1.format(c.weight)).join(', ') + '. Valt één bedrijf tegen, dan raakt dat je hele portefeuille. In het voorbeeld gaat alles boven de 10% naar ' + idxName + '.' + viaInleg(big[0].value / 0.10 - total),
+        to: canIdx && excess > 0 ? sim((x) => (!isFundC(x.c) && x.w > 0.10 ? 0.10 : x.w), excess) : null });
+    }
+    // 3. Meer in brede fondsen
+    if (isNum(R.fundsW) && R.fundsW < 0.5 && stocks.length) {
+      const k = (1 - 0.5) / Math.max(1e-9, 1 - R.fundsW);
+      out.push({ title: 'De helft in brede indexfondsen',
+        text: 'Nu ' + P1.format(R.fundsW) + ' in fondsen. Een indexfonds spreidt over honderden bedrijven, waardoor tegenvallers van één bedrijf weinig uitmaken. In het voorbeeld gaat ' + P1.format(0.5 - R.fundsW) + ' van je losse aandelen (naar verhouding) naar ' + idxName + '.' + viaInleg(total * (1 - 2 * R.fundsW)),
+        to: canIdx ? sim((x) => (isFundC(x.c) ? x.w : x.w * k), 0.5 - R.fundsW) : null });
+    }
+    // 4. Eén sector
+    if (M.mk.ok) {
+      const sec = new Map();
+      stocks.forEach((c) => { const p = M.mk.profOf(c.tk); const nm = p && p.sector ? sectorNl(p.sector) : null; if (!nm) return; const e = sec.get(nm) || { w: 0, tks: [] }; e.w += c.weight || 0; e.tks.push(c.tk); sec.set(nm, e); });
+      const topS = [...sec.entries()].sort((a, b) => b[1].w - a[1].w)[0];
+      if (topS && topS[1].w > 0.4) {
+        const sw = topS[1].w, k = 0.3 / sw;
+        out.push({ title: 'Minder in één sector: ' + topS[0],
+          text: P1.format(sw) + ' van je beleggingen zit in losse aandelen uit ' + topS[0].toLowerCase() + ' (' + topS[1].tks.join(', ') + '). Die reageren vaak op hetzelfde nieuws. In het voorbeeld gaat de sector naar 30% en de rest naar ' + idxName + '.',
+          to: canIdx ? sim((x) => (topS[1].tks.includes(x.c.tk) ? x.w * k : x.w), sw - 0.3) : null });
+      }
+    }
+    // 5. Posities die samen bewegen
+    if (R.mat && R.mat.length >= 3) {
+      let best = null;
+      R.mat.forEach((a, i) => R.mat.forEach((b, j) => { const v = R.C2[i][j]; if (j > i && isNum(v) && v >= 0.6 && !isFundC(a.c) && !isFundC(b.c) && (!best || v > best[2])) best = [a, b, v]; }));
+      if (best) out.push({ title: best[0].c.tk + ' en ' + best[1].c.tk + ' bewegen bijna samen',
+        text: 'Samenhang ' + N2.format(best[2]) + '. Samen ' + P1.format(best[0].w + best[1].w) + ' van je beleggingen; voor het risico tellen ze bijna als één positie. Iets wat los daarvan beweegt, spreidt meer.' });
+    }
+    // 6. Dollar
+    if (isNum(R.usd) && R.usd > 0.7) {
+      const days = [...R.fx.keys()].sort().slice(-261); const fr = [];
+      for (let i = 1; i < days.length; i++) fr.push(R.fx.get(days[i]) / R.fx.get(days[i - 1]) - 1);
+      const fv = fr.length >= 60 ? stdev(fr) * Math.sqrt(252) : null;
+      out.push({ title: 'Minder afhankelijk van de dollar',
+        text: P1.format(R.usd) + ' van je beleggingen staat in dollars' + (isNum(fv) ? '; de dollar zelf schommelde het laatste jaar ' + P1.format(fv) + ' tegenover de euro' : '') + '. Dat zit bovenop de koersbewegingen. Beleggingen in euro of een fonds met valuta-afdekking (in de naam vaak "EUR Hedged") halen dat deel weg.' });
+    }
+    // 7. Geld als buffer
+    if (isNum(R.vol) && M.cash != null && M.accountNow > 0) {
+      out.push({ title: 'Een deel in geld',
+        text: 'Met je vrije saldo (' + eur(M.cash) + ') meegerekend schommelt je hele account ongeveer ' + P1.format(R.vol * (M.totalValue / M.accountNow)) + ' per jaar. Geld schommelt niet, maar levert ook weinig op. Geld dat je binnen een paar jaar nodig hebt, staat vaak beter buiten de beurs.' });
+    }
+    return { ideas: out, base, idxName, canIdx };
+  }
+
+  function renderRiskView() {
+    const R = riskModel();
+    const total = M.totalValue || 0;
+    const I = riskIdeas(R);
+    const effect = (x) => {
+      if (!isNum(x.to) || !isNum(I.base)) return '';
+      const c0 = srri(I.base), c1 = srri(x.to), d = x.to - I.base;
+      return '<div class="sug-eff"><span class="lvl" style="--k:' + c0 + '">' + c0 + '</span><span class="arr" aria-hidden="true">→</span><span class="lvl" style="--k:' + c1 + '">' + c1 + '</span>' +
+        '<span class="small">beweeglijkheid ' + esc(P1.format(I.base)) + ' → <b class="' + (d < 0 ? 'gain' : 'loss') + '">' + esc(P1.format(x.to)) + '</b> per jaar</span></div>';
+    };
+    const ranked = I.ideas.slice().sort((a, b) => (isNum(a.to) ? a.to : 9) - (isNum(b.to) ? b.to : 9));
+    const sugg = '<section class="tile pad sugg span-2"><h3>Wat het risico verlaagt</h3>' +
+      (R.cls ? riskScale(R.cls) : '') +
+      (ranked.length ? '<ol class="sug-list">' + ranked.map((x) => '<li><b>' + esc(x.title) + '</b><p class="small">' + esc(x.text) + '</p>' + effect(x) + '</li>').join('') + '</ol>'
+        : '<p class="muted" style="margin-top:12px">Geen duidelijke punten gevonden: je spreiding over posities, sectoren en munten is redelijk.</p>') +
+      '<p class="sub" style="margin-top:10px">Rekenvoorbeelden met de koersen van het laatste jaar' + (I.canIdx ? ', met ' + esc(I.idxName) + ' als bestemming' : '; voor de getallen is koershistorie van een breed indexfonds nodig (FRED-sleutel of een eigen S&P 500-fonds)') +
+      '. Verkopen kost bij dollaraandelen wisselkosten; nieuwe inleg anders verdelen kost niets extra. Dit is geen beleggingsadvies en zegt niets over toekomstige rendementen.</p></section>';
+
+    // Slecht jaar
+    const badYear = isNum(R.vol) ? -1.645 * R.vol : null;
+    const year = '<section class="tile pad"><h3>Wat een slecht jaar kan betekenen</h3>' + kvList([
+      ['Beweeglijkheid per jaar', isNum(R.vol) ? P1.format(R.vol) : '–'],
+      ['Slecht jaar (ongeveer 1 op 20)', isNum(badYear) ? spct1(badYear) + ', nu ' + seur(badYear * total) : '–', 'loss'],
+      ['Slechte week (ongeveer 1 op 20)', isNum(R.vol) ? spct1(-1.645 * R.vol / Math.sqrt(52)) + ', nu ' + seur(-1.645 * R.vol / Math.sqrt(52) * total) : '–', 'loss'],
+      ['Slechte dag (1 op 20, gemeten)', isNum(R.badDay) ? spct(R.badDay) + ', nu ' + seur(R.badDay * total) : '–', 'loss'],
+    ]) + '<p class="sub" style="margin-top:8px">Benadering met een normale verdeling rond nul; echte dalingen komen vaker in clusters en kunnen groter zijn. Over langere periodes middelt veel uit, daarom geldt: hoe hoger de klasse, hoe langer de horizon die erbij past.</p></section>';
+
+    // Per positie
+    const rows = R.items.slice().sort((a, b) => b.w - a.w);
+    const per = '<section class="tile pad span-2"><h3>Per positie</h3><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Positie</th><th class="num">Gewicht</th><th class="num">Beweeglijkheid</th><th class="num">Klasse</th><th class="num">Deel van het risico</th><th class="num">Beta</th></tr></thead><tbody>' +
+      rows.map((x) => { const p = M.mk.ok ? M.mk.profOf(x.c.tk) : null;
+        return '<tr data-open="' + esc(x.c.tk) + '" class="rowlink"><td><b>' + esc(x.c.tk) + '</b> <span class="muted small">' + esc(x.c.name) + '</span></td><td class="num">' + esc(P1.format(x.w)) + '</td>' +
+          '<td class="num">' + esc(isNum(x.vol) ? P1.format(x.vol) : '–') + '</td><td class="num">' + (x.cls ? '<span class="lvl" style="--k:' + x.cls + '">' + x.cls + '</span>' : '–') + '</td>' +
+          '<td class="num' + (isNum(x.contrib) && x.contrib > x.w / (R.coverage || 1) * 1.2 ? ' loss' : '') + '">' + esc(isNum(x.contrib) ? P1.format(x.contrib) : '–') + '</td><td class="num">' + esc(p && isNum(p.beta) ? N2.format(p.beta) : '–') + '</td></tr>'; }).join('') +
+      '</tbody></table></div><p class="sub" style="margin-top:8px">Beweeglijkheid per jaar uit de dagkoersen in euro (' + esc([...new Set(R.items.map((x) => x.basis).filter(Boolean))].join(', ')) + '). Rood: meer risico dan gewicht. Beta van FMP.</p></section>';
+
+    const t = riskTiles(true);
+    const head = pseudoHead('Risico-indicatie', R.cls ? R.cls + ' van 7' : 'Nog geen indicatie', R.cls ? RISK_WORDS[R.cls] + ', beweeglijkheid ongeveer ' + P1.format(R.vol) + ' per jaar' : 'Er zijn nog te weinig gegevens.');
+    return pseudoPage('Risico', head, [[sugg, year], [t[0], t[1], t[2]], [per]], [sugg, year, t[0], t[1], t[2], per]);
+  }
+
+  function plTile() {
+    const pl = M.companies.filter((c) => isNum(c.unreal)).sort((a, b) => b.unreal - a.unreal);
+    const mx = Math.max(1e-9, ...pl.map((c) => Math.abs(c.unreal)));
+    return '<section class="tile pad"><h3>Winst en verlies per positie</h3><div class="hbars">' + pl.map((c) => {
+      const w = (Math.abs(c.unreal) / mx * 50).toFixed(1) + '%';
+      return '<button type="button" class="r" data-open="' + esc(c.tk) + '" data-tip="' + esc(c.name + ': ' + seur(c.unreal) + ' (' + spct1(c.resultPct) + ')') + '">' +
+        '<span class="tk">' + esc(c.tk) + '</span><span class="track"><span class="mid"></span><span class="' + (c.unreal < 0 ? 'neg' : 'pos') + '" style="width:' + w + '"></span></span>' +
+        '<span class="' + tone(c.unreal) + '" style="text-align:right;font-weight:600">' + esc(seur(c.unreal)) + '</span></button>';
+    }).join('') + '</div><p class="sub" style="margin-top:10px">Ongerealiseerd resultaat ten opzichte van wat je erin hebt gestoken. Klik op een positie voor de details.</p></section>';
+  }
+
+  function signedBars(parts) {
+    const mx = Math.max(1e-9, ...parts.filter((p) => isNum(p[1])).map((p) => Math.abs(p[1])));
+    return '<div class="hbars">' + parts.filter((p) => isNum(p[1])).map(([k, v, tip]) =>
+      '<div class="r wide-l" data-tip="' + esc(tip || k) + '"><span class="tk">' + esc(k) + '</span><span class="track"><span class="mid"></span><span class="' + (v < 0 ? 'neg' : 'pos') + '" style="width:' + (Math.abs(v) / mx * 50).toFixed(1) + '%"></span></span>' +
+      '<span class="' + tone(v) + '" style="text-align:right;font-weight:600">' + esc(seur(v)) + '</span></div>').join('') + '</div>';
+  }
+
+  function renderResultView() {
+    const lw = M.lastWeek, total = M.accountNow;
+    const res = lw && isNum(lw.netDeposits) ? total - lw.netDeposits : null;
+    const unreal = sum(M.companies.map((c) => (isNum(c.unreal) ? c.unreal : 0)));
+    const T = M.tx;
+    const fxE = T.has && isNum(T.fx) ? T.fx : null;
+    const real = T.has && isNum(T.realised) ? T.realised : 0;
+    const divs = (M.ev && M.ev.received) || [];
+    const div = sum(divs.map((d) => (isNum(d.amount) ? d.amount : 0)));
+    const rest = isNum(res) ? res - unreal - real - div : null;
+    const parts = [
+      ['Koers', unreal - (fxE || 0), 'Koerswinst of -verlies van je open posities, zonder het valuta-effect'],
+      ['Valuta', fxE, 'Effect van de euro-dollarkoers op je open posities sinds aankoop'],
+      ['Verkocht', T.has ? real : null, 'Gerealiseerd resultaat bij verkopen'],
+      ['Dividend', divs.length ? div : null, 'Ontvangen dividend (' + divs.length + ' uitkeringen)'],
+      ['Overig', rest, 'Verschil: rente op je saldo, kosten, afronding en wat buiten de gegevens valt'],
+    ];
+    const build = '<section class="tile pad span-2"><h3>Waar je resultaat vandaan komt</h3>' + signedBars(parts) +
+      '<div style="margin-top:12px">' + kvList([
+        ['Accountwaarde nu', eur(total)],
+        ['Netto gestort', lw ? eur(lw.netDeposits) : '–'],
+        ['Totaal resultaat', isNum(res) ? seur(res) + ' (' + spct1(res / lw.netDeposits) + ')' : '–', tone(res)],
+        ['Waarvan open posities', seur(unreal), tone(unreal)],
+        ['Betaalde kosten (zitten al in de bedragen)', T.has ? eur(T.fees) : '–'],
+      ]) + '</div><p class="sub" style="margin-top:8px">Koers en valuta uit je posities, verkopen en kosten uit je orders, dividend uit Trading 212. "Overig" is wat overblijft.</p></section>';
+    const W = M.weeks.filter((w) => isNum(w.weekResultPct));
+    let idx = 1; W.forEach((w) => { idx *= 1 + w.weekResultPct; });
+    const bestW = W.slice().sort((a, b) => b.weekResult - a.weekResult)[0], worstW = W.slice().sort((a, b) => a.weekResult - b.weekResult)[0];
+    const perf = '<section class="tile pad"><h3>Rendement</h3><div class="inset">' +
+      spark(M.weeks.filter((w) => isNum(w.totalResult)).map((w) => ({ t: w.t, v: w.totalResult })), toneColor(res), 'spark tall') + '</div>' + kvList([
+        ['Op je inleg', isNum(res) && lw.netDeposits ? spct1(res / lw.netDeposits) : '–', tone(res)],
+        ['Zonder stortingen (tijdgewogen)', W.length ? spct1(idx - 1) + ' over ' + W.length + ' weken' : '–', tone(idx - 1)],
+        ['Weken met winst', W.length ? W.filter((w) => w.weekResultPct > 0).length + ' van ' + W.length : '–'],
+        ['Beste week', bestW ? seur(bestW.weekResult) + ', tot ' + fDM.format(bestW.t) : '–', 'gain'],
+        ['Slechtste week', worstW ? seur(worstW.weekResult) + ', tot ' + fDM.format(worstW.t) : '–', 'loss'],
+      ]) + '<p class="sub" style="margin-top:8px">Lijn: totaal resultaat per week. Tijdgewogen rendement telt stortingen niet mee, zodat je het kunt vergelijken met een fonds.</p></section>';
+    const head = pseudoHead('Totaal resultaat', isNum(res) ? seur(res) : '–', isNum(res) ? spct1(res / lw.netDeposits) + ' op ' + eur(lw.netDeposits) + ' netto gestort' : 'Na de eerste weekmeting.', tone(res));
+    const extra = [realisedTile(), fxTile(), inflationTile()].filter(Boolean);
+    return pseudoPage('Resultaat', head, [[build, perf], [plTile()].concat(extra)], [build, perf, plTile()].concat(extra));
+  }
+
+  function renderDepositView() {
+    const lw = M.lastWeek;
+    const W = M.weeks.filter((w) => isNum(w.newDeposits));
+    const dep = W.filter((w) => Math.abs(w.newDeposits) >= 0.01);
+    const ins = sum(dep.filter((w) => w.newDeposits > 0).map((w) => w.newDeposits)), outs = sum(dep.filter((w) => w.newDeposits < 0).map((w) => w.newDeposits));
+    const first = M.weeks[0];
+    const months = first && lw ? Math.max(1, (lw.t - first.t) / (30.44 * DAY)) : null;
+    const monthly = isNum(M.settings && M.settings.monthly) ? M.settings.monthly : null;
+    const guess = typeof monthlyGuess === 'function' ? monthlyGuess() : null;
+    const facts = '<section class="tile pad"><h3>In cijfers</h3>' + kvList([
+      ['Netto gestort nu', lw ? eur(lw.netDeposits) : '–'],
+      ['Bij de start van de tracker', first ? eur(first.netDeposits) + ' (' + fDM.format(first.t) + ')' : '–'],
+      ['Sindsdien gestort', seur(ins), 'gain'],
+      ['Sindsdien opgenomen', outs ? seur(outs) : 'niets', outs ? 'loss' : ''],
+      ['Gemiddeld per maand', months ? seur((ins + outs) / months) : '–'],
+      ['Weken met een storting', dep.length + ' van ' + W.length],
+      ['Laatste storting', dep.length ? seur(dep[dep.length - 1].newDeposits) + ', week tot ' + fDM.format(dep[dep.length - 1].t) : '–'],
+      ['Maandbedrag op Plannen', isNum(monthly) ? eur(monthly) : isNum(guess) ? 'niet ingesteld (geschat ' + eur(guess) + ')' : 'niet ingesteld'],
+    ]) + '</section>';
+    // Per maand
+    const byM = new Map();
+    dep.forEach((w) => { const d = new Date(w.t); const k = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); byM.set(k, (byM.get(k) || 0) + w.newDeposits); });
+    const mk = []; if (first && lw) { const d = new Date(first.t); d.setDate(1); while (d.getTime() <= lw.t) { mk.push(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')); d.setMonth(d.getMonth() + 1); } }
+    const fMonL = new Intl.DateTimeFormat('nl-NL', { month: 'short' });
+    const anyNeg = mk.some((k) => (byM.get(k) || 0) < 0);
+    const perM = '<section class="tile pad"><h3>Per maand</h3>' + (mk.length ? bars(mk.map((k) => ({ v: byM.get(k) || 0, color: C.gain, tip: fMonL.format(new Date(k + '-15')) + ': ' + seur(byM.get(k) || 0) })), !anyNeg) +
+      barLabels(mk.map((k) => fMonL.format(new Date(k + '-15')))) : '<p class="muted">Nog geen weken gemeten.</p>') + '<p class="sub" style="margin-top:8px">Stortingen min opnames per kalendermaand, uit je weekmetingen.</p></section>';
+    // Inleg tegenover waarde
+    const pts = M.weeks.filter((w) => isNum(w.netDeposits) && isNum(w.accountValue));
+    let lines = '';
+    if (pts.length >= 2) {
+      const lo = Math.min(...pts.map((w) => Math.min(w.netDeposits, w.accountValue))), hi = Math.max(...pts.map((w) => Math.max(w.netDeposits, w.accountValue)));
+      const X = (i) => (i / (pts.length - 1) * 300).toFixed(1), Y = (v) => (8 + (hi - v) / Math.max(1e-9, hi - lo) * 104).toFixed(1);
+      const path = (f) => pts.map((w, i) => (i ? 'L' : 'M') + X(i) + ' ' + Y(f(w))).join('');
+      lines = '<svg class="dual" viewBox="0 0 300 120" preserveAspectRatio="none" aria-hidden="true"><path d="' + path((w) => w.accountValue) + '" fill="none" stroke="' + C.accent + '" stroke-width="2" vector-effect="non-scaling-stroke"/>' +
+        '<path d="' + path((w) => w.netDeposits) + '" fill="none" stroke="' + C.ink2 + '" stroke-width="2" stroke-dasharray="5 4" vector-effect="non-scaling-stroke"/></svg>' +
+        '<div class="xlabels"><span>' + esc(fDM.format(pts[0].t)) + '</span><span>' + esc(fDM.format(pts[pts.length - 1].t)) + '</span></div>' +
+        '<div class="legend"><span><i style="background:' + C.accent + '"></i>Accountwaarde</span><span><i class="dash" style="border-color:' + C.ink2 + '"></i>Netto gestort</span></div>';
+    }
+    const dual = '<section class="tile pad"><h3>Inleg tegenover waarde</h3>' + (lines || '<p class="muted">Na twee weekmetingen.</p>') +
+      '<p class="sub" style="margin-top:8px">De ruimte tussen de lijnen is je resultaat.</p></section>';
+    const list = '<section class="tile pad"><h3>Alle stortingen en opnames</h3>' + (dep.length ? '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Week tot</th><th class="num">Bedrag</th><th class="num">Netto gestort daarna</th></tr></thead><tbody>' +
+      dep.slice().reverse().map((w) => '<tr><td>' + esc(fD.format(w.t)) + '</td><td class="num ' + tone(w.newDeposits) + '">' + esc(seur(w.newDeposits)) + '</td><td class="num">' + esc(eur(w.netDeposits)) + '</td></tr>').join('') + '</tbody></table></div>'
+      : '<p class="muted">Nog geen stortingen sinds de start van de tracker.</p>') + '<p class="sub" style="margin-top:8px">Per week, het verschil in netto gestort tussen twee weekmetingen.</p></section>';
+    const head = pseudoHead('Netto gestort', lw ? eur(lw.netDeposits) : '–', dep.length ? seur(ins + outs) + ' sinds de start van de tracker, ' + dep.length + (dep.length === 1 ? ' storting' : ' stortingen') + '.' : 'Nog geen stortingen sinds de start van de tracker.');
+    return pseudoPage('Stortingen', head, [[dual, perM, facts], [list]], [facts, dual, perM, list]);
+  }
+
   // ---------- Bedrijfspagina (beide weergaven) ----------
   function renderDetail(animate, swapDir) {
     if (ui.detail === ACC) { $('detail-inner').innerHTML = renderAccount(); return; }
+    if (ui.detail === RISK) { $('detail-inner').innerHTML = renderRiskView(); return; }
+    if (ui.detail === RES) { const inner = $('detail-inner'); inner.innerHTML = renderResultView(); drawMacro(inner); return; }
+    if (ui.detail === DEP) { $('detail-inner').innerHTML = renderDepositView(); return; }
     if (isWatchKey(ui.detail)) { const inner = $('detail-inner'); inner.innerHTML = renderWatchDetail(ui.detail.slice(1)); drawWatchChart(inner); drawSectorChart(inner); return; }
     const c = M.byTk.get(ui.detail);
     if (!c) return;
@@ -3246,7 +3509,7 @@
 
   function switchDetail(tk, dir) {
     if (!hasView(tk)) return;
-    if (ui.detail === ACC) { ui.detailRange = '3d'; ui.compare = false; ui.mTab = 'pos'; } else ui.origin = tk;
+    if (isPseudo(ui.detail)) { ui.detailRange = '3d'; ui.compare = false; ui.mTab = 'pos'; } else ui.origin = tk;
     ui.detail = tk;
     history.replaceState({ detail: tk }, '', viewHash(tk));
     ov.scrollTo({ top: 0, behavior: reduceMotion() ? 'auto' : 'smooth' });
@@ -3384,7 +3647,8 @@
   function parseHash() {
     const h = decodeURIComponent(location.hash.replace(/^#/, ''));
     if (h.indexOf('bedrijf/') === 0) return { tk: h.slice(8) };
-    if (h === 'accountwaarde') return { tk: '@account' };
+    const pk = Object.keys(PSEUDO).find((k) => PSEUDO[k] === h);
+    if (pk) return { tk: pk };
     if (h.indexOf('volg/') === 0) return { tk: '~' + h.slice(5).toUpperCase() };
     return { page: h === 'bedrijven' ? 'list' : h === 'statistieken' ? 'stats' : h === 'plannen' ? 'plan' : 'home' };
   }
