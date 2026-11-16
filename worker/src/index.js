@@ -1469,10 +1469,16 @@ async function planMarket(env) {
   const noHist = JSON.parse((await getKv(env, 'eod_unavailable')) || '[]');
   const { results: fresh } = await env.DB.prepare('SELECT symbol FROM ext_profile WHERE updated = ?').bind(usDay).all();
   const freshSet = new Set(fresh.map((r) => r.symbol));
+  // Volgaandelen eerst: anders staan nieuwe symbolen achter ruim honderd andere taken en blijven ze uren leeg
+  const watchSet = new Set(watch.map((w) => w.symbol));
+  const first = [];
   for (const sym of symbols) {
-    if (!freshSet.has(sym)) tasks.push('profile:' + sym);
-    if ((histN.get(sym) || 0) < 20 && !noHist.includes(sym)) later.push('eod:' + sym);
+    const isWatch = watchSet.has(sym);
+    if (!freshSet.has(sym)) (isWatch ? first : tasks).push('profile:' + sym);
+    if ((histN.get(sym) || 0) < 20 && !noHist.includes(sym)) (isWatch ? first : later).push('eod:' + sym);
   }
+  first.sort((a, b) => (a.startsWith('profile:') ? 0 : 1) - (b.startsWith('profile:') ? 0 : 1));
+  tasks.unshift(...first);
   // Waardering (koers-winstverhouding, dividendrendement): per aandeel één keer per week, sectorgemiddelden één keer per dag
   const { results: vals } = await env.DB.prepare("SELECT key, value FROM kv WHERE key LIKE 'val\\_%' ESCAPE '\\'").all();
   const valAge = new Map(vals.map((r) => { try { return [r.key.slice(4), JSON.parse(r.value).updated || '']; } catch (e) { return [r.key.slice(4), '']; } }));
@@ -1502,6 +1508,9 @@ async function marketStep(env) {
   const writes = [];
   const errors = [];
   const noHist = JSON.parse((await getKv(env, 'eod_unavailable')) || '[]');
+  const deferred = [];
+  let unknown = [];
+  try { unknown = JSON.parse((await getKv(env, 'mkt_unknown')) || '[]'); } catch (e) { unknown = []; }
   while (queue.length && calls < MARKET_STEP_CALLS && !stop) {
     const task = queue.shift();
     const ci = task.indexOf(':');
@@ -1528,6 +1537,8 @@ async function marketStep(env) {
       } else if (kind === 'profile') {
         calls++;
         const p = (await fmp(env, '/profile?symbol=' + encodeURIComponent(arg)))[0];
+        if (!p && !unknown.includes(arg)) unknown.push(arg);
+        if (p && unknown.includes(arg)) unknown.splice(unknown.indexOf(arg), 1);
         if (p) {
           const keep = {
             symbol: p.symbol, name: p.companyName, price: numOrNull(p.price), currency: p.currency, marketCap: numOrNull(p.marketCap),
@@ -1593,14 +1604,21 @@ async function marketStep(env) {
       done++;
     } catch (e) {
       errors.push(task + ': ' + e.message);
-      if (/limiet|subrequests/i.test(e.message)) { queue.unshift(task); stop = true; }
+      if (/Finnhub-limiet/.test(e.message)) {
+        // Finnhub zit aan zijn limiet: Finnhub-taken naar achteren, de rest (zoals FMP-koersen) gaat door
+        const fh = [task].concat(queue.filter((t) => t.startsWith('fh:') || t === 'fhnews'));
+        queue = queue.filter((t) => !(t.startsWith('fh:') || t === 'fhnews'));
+        deferred.push(...fh);
+      } else if (/limiet|subrequests/i.test(e.message)) { queue.unshift(task); stop = true; }
       else if (/ongeldig/i.test(e.message) && /^fh:/.test(task)) { queue = queue.filter((t) => !t.startsWith('fh:')); }
     }
   }
+  queue.push(...deferred);
   for (let i = 0; i < writes.length; i += 100) await env.DB.batch(writes.slice(i, i + 100));
   await flushFmp(env);
   await setKv(env, 'mkt_queue', JSON.stringify(queue));
   await setKv(env, 'eod_unavailable', JSON.stringify(noHist));
+  await setKv(env, 'mkt_unknown', JSON.stringify(unknown));
   if (errors.length) await setKv(env, 'mkt_errors', JSON.stringify(errors.slice(-20)));
   if (done) await setKv(env, 'data_cache', JSON.stringify(await buildData(env)));
   return `Markt: ${done} taken gedaan, ${queue.length} over${errors.length ? ', ' + errors.length + ' fouten' : ''}.`;
@@ -1646,6 +1664,8 @@ async function marketData(env) {
   return {
     symbols: Object.fromEntries(held.map((h) => [h.ticker, h.symbol])),
     watch: watch.map((w) => w.symbol),
+    // Symbolen waarvoor FMP geen bedrijf kent (bijvoorbeeld een index of een tikfout)
+    unknown: await (async () => { try { return JSON.parse((await getKv(env, 'mkt_unknown')) || '[]'); } catch (e) { return []; } })(),
     peers, profiles, prices, sectors, industries: inds, valuation, sectorPe,
     valDenied: (await getKv(env, 'val_denied')) === '1',
     updated: await getKv(env, 'mkt_planned'),

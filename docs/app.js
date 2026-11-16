@@ -2241,7 +2241,9 @@
     const pts = M.mk.ok ? M.mk.prices(sym).slice(-60).map((x) => ({ t: x.t, v: x.v })) : [];
     const rb = p ? rangeBar(p) : { html: '', off: null };
     const ch = p && isNum(p.change) ? p.change / 100 : null;
-    const sub = W.earn ? 'cijfers ' + fDM.format(ymd(W.earn.date)) : p && p.sector ? sectorNl(p.sector) : 'gegevens worden opgehaald';
+    const unknown = !p && ((data.market && data.market.unknown) || []).includes(sym);
+    const sub = W.earn ? 'cijfers ' + fDM.format(ymd(W.earn.date)) : p && p.sector ? sectorNl(p.sector) : p ? '' :
+      unknown ? 'symbool niet gevonden; controleer het beurssymbool' : (!demo && !FEAT().has.fmp) ? 'koers vraagt een FMP-sleutel' : 'gegevens worden opgehaald';
     if (phone) {
       return '<button type="button" class="m-row" data-ticker="~' + esc(sym) + '" aria-label="' + esc(c.name + ', volglijst. Openen') + '">' +
         '<span class="l"><span class="tk">' + esc(sym) + '</span><span class="nm">' + esc(c.name !== sym ? c.name : sub) + '</span></span>' +
