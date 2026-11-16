@@ -116,6 +116,7 @@
       load();
     } else if (action === 'forget') {
       localStorage.removeItem(LS_TOKEN);
+      localStorage.removeItem(LS_LAST);
       data = null;
       showWelcome();
     }
@@ -199,6 +200,15 @@
     $$('.updated').forEach((e) => { e.textContent = ''; });
   }
 
+  // Laatste stand in deze browser, zodat de site direct (en zonder verbinding) iets laat zien
+  const LS_LAST = 'tracker.last';
+  function readLast(url) {
+    try { const o = JSON.parse(localStorage.getItem(LS_LAST) || 'null'); return o && o.url === url && o.data && o.data.ok ? o : null; } catch (e) { return null; }
+  }
+  function saveLast(url, d) {
+    try { localStorage.setItem(LS_LAST, JSON.stringify({ url, saved: Date.now(), data: d })); } catch (e) { /* vol of geblokkeerd: niet erg */ }
+  }
+
   async function load() {
     clearTimeout(refreshTimer);
     showError('');
@@ -207,6 +217,7 @@
     const url = getUrl();
     if (!token) { showWelcome(); return; }
     if (!url) { showWelcome(); showError('Er is nog geen adres van de web-app ingesteld. Vul het in bij Instellingen of zet het in config.js.'); return; }
+    if (!data) { const last = readLast(url); if (last) { data = last.data; render(); } }
     $$('.btn-refresh').forEach((b) => b.classList.add('busy'));
     try {
       const res = await fetch(url + (url.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(token), { cache: 'no-store' });
@@ -214,10 +225,17 @@
       if (!res.ok || !json) throw new Error((json && json.error) || 'de web-app gaf status ' + res.status);
       if (!json.ok) throw new Error(json.error || 'onbekende fout');
       data = json;
+      saveLast(url, json);
       render();
       refreshTimer = setTimeout(load, (Number(CFG.refreshMinutes) || 5) * 60000);
     } catch (err) {
-      showError('De gegevens konden niet worden geladen: ' + err.message + '. Controleer de toegangscode en het adres bij Instellingen.');
+      const offline = !navigator.onLine || err instanceof TypeError;
+      if (data && offline) {
+        showError('Geen verbinding. Je ziet de laatst geladen stand van ' + fDT.format(new Date(data.generated)) + '.');
+        refreshTimer = setTimeout(load, 60000);
+      } else {
+        showError('De gegevens konden niet worden geladen: ' + err.message + '. Controleer de toegangscode en het adres bij Instellingen.');
+      }
       if (!data) showWelcome();
     } finally {
       $$('.btn-refresh').forEach((b) => b.classList.remove('busy'));
@@ -283,6 +301,8 @@
         cost, unreal, qty: isNum(p.quantity) && p.quantity > 0 ? p.quantity : null,
         resultPct: isNum(cost) && cost > 0 && isNum(unreal) ? unreal / cost : isNum(p.resultPct) ? p.resultPct : null,
       };
+      const x = (data.posExtra || {})[tk];
+      if (x) { c.fx = isNum(x.fx) ? x.fx : null; c.avgNative = x.avg; c.priceNative = x.price; c.cur = x.cur; c.since = x.since ? new Date(x.since).getTime() : null; }
       dayChange(c);
       return c;
     }).filter((c) => isNum(c.value));
@@ -315,6 +335,8 @@
     m.since = allT.length ? allT[0].t : m.lastT;
     m.canImport = !demo && isWorker();
     m.ev = deriveEvents(data.events, m);
+    m.tx = deriveOrders(data.orders, m);
+    m.settings = demo ? demoSettings() : Object.assign({}, data.settings || {});
     m.mk = deriveMarket(data.market, m);
     return m;
   }
@@ -860,6 +882,9 @@
     const E = M.ev;
     out.push(stat('Dividend, 12 maanden', E.loaded ? eur(E.last12) : '–',
       !E.loaded ? 'na de eerste dagelijkse ophaalronde' : E.received.length ? (isNum(E.yieldOnCost) ? P2.format(E.yieldOnCost) + ' op je inleg' : '') : 'nog geen uitkering ontvangen', E.last12 > 0 ? 'gain' : ''));
+    const T = M.tx;
+    out.push(stat('Gerealiseerd resultaat', T.has ? seur(T.realised) : '–', T.has ? T.sells.length + ' verkopen, ' + eur(T.fees) + ' kosten betaald' : 'na het ophalen van je orders', T.has ? tone(T.realised) : ''));
+    out.push(stat('Valuta-effect', isNum(T.fx) ? seur(T.fx) : '–', isNum(T.fx) ? 'door de wisselkoers, in je ongerealiseerde resultaat' : 'volgt bij de volgende meting', tone(T.fx)));
     out.push(stat('Dividend komende 90 dagen', E.loaded ? '≈ ' + eur(E.next90) : '–',
       E.loaded ? E.divs.filter((d) => d.t <= dayStart(Date.now()) + 90 * DAY).length + ' uitkeringen aangekondigd of verwacht' : 'na de eerste dagelijkse ophaalronde'));
     return out;
@@ -1001,12 +1026,107 @@
       ['Beweegt mee met portefeuille', corrText(S.corr, S.n)],
       ['Gevoeligheid', isNum(S.beta) ? N2.format(S.beta) + '× de portefeuille' : 'na ' + MIN_DAYS_CORR + ' dagen'],
     ]) + '</section>';
-    return { S, kpis, rangeTile, posTile, histTile, agendaTile: companyAgenda(c), market: companyMarket(c), patterns: patternTiles(c.tk, S) };
+    return { S, kpis, rangeTile, posTile, histTile, agendaTile: companyAgenda(c), tradeTile: companyTrades(c), market: companyMarket(c), patterns: patternTiles(c.tk, S) };
   }
 
   const FOOT = 'Dagresultaten zijn de verandering ten opzichte van het slot van de vorige handelsdag (of de eerste meting als die er niet is). Dagen die meer dan 25% bewegen, tellen niet mee: dat is bijna altijd een aankoop of verkoop. ' +
     '“Hoogste” en “laagste” zijn gemeten sinds de tracker meet. Koers en aankoopprijs zijn in euro en volgen uit waarde, inleg en aantal. “Beweegt mee” is de correlatie van de dagresultaten met die van je hele portefeuille; “gevoeligheid” geeft aan hoeveel sterker of zwakker het bedrijf meestal beweegt.';
 
+
+
+  // ---------- Aan- en verkopen, gerealiseerd resultaat en kosten ----------
+  const CUR_SYM = { USD: '$', EUR: '€', GBP: '£', GBX: 'p', CHF: 'CHF ', DKK: 'kr ', SEK: 'kr ', NOK: 'kr ', JPY: '¥', CAD: 'C$', HKD: 'HK$' };
+  const money = (v, cur) => (!isNum(v) ? '–' : cur === 'EUR' || !cur ? eur(v) : (CUR_SYM[cur] || cur + ' ') + N2.format(v));
+
+  function deriveOrders(o, m) {
+    const T = { list: [], byTk: new Map() };
+    ((o && o.rows) || []).forEach((r) => {
+      const t = new Date(r[0]).getTime();
+      if (!isNum(t)) return;
+      const x = { t, tk: r[1], name: r[2], side: r[3], qty: r[4], price: r[5], cur: r[6], fxRate: r[7], net: r[8], realised: r[9] || 0, feeFx: r[10] || 0, feeOther: r[11] || 0, kind: r[12] };
+      T.list.push(x);
+      if (!T.byTk.has(x.tk)) T.byTk.set(x.tk, []);
+      T.byTk.get(x.tk).push(x);
+    });
+    T.list.sort((a, b) => a.t - b.t);
+    T.trades = T.list.filter((x) => !x.kind || x.kind === 'TRADE');
+    T.realised = sum(T.list.map((x) => x.realised || 0));
+    T.fees = sum(T.list.map((x) => (x.feeFx || 0) + (x.feeOther || 0)));
+    T.sells = T.trades.filter((x) => x.side === 'SELL');
+    T.buys = T.trades.filter((x) => x.side === 'BUY');
+    T.fx = m.companies.some((c) => isNum(c.fx)) ? sum(m.companies.map((c) => (isNum(c.fx) ? c.fx : 0))) : null;
+    T.has = T.list.length > 0;
+    // Gerealiseerd per aandeel, ook voor posities die je niet meer hebt
+    const per = new Map();
+    T.list.forEach((x) => {
+      const o2 = per.get(x.tk) || { tk: x.tk, name: x.name || x.tk, realised: 0, fees: 0, sells: 0, held: m.byTk.has(x.tk) };
+      o2.realised += x.realised || 0; o2.fees += (x.feeFx || 0) + (x.feeOther || 0); if (x.side === 'SELL') o2.sells++;
+      per.set(x.tk, o2);
+    });
+    T.perTk = [...per.values()];
+    return T;
+  }
+
+  function tradeMarkers(tk, pts) {
+    const T = M.tx;
+    if (!T.has || pts.length < 2) return [];
+    const t0 = pts[0].t, t1 = pts[pts.length - 1].t;
+    return (T.byTk.get(tk) || []).filter((x) => (!x.kind || x.kind === 'TRADE') && x.t >= t0 && x.t <= t1 + HOUR).slice(-4)
+      .map((x) => ({ i: nearestIdx(pts, x.t), label: (x.side === 'SELL' ? 'verkoop ' : 'koop ') + eur(x.net) }));
+  }
+
+  // Valuta-effect en transacties van één bedrijf
+  function companyTrades(c) {
+    const T = M.tx;
+    const list = (T.byTk.get(c.tk) || []).filter((x) => !x.kind || x.kind === 'TRADE');
+    const fxRows = [];
+    if (isNum(c.fx) && isNum(c.unreal)) {
+      fxRows.push(['Koerseffect', seur(c.unreal - c.fx), tone(c.unreal - c.fx)]);
+      fxRows.push(['Valuta-effect' + (c.cur && c.cur !== 'EUR' ? ' (' + c.cur + ' t.o.v. euro)' : ''), seur(c.fx), tone(c.fx)]);
+    }
+    if (isNum(c.avgNative) && c.cur) {
+      fxRows.push(['Gemiddelde aankoopprijs in ' + c.cur, money(c.avgNative, c.cur)]);
+      if (isNum(c.priceNative)) fxRows.push(['Koers nu in ' + c.cur, money(c.priceNative, c.cur) + ' (' + spct1(c.priceNative / c.avgNative - 1) + ')', tone(c.priceNative - c.avgNative)]);
+    }
+    if (!list.length && !fxRows.length) return '';
+    const buys = list.filter((x) => x.side === 'BUY'), sells = list.filter((x) => x.side === 'SELL');
+    const allTk = T.byTk.get(c.tk) || [];
+    const realised = sum(allTk.map((x) => x.realised || 0)), fees = sum(allTk.map((x) => (x.feeFx || 0) + (x.feeOther || 0)));
+    const rows = fxRows.concat(list.length ? [
+      ['Eerste aankoop', buys.length ? fD.format(buys[0].t) + ' ' + new Date(buys[0].t).getFullYear() : '–'],
+      ['Aankopen en verkopen', buys.length + ' en ' + sells.length],
+      ['Gekocht voor', eur(sum(buys.map((x) => x.net)))],
+      ['Verkocht voor', sells.length ? eur(sum(sells.map((x) => x.net))) : '–'],
+      ['Gerealiseerd resultaat', sells.length ? seur(realised) : 'nog niets verkocht', sells.length ? tone(realised) : ''],
+      ['Betaalde kosten', eur(fees)],
+    ] : []);
+    const recent = list.slice(-6).reverse();
+    const txList = recent.length ? '<div class="tx-list">' + recent.map((x) =>
+      '<div class="tx"><span class="tag' + (x.side === 'SELL' ? ' loss' : ' gain') + '">' + (x.side === 'SELL' ? 'Verkoop' : 'Koop') + '</span>' +
+      '<span class="tx-m"><b>' + esc(N4.format(x.qty)) + ' × ' + esc(money(x.price, x.cur)) + '</b><span class="sub">' + esc(fD.format(x.t) + ' ' + new Date(x.t).getFullYear()) + '</span></span>' +
+      '<span class="tx-v">' + esc(eur(x.net)) + (x.realised ? '<span class="sub ' + tone(x.realised) + '">' + esc(seur(x.realised)) + '</span>' : '') + '</span></div>').join('') + '</div>' : '';
+    return '<section class="tile pad"><h3>Aankoop, valuta en transacties</h3>' + kvList(rows) +
+      (txList ? '<h3 style="margin-top:16px">Laatste transacties</h3>' + txList : '') +
+      (isNum(c.fx) ? '<p class="sub" style="margin-top:8px">Valuta-effect volgens Trading 212: het deel van je ongerealiseerde resultaat dat komt door de wisselkoers sinds je aankopen. Koerseffect is de rest.</p>' : '') + '</section>';
+  }
+
+  // Gerealiseerd per aandeel, ook voor posities die je niet meer hebt
+  function realisedTile() {
+    const T = M.tx;
+    if (!T.has) return '';
+    const per = T.perTk.filter((x) => x.sells || x.realised).sort((a, b) => b.realised - a.realised);
+    const mx = Math.max(1e-9, ...per.map((x) => Math.abs(x.realised)));
+    return '<section class="tile pad"><h3>Gerealiseerd en kosten</h3>' + kvList([
+      ['Gerealiseerd resultaat', seur(T.realised), tone(T.realised)],
+      ['Aankopen en verkopen', T.buys.length + ' en ' + T.sells.length],
+      ['Betaalde kosten', eur(T.fees) + (T.list.length ? ' (' + P2.format(T.fees / Math.max(1, sum(T.trades.map((x) => x.net)))) + ' van je orders)' : '')],
+      ['Valuta-effect op open posities', isNum(T.fx) ? seur(T.fx) : '–', tone(T.fx)],
+    ]) + (per.length ? '<div class="hbars" style="margin-top:12px">' + per.map((x) =>
+      '<' + (x.held ? 'button type="button" data-open="' + esc(x.tk) + '"' : 'div') + ' class="r" data-tip="' + esc(x.name + ': ' + seur(x.realised) + (x.held ? '' : ' (positie gesloten)')) + '">' +
+      '<span class="tk">' + esc(x.tk) + '</span><span class="track"><span class="mid"></span><span class="' + (x.realised < 0 ? 'neg' : 'pos') + '" style="width:' + (Math.abs(x.realised) / mx * 50).toFixed(1) + '%"></span></span>' +
+      '<span class="' + tone(x.realised) + '" style="text-align:right;font-weight:600">' + esc(seur(x.realised)) + '</span></' + (x.held ? 'button' : 'div') + '>').join('') + '</div>' : '') +
+      '<p class="sub" style="margin-top:8px">Gerealiseerd resultaat en kosten volgens Trading 212, per uitgevoerde order. Kosten zijn vooral wisselkosten.</p></section>';
+  }
 
   // ---------- Agenda: dividenden en kwartaalcijfers ----------
   const ymd = (s) => { const a = String(s || '').slice(0, 10).split('-').map(Number); return a.length === 3 && a.every(isNum) ? new Date(a[0], a[1] - 1, a[2]).getTime() : null; };
@@ -1321,7 +1441,7 @@
       const rb = rangeBar(q);
       const tag = i === 0 ? '<span class="tag">Dit bedrijf</span>' : heldTk ? '<span class="tag gain">In bezit</span>' : '';
       const open = i > 0 && heldTk ? ' data-open="' + esc(heldTk) + '" tabindex="0" role="button"' : '';
-      return '<tr class="' + (i === 0 ? 'me' : '') + (open ? ' link' : '') + '"' + open + '>' +
+      return '<tr class="' + (i === 0 ? 'me' : '') + (open ? ' rowlink' : '') + '"' + open + '>' +
         '<td class="co"><b>' + esc(q.symbol) + '</b> ' + tag + '<span class="nm">' + esc(q.name || '') + '</span></td>' +
         '<td class="num ' + tone(q.change) + '">' + esc(isNum(q.change) ? spct(q.change / 100) : '–') + '</td>' +
         '<td class="num ' + tone(g) + '">' + esc(isNum(g) ? spct1(g) : '–') + '</td>' +
@@ -1400,6 +1520,294 @@
         '<p class="sub" style="margin-top:8px">Gemiddelde koersverandering per sector over ' + esc(days(X.days.length).replace('dag', 'handelsdag')) + ' sinds ' + esc(fD.format(ymd(startDay))) + '. Vetgedrukt: sectoren waarin je aandelen hebt.</p>'
         : '<p class="muted">Nog geen handelsdagen opgehaald.</p>') + '</section>';
     return [pie, cmpTile, mktTile];
+  }
+
+
+  // ---------- Plannen: streefverdeling, vooruitblik, peildatum, werkelijke spreiding, export ----------
+  const LS_DEMO_SET = 'tracker.demoSettings';
+  const demoSettings = () => { try { return JSON.parse(localStorage.getItem(LS_DEMO_SET) || '{}'); } catch (e) { return {}; } };
+  const plan = { mode: null, draft: null, amount: 100, years: 10, monthly: null, goal: null, status: '' };
+
+  async function saveSettings(patch) {
+    const next = Object.assign({}, M.settings, patch);
+    if (demo) { localStorage.setItem(LS_DEMO_SET, JSON.stringify(next)); M.settings = next; return next; }
+    if (!isWorker()) throw new Error('opslaan kan alleen met de Cloudflare Worker');
+    const res = await fetch(getUrl().replace(/\/api\/data$/, '/api/settings'), {
+      method: 'POST', headers: { Authorization: 'Bearer ' + getToken(), 'Content-Type': 'application/json' }, body: JSON.stringify(next),
+    });
+    const j = await res.json().catch(() => null);
+    if (!res.ok || !j || !j.ok) throw new Error((j && j.error) || 'de Worker gaf status ' + res.status);
+    data.settings = j.settings; M.settings = Object.assign({}, j.settings);
+    return j.settings;
+  }
+
+  function allocItems(mode) {
+    const total = M.totalValue || 0;
+    if (mode === 'sector') {
+      const g = new Map();
+      M.companies.forEach((c) => {
+        const sct = M.mk.ok ? M.mk.sectorOf(c) : 'Onbekend';
+        const key = sct === FUNDS ? '@funds' : sct === 'Onbekend' ? '@unknown' : sct;
+        const o = g.get(key) || { key, label: key === '@funds' ? FUNDS : key === '@unknown' ? 'Onbekend' : sectorNl(key), sub: [], v: 0 };
+        o.v += c.value; o.sub.push(c.tk); g.set(key, o);
+      });
+      return [...g.values()].map((o) => Object.assign(o, { sub: o.sub.join(', '), w: total ? o.v / total : 0 })).sort((a, b) => b.v - a.v);
+    }
+    return M.companies.slice().sort((a, b) => b.value - a.value).map((c) => ({ key: c.tk, label: c.tk, sub: c.name, v: c.value, w: total ? c.value / total : 0 }));
+  }
+
+  function planTargets() {
+    const mode = plan.mode || M.settings.targetMode || 'position';
+    plan.mode = mode;
+    if (!plan.draft || plan.draft.mode !== mode) {
+      const saved = (M.settings.targetMode || 'position') === mode ? (M.settings.targets || {}) : {};
+      plan.draft = { mode, t: Object.assign({}, saved) };
+    }
+    return plan.draft.t;
+  }
+
+  function adviseInleg(items, t, amount) {
+    const total = sum(items.map((x) => x.v)), newTotal = total + amount;
+    const withT = items.filter((x) => isNum(t[x.key]) && t[x.key] > 0);
+    if (!withT.length || !(amount > 0)) return [];
+    const need = withT.map((x) => Math.max(0, (t[x.key] / 100) * newTotal - x.v));
+    const needSum = sum(need);
+    const tSum = sum(withT.map((x) => t[x.key]));
+    const alloc = withT.map((x, i) => (needSum > 0 ? need[i] * Math.min(1, amount / needSum) : 0));
+    const left = amount - sum(alloc);
+    if (left > 0.005) withT.forEach((x, i) => { alloc[i] += left * t[x.key] / tSum; });
+    return withT.map((x, i) => ({ x, a: alloc[i] })).filter((o) => o.a >= 0.5).sort((a, b) => b.a - a.a);
+  }
+
+  function targetTile() {
+    const items = allocItems(planTargets());
+    const t = plan.draft.t;
+    const tSum = sum(Object.values(t).filter(isNum));
+    const total = M.totalValue || 0;
+    const row = (x) => {
+      const tv = t[x.key];
+      const diff = isNum(tv) ? x.w * 100 - tv : null;
+      const eurDiff = isNum(tv) ? (tv / 100) * total - x.v : null;
+      return '<tr data-key="' + esc(x.key) + '"><td class="co"><b>' + esc(x.label) + '</b><span class="nm">' + esc(x.sub) + '</span></td>' +
+        '<td class="num">' + esc(P1.format(x.w)) + '<span class="bar-mini"><i style="width:' + Math.min(100, x.w * 100 * 2).toFixed(1) + '%"></i></span></td>' +
+        '<td class="num"><input class="t-in" type="number" inputmode="decimal" min="0" max="100" step="0.5" value="' + (isNum(tv) ? tv : '') + '" placeholder="–" aria-label="' + esc('Doel voor ' + x.label + ' in procent') + '"></td>' +
+        '<td class="num t-diff ' + (isNum(diff) && Math.abs(diff) >= 0.5 ? (diff > 0 ? 'loss' : 'gain') : '') + '">' + esc(isNum(diff) ? (Math.abs(diff) < 0.05 ? 'op doel' : sgn(diff, N1) + ' pp') : '') +
+          '<span class="sub">' + esc(isNum(eurDiff) && Math.abs(eurDiff) >= 1 ? (eurDiff > 0 ? eur(eurDiff) + ' bijkopen' : eur(-eurDiff) + ' te veel') : '') + '</span></td></tr>';
+    };
+    const advice = adviseInleg(items, t, plan.amount);
+    return '<section class="tile pad plan-target"><div class="plan-head"><h3>Streefverdeling</h3>' +
+      '<div class="seg light" role="group" aria-label="Streefverdeling per positie of per sector" data-plan="mode">' +
+        '<button type="button" data-k="position" aria-pressed="' + (plan.mode === 'position') + '">Per positie</button>' +
+        '<button type="button" data-k="sector" aria-pressed="' + (plan.mode === 'sector') + '">Per sector</button></div></div>' +
+      '<p class="sub">Vul in hoeveel procent van je beleggingen (zonder vrij saldo) je in elke ' + (plan.mode === 'sector' ? 'sector' : 'positie') + ' wilt hebben. Leeg betekent: geen doel.</p>' +
+      '<div class="tbl-wrap"><table class="tbl plan-tbl"><thead><tr><th>' + (plan.mode === 'sector' ? 'Sector' : 'Positie') + '</th><th class="num">Nu</th><th class="num">Doel %</th><th class="num">Verschil</th></tr></thead><tbody>' +
+        items.map(row).join('') + '</tbody></table></div>' +
+      '<div class="plan-foot"><span class="t-sum ' + (Math.abs(tSum - 100) < 0.05 || !tSum ? '' : 'loss') + '">Doelen samen: ' + esc(N1.format(tSum)) + '%' + (tSum && Math.abs(tSum - 100) >= 0.05 ? ' (hoort 100% te zijn)' : '') + '</span>' +
+        '<span class="plan-actions"><button type="button" class="btn ghost" data-plan="even">Gelijk verdelen</button><button type="button" class="btn ghost" data-plan="now">Huidige verdeling als doel</button>' +
+        '<button type="button" class="btn primary" data-plan="save">Doelen opslaan</button></span></div>' +
+      '<p class="small plan-status" role="status">' + esc(plan.status) + '</p>' +
+      '<h3 style="margin-top:18px">Nieuwe inleg verdelen</h3>' +
+      '<div class="plan-amount"><label for="plan-amount">Bedrag</label><span class="eur-in">€<input id="plan-amount" type="number" inputmode="decimal" min="0" step="10" value="' + esc(plan.amount) + '"></span></div>' +
+      (advice.length ? '<div class="legend-list advice">' + advice.map((o) =>
+        '<div class="legend-row"><span class="nm"><b>' + esc(o.x.label) + '</b> <span class="muted small">' + esc(plan.mode === 'sector' ? o.x.sub : o.x.sub) + '</span></span><b>' + esc(eur(o.a)) + '</b></div>').join('') + '</div>' +
+        '<p class="sub" style="margin-top:8px">Zo kom je zo dicht mogelijk bij je doelen zonder iets te verkopen. Eerst gaat geld naar wat het verst onder het doel zit; wat overblijft volgens je doelen.</p>'
+        : '<p class="muted">Vul hierboven doelen in om te zien waar nieuwe inleg het best heen kan.</p>') + '</section>';
+  }
+
+  function monthlyGuess() {
+    const W = M.weeks.filter((w) => isNum(w.netDeposits));
+    if (W.length < 2) return 0;
+    const last = W[W.length - 1];
+    const from = W.filter((w) => w.t <= last.t - 85 * DAY).pop() || W[0];
+    const months = (last.t - from.t) / (30.44 * DAY);
+    return months >= 0.9 ? Math.max(0, Math.round((last.netDeposits - from.netDeposits) / months / 5) * 5) : 0;
+  }
+
+  const SCEN = [['Voorzichtig', 0.04, '#9AA3B5'], ['Gemiddeld', 0.07, '#2B5BD7'], ['Gunstig', 0.10, '#0B7A4B']];
+
+  function projection() {
+    const start = M.accountNow || 0;
+    const monthly = isNum(plan.monthly) ? plan.monthly : isNum(M.settings.monthly) ? M.settings.monthly : monthlyGuess();
+    const goal = isNum(plan.goal) ? plan.goal : isNum(M.settings.goal) ? M.settings.goal : null;
+    const years = plan.years;
+    const n = years * 12;
+    const now = new Date(); now.setDate(1); now.setHours(0, 0, 0, 0);
+    const tAt = (k) => new Date(now.getFullYear(), now.getMonth() + k, 1).getTime();
+    const sets = SCEN.map(([label, r, color]) => {
+      const rm = Math.pow(1 + r, 1 / 12) - 1;
+      let v = start, reached = null;
+      const pts = [{ t: tAt(0), v }];
+      for (let k = 1; k <= n; k++) { v = v * (1 + rm) + monthly; pts.push({ t: tAt(k), v }); if (goal && reached == null && v >= goal) reached = tAt(k); }
+      // Doel ook na de horizon zoeken (max. 60 jaar)
+      if (goal && reached == null) { let w = v; for (let k = n + 1; k <= 720; k++) { w = w * (1 + rm) + monthly; if (w >= goal) { reached = tAt(k); break; } } }
+      return { label, r, color, pts, end: v, reached };
+    });
+    const dep = []; for (let k = 0; k <= n; k++) dep.push({ t: tAt(k), v: start + monthly * k });
+    return { start, monthly, goal, years, sets, dep };
+  }
+
+  function forecastTile() {
+    const P = projection();
+    const fY = (t) => new Date(t).getFullYear();
+    return '<section class="tile pad plan-fc"><div class="plan-head"><h3>Vooruitblik</h3>' +
+      '<div class="seg light" role="group" aria-label="Aantal jaren" data-plan="years">' + [5, 10, 20, 30].map((y) =>
+        '<button type="button" data-k="' + y + '" aria-pressed="' + (P.years === y) + '">' + y + ' jaar</button>').join('') + '</div></div>' +
+      '<div class="plan-inputs"><label>Inleg per maand<span class="eur-in">€<input id="plan-monthly" type="number" inputmode="decimal" min="0" step="10" value="' + esc(Math.round(P.monthly)) + '"></span></label>' +
+        '<label>Doelbedrag (optioneel)<span class="eur-in">€<input id="plan-goal" type="number" inputmode="decimal" min="0" step="500" value="' + (P.goal ? esc(Math.round(P.goal)) : '') + '" placeholder="geen"></span></label>' +
+        '<button type="button" class="btn ghost" data-plan="save-fc">Bewaren</button></div>' +
+      '<div class="chart" data-chart="forecast" style="height:220px"></div><div class="xlabels" data-x="forecast"></div>' +
+      '<div class="fc-res">' + P.sets.slice().reverse().map((x) =>
+        '<div><span class="k"><i style="background:' + x.color + '"></i>' + esc(x.label) + ' (' + esc(P1.format(x.r)) + ' per jaar)</span><b>' + esc(eur(x.end)) + '</b>' +
+        (P.goal ? '<span class="sub">' + esc(x.reached ? 'doel in ' + fY(x.reached) : 'doel niet binnen 60 jaar') + '</span>' : '') + '</div>').join('') +
+        '<div><span class="k"><i class="dash"></i>Alleen inleg</span><b>' + esc(eur(P.dep[P.dep.length - 1].v)) + '</b></div></div>' +
+      '<p class="sub" style="margin-top:10px">Start: je accountwaarde nu (' + esc(eur(P.start)) + '). ' + (isNum(M.settings.monthly) || isNum(plan.monthly) ? '' : 'De maandinleg is geschat uit je stortingen van de laatste drie maanden. ') +
+        'De drie rendementen zijn voorbeelden, geen verwachting: werkelijke rendementen schommelen sterk per jaar en kunnen ook negatief zijn. Kosten, belasting en inflatie zijn niet meegenomen.</p></section>';
+  }
+
+  function drawForecast(root) {
+    const host = root.querySelector('[data-chart="forecast"]');
+    if (!host) return;
+    const P = projection();
+    const sets = P.sets.slice().reverse().map((x) => ({ pts: x.pts, color: x.color, width: x.label === 'Gemiddeld' ? 3 : 2, label: x.label }));
+    sets.push({ pts: P.dep, color: C.ink2, dash: true, width: 2, label: 'Alleen inleg' });
+    // Doellijn alleen als hij in beeld past; anders drukt hij de rest plat
+    const top = Math.max(...P.sets.map((x) => x.end));
+    if (P.goal && P.goal <= top * 1.25) sets.push({ pts: P.dep.map((p) => ({ t: p.t, v: P.goal })), color: '#B45309', dash: true, width: 1.5, label: 'Doel' });
+    lineChart(host, sets, { top: 0.06, bottom: 0.04, xl: root.querySelector('[data-x="forecast"]'), xcount: 4, xfmt: (t) => String(new Date(t).getFullYear()), tfmt: (t) => fMonY.format(t) });
+  }
+
+  function peilTile() {
+    const list = (data.peil || []).slice().reverse();
+    const nextYear = new Date().getFullYear() + 1;
+    const rows = list.map((p) => '<div class="peil"><div class="peil-h"><b>1 januari ' + esc(p.date.slice(0, 4)) + '</b><span class="v big">' + esc(eur(p.total)) + '</span></div>' +
+      kvList([['Beleggingen', eur(p.investments)], ['Vrij saldo', eur(p.cash)], ['Posities', String((p.positions || []).length)]]) + '</div>').join('');
+    return '<section class="tile pad"><h3>Stand op 1 januari</h3>' +
+      (rows || '<p class="muted">Nog geen peildatum vastgelegd. Op 1 januari ' + nextYear + ' legt de Worker automatisch de stand vast van je beleggingen en je vrije saldo.</p>') +
+      '<div style="margin-top:12px">' + kvList([['Ter vergelijking: nu', eur(M.accountNow)]]) + '</div>' +
+      '<p class="sub" style="margin-top:8px">Dit is de stand voor je eigen overzicht (box 3 gebruikt de waarde op 1 januari). Gebruik voor de aangifte het jaaroverzicht van Trading 212; deze site berekent geen belasting.</p></section>';
+  }
+
+  // Werkelijke spreiding: posities plus wat er via indexfondsen in zit
+  function lookThrough() {
+    const etf = data.etf || {};
+    const keyFor = (c) => { const b = BENCHES.find((x) => x[1].test(c.tk) || x[2].test(c.name)); return b ? (b[0] === 'S&P 500' ? 'SP500' : b[0] === 'Nasdaq 100' ? 'NDX' : null) : null; };
+    const norm = (tk) => ({ FB: 'META', GOOG: 'GOOGL', 'BRK.B': 'BRK', 'BRKB': 'BRK' }[tk] || tk);
+    const ex = new Map();
+    const add = (tk, name, direct, via) => { const k = norm(tk); const o = ex.get(k) || { tk: k, name, direct: 0, via: 0 }; o.direct += direct; o.via += via; if (!o.name || direct) o.name = name || o.name; ex.set(k, o); };
+    let covered = 0, funds = 0;
+    const used = new Set();
+    M.companies.forEach((c) => {
+      const k = keyFor(c);
+      if (k) funds += c.value;
+      if (k && etf[k]) {
+        covered += c.value; used.add(k);
+        etf[k].rows.forEach(([tk, nm, , w]) => add(tk, nm, 0, c.value * w / 100));
+      } else if (!k) add(c.tk, c.name, c.value, 0);
+    });
+    const list = [...ex.values()].map((o) => Object.assign(o, { total: o.direct + o.via })).sort((a, b) => b.total - a.total);
+    const overlapVia = sum(list.filter((o) => o.direct > 0).map((o) => o.via));
+    return { list, covered, funds, used: [...used].map((k) => etf[k]), overlap: covered ? overlapVia / covered : null };
+  }
+
+  function exposureTile() {
+    const L = lookThrough();
+    const total = M.totalValue || 0;
+    if (!L.funds) return '<section class="tile pad"><h3>Werkelijke spreiding</h3><p class="muted">Je hebt geen indexfondsen, dus je spreiding is gelijk aan je posities.</p></section>';
+    if (!L.covered) return '<section class="tile pad"><h3>Werkelijke spreiding</h3><p class="muted">De samenstelling van je indexfondsen wordt één keer per week opgehaald bij iShares. Dat is nog niet gebeurd.</p></section>';
+    const top = L.list.slice(0, 15);
+    const top10 = sum(L.list.slice(0, 10).map((o) => o.total));
+    const mx = Math.max(...top.map((o) => o.total));
+    return '<section class="tile pad exposure"><h3>Werkelijke spreiding</h3>' +
+      '<p class="sub">Je losse aandelen plus wat er via je indexfondsen in zit, als deel van al je beleggingen.</p>' +
+      '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Bedrijf</th><th class="num">Los</th><th class="num">Via fondsen</th><th class="num">Totaal</th><th></th></tr></thead><tbody>' +
+      top.map((o) => '<tr' + (M.byTk.has(o.tk) || (o.tk === 'META' && M.byTk.has('FB')) ? ' class="rowlink" data-ticker="' + esc(M.byTk.has(o.tk) ? o.tk : 'FB') + '"' : '') + '><td class="co"><b>' + esc(o.tk) + '</b><span class="nm">' + esc(o.name) + '</span></td>' +
+        '<td class="num">' + esc(o.direct ? eur(o.direct) : '–') + '</td><td class="num">' + esc(o.via >= 0.005 ? eur(o.via) : '–') + '</td>' +
+        '<td class="num">' + esc(P1.format(total ? o.total / total : 0)) + '</td>' +
+        '<td class="barc"><span class="bar-mini wide"><i style="width:' + (o.direct / mx * 100).toFixed(1) + '%"></i><i class="via" style="width:' + (o.via / mx * 100).toFixed(1) + '%"></i></span></td></tr>').join('') +
+      '</tbody></table></div>' +
+      '<div style="margin-top:12px">' + kvList([
+        ['Grootste 10 bedrijven samen', P1.format(total ? top10 / total : 0)],
+        ['Fondsgeld in bedrijven die je ook los hebt', isNum(L.overlap) ? P1.format(L.overlap) : '–'],
+        ['Aantal bedrijven via fondsen', NI.format(L.list.filter((o) => o.via > 0).length) + (L.used.some((x) => x.count > x.rows.length) ? '+ (grootste ' + L.used.map((x) => x.rows.length).join(' en ') + ' per fonds)' : '')],
+      ]) + '</div>' +
+      '<p class="sub" style="margin-top:8px">Samenstelling volgens ' + esc(L.used.map((x) => x.fund + (x.asOf ? ', ' + x.asOf : '')).join(' en ')) +
+        '. Je eigen fonds kan iets afwijken, maar volgt dezelfde index. Alphabet A en C zijn samengeteld.</p></section>';
+  }
+
+  // Exporteren naar CSV (komma's, puntkomma-vrij; Excel en Google Sheets lezen dit direct)
+  function csvOf(head, rows) {
+    const cell = (v) => { const x = v == null ? '' : String(v); return /[",\n;]/.test(x) ? '"' + x.replace(/"/g, '""') + '"' : x; };
+    return '﻿' + [head].concat(rows).map((r) => r.map(cell).join(',')).join('\r\n');
+  }
+  function download(name, text) {
+    const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
+    const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  }
+  const EXPORTS = {
+    posities: () => csvOf(['ticker', 'naam', 'waarde_eur', 'inleg_eur', 'ongerealiseerd_eur', 'aantal', 'valuta', 'gem_aankoopprijs', 'valuta_effect_eur', 'aandeel_pct'],
+      M.companies.map((c) => [c.tk, c.name, c.value, c.cost, c.unreal, c.qty, c.cur || '', c.avgNative, c.fx, c.weight != null ? (c.weight * 100).toFixed(2) : ''])),
+    weken: () => csvOf(['datum', 'accountwaarde', 'netto_gestort', 'vrij_saldo', 'kostprijs', 'totaal_resultaat', 'weekresultaat'],
+      M.weeks.map((w) => [new Date(w.t).toISOString().slice(0, 10), w.accountValue, w.netDeposits, w.cash, w.costBasis, w.totalResult, w.weekResult])),
+    transacties: () => csvOf(['tijd', 'ticker', 'naam', 'soort', 'aantal', 'prijs', 'valuta', 'wisselkoers', 'bedrag_eur', 'gerealiseerd_eur', 'wisselkosten_eur', 'overige_kosten_eur'],
+      M.tx.list.map((x) => [new Date(x.t).toISOString(), x.tk, x.name, x.side === 'SELL' ? 'verkoop' : 'koop', x.qty, x.price, x.cur, x.fxRate, x.net, x.realised, x.feeFx, x.feeOther])),
+    dividenden: () => csvOf(['datum', 'ticker', 'bedrag_eur', 'per_aandeel', 'aantal'], M.ev.received.map((d) => [d.date, d.ticker, d.amount, d.perShare, d.qty])),
+  };
+
+  function exportTile() {
+    const n = { posities: M.companies.length, weken: M.weeks.length, transacties: M.tx.list.length, dividenden: M.ev.received.length };
+    const names = { posities: 'Posities', weken: 'Weken', transacties: 'Transacties', dividenden: 'Ontvangen dividend' };
+    return '<section class="tile pad"><h3>Exporteren</h3><p class="sub">CSV-bestanden voor Excel of Google Sheets.</p><div class="exp">' +
+      Object.keys(EXPORTS).map((k) => '<button type="button" class="btn ghost" data-export="' + k + '"' + (n[k] ? '' : ' disabled') + '>' + esc(names[k]) + ' <span class="muted small">(' + n[k] + ')</span></button>').join('') + '</div></section>';
+  }
+
+  function renderPlan() {
+    const host = mode === 'm' ? $('m-plan-body') : $('plan-body');
+    if (!host) return;
+    const focus = document.activeElement && host.contains(document.activeElement) ? document.activeElement.id || null : null;
+    host.innerHTML = '<div class="plan-grid">' + targetTile() + forecastTile() + exposureTile() + peilTile() + exportTile() + '</div>';
+    drawForecast(host);
+    if (focus && $(focus)) { const el = $(focus); el.focus(); const v = el.value; el.value = ''; el.value = v; }
+  }
+
+  function planEvents(host) {
+    host.addEventListener('click', async (e) => {
+      const seg = e.target.closest('[data-plan="mode"] button[data-k], [data-plan="years"] button[data-k]');
+      if (seg) {
+        const g = seg.parentElement.dataset.plan;
+        if (g === 'mode') { plan.mode = seg.dataset.k; plan.draft = null; } else plan.years = Number(seg.dataset.k);
+        plan.status = ''; renderPlan(); return;
+      }
+      const exp = e.target.closest('[data-export]');
+      if (exp) { const k = exp.dataset.export; download('investeringstracker-' + k + '-' + new Date().toISOString().slice(0, 10) + '.csv', EXPORTS[k]()); return; }
+      const tr = e.target.closest('tr[data-ticker]');
+      if (tr) return; // document-handler opent het bedrijf
+      const act = e.target.closest('[data-plan]');
+      if (!act) return;
+      const items = allocItems(plan.mode);
+      const t = plan.draft.t;
+      if (act.dataset.plan === 'even') { items.forEach((x) => { t[x.key] = Math.round(1000 / items.length) / 10; }); renderPlan(); }
+      else if (act.dataset.plan === 'now') { items.forEach((x) => { t[x.key] = Math.round(x.w * 1000) / 10; }); renderPlan(); }
+      else if (act.dataset.plan === 'save' || act.dataset.plan === 'save-fc') {
+        const patch = act.dataset.plan === 'save' ? { targets: t, targetMode: plan.mode }
+          : { monthly: isNum(plan.monthly) ? plan.monthly : projection().monthly, goal: isNum(plan.goal) ? plan.goal : (M.settings.goal || 0) };
+        plan.status = 'Bezig met opslaan…'; renderPlan();
+        try { await saveSettings(patch); plan.status = act.dataset.plan === 'save' ? 'Doelen opgeslagen' + (demo ? ' (in deze browser).' : '; ze gelden ook op je andere apparaten.') : 'Inleg en doel opgeslagen.'; }
+        catch (err) { plan.status = 'Opslaan is mislukt: ' + err.message + '.'; }
+        renderPlan();
+      }
+    });
+    host.addEventListener('input', (e) => {
+      const el = e.target;
+      if (el.classList.contains('t-in')) {
+        const key = el.closest('tr').dataset.key;
+        const v = el.value === '' ? null : Math.max(0, Math.min(100, Number(el.value)));
+        if (v == null || !isNum(v)) delete plan.draft.t[key]; else plan.draft.t[key] = v;
+        clearTimeout(planEvents.tm); planEvents.tm = setTimeout(renderPlan, 600);
+      } else if (el.id === 'plan-amount') { plan.amount = Math.max(0, Number(el.value) || 0); clearTimeout(planEvents.tm); planEvents.tm = setTimeout(renderPlan, 500); }
+      else if (el.id === 'plan-monthly') { plan.monthly = Math.max(0, Number(el.value) || 0); clearTimeout(planEvents.tm); planEvents.tm = setTimeout(renderPlan, 500); }
+      else if (el.id === 'plan-goal') { plan.goal = el.value === '' ? 0 : Math.max(0, Number(el.value) || 0); clearTimeout(planEvents.tm); planEvents.tm = setTimeout(renderPlan, 600); }
+    });
   }
 
   // ---------- Desktop ----------
@@ -1547,7 +1955,7 @@
       '</div>' +
       '<div class="wrap' + sw + '">' +
         '<div class="grid">' + I.kpis.join('') + '</div>' +
-        '<div class="grid wide" style="margin-top:16px">' + I.rangeTile + I.posTile + I.histTile + I.agendaTile + '</div>' +
+        '<div class="grid wide" style="margin-top:16px">' + I.rangeTile + I.posTile + I.tradeTile + I.histTile + I.agendaTile + '</div>' +
         '<div class="section-head"><h2>Sector en vergelijkbare bedrijven</h2></div>' +
         '<div class="grid wide">' + I.market.tiles.join('') + '</div>' +
         (I.market.table ? '<div style="margin-top:16px">' + I.market.table + '</div>' : '') +
@@ -1643,7 +2051,7 @@
     const sw = swapDir ? ' swap-' + swapDir : '';
     const tabs = [['pos', 'Positie'], ['cmp', 'Vergelijk'], ['hist', 'Historie'], ['pat', 'Patronen']];
     const panel = ui.mTab === 'hist' ? I.histTile : ui.mTab === 'pat' ? '<div class="m-stack">' + I.patterns.join('') + '</div>'
-      : ui.mTab === 'cmp' ? I.market.tiles.join('') + I.market.table : I.rangeTile + I.posTile + I.agendaTile;
+      : ui.mTab === 'cmp' ? I.market.tiles.join('') + I.market.table : I.rangeTile + I.posTile + I.tradeTile + I.agendaTile;
     return '<div class="md">' +
       '<div class="m-dtop"><button type="button" class="m-back" data-act="back">‹ Terug</button><span class="t">' + esc(c.tk) + '</span>' +
         '<div class="m-nav"><button type="button" data-act="prev" aria-label="Vorige: ' + esc(prev.name) + '">‹</button><button type="button" data-act="next" aria-label="Volgende: ' + esc(next.name) + '">›</button></div></div>' +
@@ -1746,11 +2154,11 @@
     if (mode === 'm') {
       return '<div class="md"><div class="m-dtop"><button type="button" class="m-back" data-act="back">‹ Terug</button><span class="t">Accountwaarde</span><span></span></div>' +
         '<div class="m-hero"><div class="m-swipe">' + head + '</div></div>' +
-        '<div class="m-body"><div class="m-stack">' + tiles.slice(0, 2).join('') + secTile + tiles.slice(2).join('') + '</div></div></div>';
+        '<div class="m-body"><div class="m-stack">' + tiles.slice(0, 2).join('') + secTile + tiles.slice(2).join('') + realisedTile() + '</div></div></div>';
     }
     return '<div class="band" style="padding-bottom:24px"><div class="d-top"><button type="button" class="btn dark" data-act="back">← Terug</button></div>' +
       '<div class="hero-head"><div>' + head + '</div></div></div>' +
-      '<div class="wrap"><div class="grid wide">' + tiles.slice(0, 2).join('') + secTile + '</div><div class="grid wide" style="margin-top:16px">' + tiles[2] + tiles[3] + '</div></div>';
+      '<div class="wrap"><div class="grid wide">' + tiles.slice(0, 2).join('') + secTile + '</div><div class="grid wide" style="margin-top:16px">' + tiles[2] + tiles[3] + realisedTile() + '</div></div>';
   }
 
   // ---------- Bedrijfspagina (beide weergaven) ----------
@@ -1786,7 +2194,7 @@
       legend.innerHTML = '<div class="legend chart-legend"><span><i style="background:' + C.accent + '"></i>' + esc(c.tk) + ' ' + esc(spct(a)) + '</span><span><i class="dash"></i>Portefeuille ' + esc(spct(b)) + '</span></div>';
     } else {
       lineChart($('d-chart'), [{ pts, color: C.accent, area: true, width: 3 }], {
-        animate, markers: heroMarkers(pts, 'detail'), xl: $('d-x'), xfmt: xFmt(r, pts), tfmt: tFmt(r, pts),
+        animate, markers: heroMarkers(pts, 'detail').concat(tradeMarkers(c.tk, pts)).filter((mk, i, all) => all.findIndex((o) => o.i === mk.i) === i), xl: $('d-x'), xfmt: xFmt(r, pts), tfmt: tFmt(r, pts),
       });
       legend.innerHTML = '';
     }
@@ -1997,8 +2405,8 @@
   });
 
   // ---------- Pagina's en adresbalk ----------
-  const ORDER = { home: 0, list: 1, stats: 2 };
-  const TITLES = { home: 'Overzicht', list: 'Bedrijven', stats: 'Statistieken' };
+  const ORDER = { home: 0, list: 1, stats: 2, plan: 3 };
+  const TITLES = { home: 'Overzicht', list: 'Bedrijven', stats: 'Statistieken', plan: 'Plannen' };
   const pageId = (p) => (mode === 'm' ? 'm-' + p : 'page-' + p);
   const pageHash = (p) => (p === 'list' ? 'bedrijven' : p === 'stats' ? 'statistieken' : 'overzicht');
 
@@ -2022,7 +2430,7 @@
     $('m-title').textContent = TITLES[p];
     document.querySelector('meta[name="theme-color"]').content = mode === 'm' && p !== 'home' ? '#F6F7F9' : '#E8EDFA';
     placeIndicators();
-    const ids = mode === 'm' ? ['home', 'list', 'stats'] : ['home', 'list'];
+    const ids = mode === 'm' ? ['home', 'list', 'stats', 'plan'] : ['home', 'list', 'plan'];
     ids.forEach((k) => { $(pageId(k)).hidden = k !== p; });
     const el = $(pageId(p));
     if (animate && !reduceMotion()) {
@@ -2039,7 +2447,7 @@
     const h = decodeURIComponent(location.hash.replace(/^#/, ''));
     if (h.indexOf('bedrijf/') === 0) return { tk: h.slice(8) };
     if (h === 'accountwaarde') return { tk: '@account' };
-    return { page: h === 'bedrijven' ? 'list' : h === 'statistieken' ? 'stats' : 'home' };
+    return { page: h === 'bedrijven' ? 'list' : h === 'statistieken' ? 'stats' : h === 'plannen' ? 'plan' : 'home' };
   }
 
   function route(first) {
@@ -2063,6 +2471,7 @@
   function renderAll() {
     if (mode === 'm') { renderMHome(); renderMList(); renderMStats(); }
     else { renderHome(); renderList(); }
+    renderPlan();
   }
 
   function render() {
@@ -2251,14 +2660,77 @@
     new Set(Object.values(sectorOfSym).map((x) => x[1])).forEach((ind) => { const drift = gauss() * 0.2; industriesMk[ind] = { NASDAQ: mDays.map((d) => [d, +(drift + gauss() * 1.1).toFixed(3)]), NYSE: mDays.map((d) => [d, +(drift + gauss() * 1).toFixed(3)]) }; });
     const market = { symbols, peers: peersMk, profiles, prices, sectors: sectorsMk, industries: industriesMk, updated: mDays[mDays.length - 1] };
 
+    // Transacties, valuta en fondssamenstelling
+    const orders = [], posExtra = {};
+    const curOf = (tk) => (['VUAG', 'SXRV'].includes(tk) ? 'GBX' : tk === 'ASML' ? 'EUR' : 'USD');
+    positions.forEach((pp, i) => {
+      const cur = curOf(pp.ticker);
+      const fxr = cur === 'USD' ? 1.08 + rnd() * 0.06 : 1;
+      const nativeNow = cur === 'USD' ? pp.value / pp.quantity * 1.16 : cur === 'GBX' ? pp.value / pp.quantity * 85 : pp.value / pp.quantity;
+      const fxImp = cur === 'USD' ? +(-pp.cost * (0.01 + rnd() * 0.03)).toFixed(2) : cur === 'GBX' ? +(pp.cost * (rnd() - 0.5) * 0.02).toFixed(2) : null;
+      posExtra[pp.ticker] = { avg: +(nativeNow / (1 + pp.resultPct) * (cur === 'USD' ? 1.02 : 1)).toFixed(2), price: +nativeNow.toFixed(2), cur, fx: fxImp, cost: pp.cost };
+      const nBuys = 1 + (i % 3);
+      for (let k = 0; k < nBuys; k++) {
+        const d = new Date(dates[Math.max(0, nD - 60 + k * 17 + i)]); d.setHours(15, 30 + i, 0, 0);
+        const q = pp.quantity / nBuys, net = +(pp.cost / nBuys).toFixed(2);
+        orders.push([iso(d), pp.ticker, pp.name, 'BUY', +q.toFixed(6), +(posExtra[pp.ticker].avg).toFixed(2), cur, fxr, net, 0, cur === 'USD' ? +(net * 0.0015).toFixed(2) : 0, 0, 'TRADE']);
+      }
+    });
+    const dSell = new Date(dates[nD - 20]); dSell.setHours(16, 5, 0, 0);
+    orders.push([iso(new Date(dates[nD - 58])), 'NVDA', 'NVIDIA', 'BUY', 0.4, 172.5, 'USD', 1.09, 63.3, 0, 0.09, 0, 'TRADE']);
+    orders.push([iso(dSell), 'NVDA', 'NVIDIA', 'SELL', 0.4, 191.2, 'USD', 1.12, 68.29, 4.99, 0.1, 0, 'TRADE']);
+    const dSell2 = new Date(dates[nD - 9]); dSell2.setHours(17, 40, 0, 0);
+    orders.push([iso(dSell2), 'PLTR', 'Palantir', 'SELL', 0.05, 158.2, 'USD', 1.15, 6.88, 0.71, 0.01, 0, 'TRADE']);
+    orders.sort((a, b) => a[0].localeCompare(b[0]));
+    const etfRows = (list) => list.map(([tk, nm, sec, w]) => [tk, nm, sec, w]);
+    const etf = {
+      SP500: { label: 'S&P 500', fund: 'iShares Core S&P 500 UCITS ETF (CSPX)', asOf: '13/Nov/2026', count: 503, rows: etfRows([
+        ['NVDA', 'NVIDIA CORP', 'Information Technology', 7.9], ['MSFT', 'MICROSOFT CORP', 'Information Technology', 6.6], ['AAPL', 'APPLE INC', 'Information Technology', 6.4],
+        ['AMZN', 'AMAZON COM INC', 'Consumer Discretionary', 4.1], ['GOOGL', 'ALPHABET INC CLASS A', 'Communication', 2.4], ['META', 'META PLATFORMS INC CLASS A', 'Communication', 2.6],
+        ['AVGO', 'BROADCOM INC', 'Information Technology', 2.5], ['GOOG', 'ALPHABET INC CLASS C', 'Communication', 1.9], ['TSLA', 'TESLA INC', 'Consumer Discretionary', 2.0],
+        ['BRKB', 'BERKSHIRE HATHAWAY INC CLASS B', 'Financials', 1.6], ['JPM', 'JPMORGAN CHASE & CO', 'Financials', 1.5], ['LLY', 'ELI LILLY', 'Health Care', 1.3],
+        ['V', 'VISA INC CLASS A', 'Financials', 1.0], ['XOM', 'EXXON MOBIL CORP', 'Energy', 0.9], ['PLTR', 'PALANTIR TECHNOLOGIES INC CLASS A', 'Information Technology', 0.7], ['KO', 'COCA-COLA', 'Consumer Staples', 0.4]]) },
+      NDX: { label: 'Nasdaq-100', fund: 'iShares Nasdaq 100 UCITS ETF (CNDX)', asOf: '13/Nov/2026', count: 101, rows: etfRows([
+        ['NVDA', 'NVIDIA CORP', 'Information Technology', 9.4], ['MSFT', 'MICROSOFT CORP', 'Information Technology', 8.2], ['AAPL', 'APPLE INC', 'Information Technology', 7.8],
+        ['AMZN', 'AMAZON COM INC', 'Consumer Discretionary', 5.3], ['AVGO', 'BROADCOM INC', 'Information Technology', 4.9], ['META', 'META PLATFORMS INC CLASS A', 'Communication', 3.6],
+        ['GOOGL', 'ALPHABET INC CLASS A', 'Communication', 3.1], ['GOOG', 'ALPHABET INC CLASS C', 'Communication', 2.9], ['TSLA', 'TESLA INC', 'Consumer Discretionary', 2.7],
+        ['NFLX', 'NETFLIX INC', 'Communication', 1.6], ['COST', 'COSTCO WHOLESALE CORP', 'Consumer Staples', 1.9], ['PLTR', 'PALANTIR TECHNOLOGIES INC CLASS A', 'Information Technology', 1.7],
+        ['ASML', 'ASML HOLDING ADR', 'Information Technology', 0.9], ['TTWO', 'TAKE TWO INTERACTIVE SOFTWARE INC', 'Communication', 0.3]]) },
+    };
+
     return {
       ok: true, generated: iso(now), currency: 'EUR', weeks, positionsDate: iso(now), positions, today, events, market,
+      orders: { columns: ['time', 'ticker', 'name', 'side', 'qty', 'price', 'currency', 'fxRate', 'net', 'realised', 'feeFx', 'feeOther', 'kind'], rows: orders },
+      posExtra, etf, peil: [], settings: {},
       intraday: { columns: ['time', 'ticker', 'value'], rows: intraday },
       hours: { columns: ['hour', 'ticker', 'open', 'close', 'low', 'high', 'avg'], rows: hours },
       days: { columns: ['date', 'ticker', 'open', 'close', 'low', 'high', 'avg', 'range', 'rangePct'], rows: days },
     };
   }
 
+
+  planEvents($('plan-body'));
+  planEvents($('m-plan-body'));
+
+  // ---------- Installeren als app ----------
+  let installEvt = null;
+  window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEvt = e; $('btn-install').hidden = false; });
+  window.addEventListener('appinstalled', () => { installEvt = null; $('btn-install').hidden = true; $('install-text').textContent = 'De tracker staat als app op dit apparaat.'; });
+  $('btn-install').addEventListener('click', async () => {
+    if (!installEvt) return;
+    installEvt.prompt();
+    await installEvt.userChoice.catch(() => null);
+    installEvt = null; $('btn-install').hidden = true;
+  });
+  (function installHint() {
+    const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+    if (standalone) $('install-text').textContent = 'Je gebruikt de tracker nu als app.';
+    else if (ios) $('install-text').textContent = 'Op iPhone of iPad: tik in Safari op de deelknop en kies “Zet op beginscherm”. De app toont zonder verbinding de laatst geladen stand.';
+  })();
+  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+    window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
+  }
 
   // ---------- Start ----------
   if (new URLSearchParams(location.search).has('demo')) demo = true;

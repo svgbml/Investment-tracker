@@ -37,6 +37,9 @@ Alle adressen vragen je toegangscode, als `?token=…` of als header `Authorizat
 | Openstaande opname invoeren | `POST /api/pending` met `{"amount": 154.65}` |
 | Openstaande opnames bekijken / wissen | `GET` / `DELETE /api/pending` |
 | Agenda nu bijwerken (dividenden, kwartaalcijfers) | `POST /api/events` |
+| Orders (aan- en verkopen) nu ophalen | `POST /api/orders` |
+| Samenstelling van de indexfondsen nu ophalen | `POST /api/etf` |
+| Instellingen van de site (streefverdeling, inleg, doel) | `GET` / `POST /api/settings` |
 | Sector- en vergelijkingsgegevens: taken klaarzetten en afwerken | `POST /api/market?plan=1&steps=3` (zonder `plan` alleen afwerken) |
 | Eenmalig gegevens uit de sheet overnemen | `POST /api/import` met `{"url": "<Apps Script /exec-adres>", "token": "<code van de sheet>"}` |
 
@@ -67,6 +70,13 @@ Na de agenda zet de Worker elke ochtend taken klaar die hij buiten de meettijden
 - koershistorie van een jaar voor aandelen waar het gratis abonnement die geeft; voor de rest bouwt de Worker die dag voor dag op uit het profiel.
 
 Gegevens staan in de tabellen `ext_profile`, `ext_peers`, `ext_prices` en `ext_perf` (maakt de Worker zelf aan). Alle FMP-verzoeken samen blijven onder 230 per dag (`fmp_calls` in de tabel `kv`).
+
+## Orders, valuta, peildatum en fondssamenstelling
+
+- **Orders:** buiten de meettijden haalt de Worker één keer per dag de uitgevoerde orders op (de eerste keer de hele geschiedenis, daarna de nieuwste 100). Per order: aantal, prijs, wisselkoers, bedrag, gerealiseerd resultaat en kosten (tabel `orders`).
+- **Valuta-effect:** bij elke meting bewaart de Worker per positie de gemiddelde aankoopprijs, de valuta en het valuta-effect (`fxImpact`) van Trading 212 (`pos_extra` in `kv`).
+- **Peildatum:** op 1 januari legt de Worker de stand van beleggingen en vrij saldo vast (`peil_JAAR` in `kv`).
+- **Werkelijke spreiding:** wekelijks haalt de Worker de samenstelling van de S&P 500 en de Nasdaq-100 op uit de holdings-CSV van iShares (CSPX en CNDX). ETF's op dezelfde index (zoals VUAG en SXRV) worden daarmee doorgerekend.
 
 ## Grenzen
 

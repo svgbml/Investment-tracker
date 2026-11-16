@@ -85,6 +85,11 @@ export default {
           return json({ ok: true, pending: await addPending(env, Number(body.amount)) }, 200, cors);
         }
       }
+      if (url.pathname === '/api/etf' && request.method === 'POST') {
+        const errs = await refreshEtf(env);
+        await setKv(env, 'data_cache', JSON.stringify(await buildData(env)));
+        return json({ ok: !errs.length, message: errs.length ? errs.join(' ') : 'Samenstelling van de fondsen bijgewerkt.' }, 200, cors);
+      }
       if (url.pathname === '/api/orders' && request.method === 'POST') {
         return json({ ok: true, message: await syncOrders(env) }, 200, cors);
       }
@@ -619,6 +624,9 @@ async function refreshEvents(env) {
     })).filter((d) => d.date).sort((a, b) => a.date.localeCompare(b.date));
   } catch (e) { out.errors.push('Dividendgeschiedenis: ' + e.message); }
 
+  let prev = null;
+  try { prev = JSON.parse((await getKv(env, 'events')) || 'null'); } catch (e) { prev = null; }
+  const failed = new Set();
   if (env.FMP_KEY) {
     for (const h of held.filter((x) => !x.etf)) {
       const sym = SYMBOL_MAP[h.ticker] || h.ticker;
@@ -630,7 +638,7 @@ async function refreshEvents(env) {
           epsEst: numOrNull(fut[0].epsEstimated), revEst: numOrNull(fut[0].revenueEstimated) });
         if (past[0]) out.lastEarnings.push({ ticker: h.ticker, date: past[0].date, eps: numOrNull(past[0].epsActual),
           epsEst: numOrNull(past[0].epsEstimated), rev: numOrNull(past[0].revenueActual), revEst: numOrNull(past[0].revenueEstimated) });
-      } catch (e) { out.errors.push(sym + ' cijfers: ' + e.message); if (/limiet|401|403/.test(e.message)) break; }
+      } catch (e) { out.errors.push(sym + ' cijfers: ' + e.message); failed.add(h.ticker); if (/limiet|401|403/.test(e.message)) { held.forEach((x) => failed.add(x.ticker)); break; } }
       try {
         const dv = await fmp(env, '/dividends?symbol=' + encodeURIComponent(sym));
         const per = (x) => numOrNull(x.dividend != null ? x.dividend : x.adjDividend);
@@ -647,8 +655,14 @@ async function refreshEvents(env) {
             perShare: per(last), frequency: last.frequency || null,
             estEur: h.eurPerUnit ? r2(per(last) * h.qty * h.eurPerUnit) : null, announced: false });
         }
-      } catch (e) { out.errors.push(sym + ' dividend: ' + e.message); if (/limiet|401|403/.test(e.message)) break; }
+      } catch (e) { out.errors.push(sym + ' dividend: ' + e.message); failed.add(h.ticker); if (/limiet|401|403/.test(e.message)) { held.forEach((x) => failed.add(x.ticker)); break; } }
     }
+  }
+  // Mislukt bij FMP (limiet of tijdelijke fout): houd de vorige gegevens van dat aandeel
+  if (prev && failed.size) {
+    ['earnings', 'dividends', 'lastEarnings'].forEach((k) => {
+      (prev[k] || []).forEach((x) => { if (failed.has(x.ticker) && !out[k].some((y) => y.ticker === x.ticker && y.date === x.date)) out[k].push(x); });
+    });
   }
   out.earnings.sort((a, b) => a.date.localeCompare(b.date));
   try {
