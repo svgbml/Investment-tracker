@@ -87,9 +87,12 @@
     $('in-token').value = getToken();
     $('in-url').value = localStorage.getItem(LS_URL) || '';
     const box = $('import-box');
-    box.hidden = !isWorker() || !getToken();
-    if (showImport === true && !box.hidden) box.open = true;
-    if (!$('in-sheet-url').value && SHEET_RE.test(CFG.apiUrl || '')) $('in-sheet-url').value = CFG.apiUrl;
+    const ready = isWorker() && !!getToken();
+    $('btn-import').disabled = !ready;
+    $('import-status').textContent = ready ? '' : 'Werkt alleen met de Cloudflare Worker. Vul eerst hierboven je toegangscode in (en zo nodig bij “Ander adres” het adres van de Worker) en kies Opslaan en laden.';
+    $('import-status').className = 'small muted';
+    if (showImport === true || (M && M.canImport && !M.weeks.length)) box.open = true;
+    if (!$('in-sheet-url').value) $('in-sheet-url').value = SHEET_RE.test(CFG.sheetUrl || '') ? CFG.sheetUrl : SHEET_RE.test(CFG.apiUrl || '') ? CFG.apiUrl : '';
     $('dlg-settings').showModal();
   }
 
