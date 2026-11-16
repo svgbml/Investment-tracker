@@ -40,7 +40,12 @@ export default {
     const at = new Date(event.scheduledTime);
     ctx.waitUntil(tick(env, at, false)
       .then(() => setKv(env, 'last_cron', new Date().toISOString()))
-      .then(() => (isLive(at) ? null : marketStep(env)))
+      .then(async () => {
+        if (isLive(at)) return null;
+        // Buiten de meettijden: eerst (1x per dag) de orders, anders een portie marktgegevens
+        if ((await getKv(env, 'orders_synced')) !== parts(at).day) return syncOrders(env);
+        return marketStep(env);
+      })
       .catch(async (e) => {
         console.error('tick', e);
         try { await setKv(env, 'last_error', new Date().toISOString() + ' ' + String(e && e.message || e)); } catch (_) {}
@@ -78,6 +83,17 @@ export default {
         if (request.method === 'POST') {
           const body = await request.json();
           return json({ ok: true, pending: await addPending(env, Number(body.amount)) }, 200, cors);
+        }
+      }
+      if (url.pathname === '/api/orders' && request.method === 'POST') {
+        return json({ ok: true, message: await syncOrders(env) }, 200, cors);
+      }
+      if (url.pathname === '/api/settings') {
+        if (request.method === 'GET') return json({ ok: true, settings: await getSettings(env) }, 200, cors);
+        if (request.method === 'POST') {
+          const body = await request.json();
+          const saved = await saveSettings(env, body);
+          return json({ ok: true, settings: saved }, 200, cors);
         }
       }
       if (url.pathname === '/api/market' && request.method === 'POST') {
@@ -232,10 +248,16 @@ async function tick(env, now, force) {
     rows.push({ ticker: TOTAL, name: 'Totaal beleggingen', value: r2(total), unrealized: r2(totalUnreal), price: null, qty: null });
     const stmt = env.DB.prepare('INSERT OR REPLACE INTO intraday (ts, ticker, name, value, unrealized, price, qty) VALUES (?,?,?,?,?,?,?)');
     await env.DB.batch(rows.map((r) => stmt.bind(ts, r.ticker, r.name, r.value, r.unrealized, r.price, r.qty)));
+    await setKv(env, 'pos_extra', JSON.stringify(posExtra(positions)));
     msgs.push(`${positions.length} posities gemeten (totaal €${total.toFixed(2)}).`);
   }
 
   const p = parts(now);
+  // Peildatum 1 januari (vermogen voor de belastingaangifte): één keer op nieuwjaarsdag
+  if (p.day.endsWith('-01-01')) {
+    const year = p.day.slice(0, 4);
+    if (!(await getKv(env, 'peil_' + year))) msgs.push(await takePeildatum(env, year));
+  }
   const lastHk = await getKv(env, 'hk_hour');
   const curHour = String(hourStart(now.getTime()));
   if (force || lastHk !== curHour) {
@@ -250,6 +272,34 @@ async function tick(env, now, force) {
   const text = msgs.filter(Boolean).join(' ');
   if (text) await setKv(env, 'data_cache', JSON.stringify(await buildData(env)));
   return text;
+}
+
+// Extra per positie: gemiddelde aankoopprijs, valuta en valuta-effect (fxImpact) van Trading 212
+function posExtra(positions) {
+  const out = {};
+  positions.forEach((p) => {
+    out[shortTicker(p.instrument.ticker)] = {
+      avg: numOrNull(p.averagePricePaid), price: numOrNull(p.currentPrice), cur: p.instrument.currency || null,
+      fx: numOrNull(p.walletImpact && p.walletImpact.fxImpact), cost: numOrNull(p.walletImpact && p.walletImpact.totalCost),
+      isin: p.instrument.isin || null, since: p.createdAt || null,
+    };
+  });
+  return out;
+}
+
+async function takePeildatum(env, year) {
+  const sum = await t212(env, '/api/v0/equity/account/summary');
+  await sleep(1100);
+  const positions = await t212(env, '/api/v0/equity/positions');
+  const cash = num(sum.cash && sum.cash.availableToTrade) + num(sum.cash && sum.cash.inPies) + num(sum.cash && sum.cash.reservedForOrders);
+  const inv = positions.reduce((s, x) => s + num(x.walletImpact.currentValue), 0);
+  const rec = {
+    date: year + '-01-01', taken: isoLocal(Date.now()), cash: r2(cash), investments: r2(inv), total: r2(inv + cash),
+    positions: positions.map((x) => ({ ticker: shortTicker(x.instrument.ticker), name: x.instrument.name, isin: x.instrument.isin || null,
+      qty: num(x.quantity), value: r2(num(x.walletImpact.currentValue)) })),
+  };
+  await setKv(env, 'peil_' + year, JSON.stringify(rec));
+  return `Peildatum ${year}: €${rec.total.toFixed(2)}.`;
 }
 
 async function housekeeping(env, now) {
@@ -514,12 +564,19 @@ async function buildData(env) {
 
   let market = null;
   try { market = await marketData(env); } catch (e) { console.error('market', e); }
+  let extra = {};
+  try { extra = await extraData(env); } catch (e) { console.error('extra', e); }
 
   return {
     ok: true,
     generated: isoLocal(now),
     events,
     market,
+    orders: { columns: ['time', 'ticker', 'name', 'side', 'qty', 'price', 'currency', 'fxRate', 'net', 'realised', 'feeFx', 'feeOther', 'kind'], rows: extra.orders || [] },
+    posExtra: extra.posExtra || {},
+    peil: extra.peil || [],
+    settings: extra.settings || {},
+    etf: extra.etf || {},
     currency: 'EUR',
     weeks,
     positionsDate,
@@ -594,6 +651,10 @@ async function refreshEvents(env) {
     }
   }
   out.earnings.sort((a, b) => a.date.localeCompare(b.date));
+  try {
+    const last = (await getKv(env, 'etf_updated')) || '';
+    if (last < new Date(Date.now() - 6 * 864e5).toISOString().slice(0, 10)) out.errors.push(...(await refreshEtf(env)));
+  } catch (e) { out.errors.push('ETF-samenstelling: ' + e.message); }
   await flushFmp(env);
   await setKv(env, 'events', JSON.stringify(out));
   await setKv(env, 'data_cache', JSON.stringify(await buildData(env)));
@@ -618,6 +679,154 @@ async function fmp(env, path) {
   return j || [];
 }
 
+
+
+// ---------- Orders: aan- en verkopen, gerealiseerd resultaat en kosten ----------
+async function ensureOrdersTable(env) {
+  if ((await getKv(env, 'orders_schema')) === '1') return;
+  await env.DB.prepare('CREATE TABLE IF NOT EXISTS orders (id TEXT PRIMARY KEY, ts INTEGER, ticker TEXT, name TEXT, side TEXT, qty REAL, price REAL, currency TEXT, fx_rate REAL, net REAL, realised REAL, fee_fx REAL, fee_other REAL, kind TEXT)').run();
+  await setKv(env, 'orders_schema', '1');
+}
+
+// Eerste keer de hele geschiedenis (max. 30 pagina's van 50), daarna dagelijks de nieuwste 2 pagina's
+async function syncOrders(env) {
+  await ensureOrdersTable(env);
+  const full = (await getKv(env, 'orders_full')) !== '1';
+  const cap = full ? 30 : 2;
+  let path = '/api/v0/equity/history/orders?limit=50', pages = 0;
+  const items = [];
+  while (path && pages < cap) {
+    if (pages) await sleep(3100); // 20 verzoeken per minuut
+    const res = await t212(env, path);
+    (res.items || []).forEach((x) => items.push(x));
+    path = res.nextPagePath || null;
+    pages++;
+  }
+  const st = env.DB.prepare('INSERT OR REPLACE INTO orders (id, ts, ticker, name, side, qty, price, currency, fx_rate, net, realised, fee_fx, fee_other, kind) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+  const stmts = [];
+  for (const it of items) {
+    const f = it.fill, o = it.order;
+    if (!f || !o || !num(f.quantity)) continue;
+    const ts = Date.parse(f.filledAt || o.createdAt);
+    if (!isFinite(ts)) continue;
+    const wi = f.walletImpact || {};
+    let feeFx = 0, feeOther = 0;
+    (wi.taxes || []).forEach((t) => { const q = Math.abs(num(t.quantity)); if (t.name === 'CURRENCY_CONVERSION_FEE') feeFx += q; else feeOther += q; });
+    const tick = o.ticker || (o.instrument && o.instrument.ticker) || '';
+    stmts.push(st.bind(String(f.id || o.id), ts, shortTicker(tick), (o.instrument && o.instrument.name) || null, o.side || null,
+      Math.abs(num(f.quantity)), numOrNull(f.price), (o.instrument && o.instrument.currency) || o.currency || null, numOrNull(wi.fxRate),
+      r2(Math.abs(num(wi.netValue))), numOrNull(wi.realisedProfitLoss), r2(feeFx), r2(feeOther), f.type || null));
+  }
+  await batchChunks(env, stmts);
+  if (full) await setKv(env, 'orders_full', '1');
+  await setKv(env, 'orders_synced', parts(new Date()).day);
+  await setKv(env, 'data_cache', JSON.stringify(await buildData(env)));
+  return `Orders: ${stmts.length} uitvoeringen bijgewerkt (${pages} pagina's).`;
+}
+
+// ---------- Instellingen van de website (streefverdeling, inleg, doel) ----------
+async function getSettings(env) {
+  try { return JSON.parse((await getKv(env, 'settings')) || '{}'); } catch (e) { return {}; }
+}
+
+async function saveSettings(env, body) {
+  const cur = await getSettings(env);
+  const clean = {};
+  if (body && typeof body.targets === 'object' && body.targets) {
+    clean.targets = {};
+    Object.entries(body.targets).slice(0, 100).forEach(([k, v]) => {
+      const n = Number(v);
+      if (/^[A-Za-z0-9.@ _-]{1,40}$/.test(k) && isFinite(n) && n >= 0 && n <= 100) clean.targets[k] = Math.round(n * 10) / 10;
+    });
+  }
+  ['monthly', 'goal', 'years'].forEach((k) => {
+    if (body && body[k] !== undefined) { const n = Number(body[k]); if (isFinite(n) && n >= 0 && n < 1e9) clean[k] = n; }
+  });
+  if (body && typeof body.targetMode === 'string' && /^(position|sector)$/.test(body.targetMode)) clean.targetMode = body.targetMode;
+  const next = Object.assign({}, cur, clean, { updated: isoLocal(Date.now()) });
+  await setKv(env, 'settings', JSON.stringify(next));
+  await setKv(env, 'data_cache', JSON.stringify(await buildData(env)));
+  return next;
+}
+
+// ---------- Samenstelling van indexfondsen (iShares publiceert de volledige lijst) ----------
+// Voor ETF's op de S&P 500 en de Nasdaq-100 gebruiken we de lijst van het iShares-fonds op dezelfde index.
+const ETF_SOURCES = {
+  SP500: { label: 'S&P 500', fund: 'iShares Core S&P 500 UCITS ETF (CSPX)',
+    url: 'https://www.ishares.com/uk/individual/en/products/253743/ishares-core-sp-500-ucits-etf-acc-fund/1506575576011.ajax?fileType=csv&fileName=CSPX_holdings&dataType=fund' },
+  NDX: { label: 'Nasdaq-100', fund: 'iShares Nasdaq 100 UCITS ETF (CNDX)',
+    url: 'https://www.ishares.com/uk/individual/en/products/253741/ishares-nasdaq-100-ucits-etf/1506575576011.ajax?fileType=csv&fileName=CNDX_holdings&dataType=fund' },
+};
+
+function parseCsvLine(line) {
+  const out = [];
+  let cur = '', q = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (q) { if (ch === '"') { if (line[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += ch; }
+    else if (ch === '"') q = true;
+    else if (ch === ',') { out.push(cur); cur = ''; }
+    else cur += ch;
+  }
+  out.push(cur);
+  return out.map((x) => x.trim());
+}
+
+function parseHoldings(text) {
+  const lines = text.replace(/^﻿/, '').split(/\r?\n/);
+  let asOf = null;
+  const hIdx = lines.findIndex((l) => /^"?Ticker"?,/.test(l));
+  if (hIdx < 0) return null;
+  for (let i = 0; i < hIdx; i++) { const m = /as of[",\s]*"?([^",]+)/i.exec(lines[i]); if (m) { asOf = m[1].trim(); break; } }
+  const head = parseCsvLine(lines[hIdx]).map((h) => h.toLowerCase());
+  const col = (re) => head.findIndex((h) => re.test(h));
+  const iT = col(/^ticker/), iN = col(/^name/), iS = col(/^sector/), iW = col(/^weight/), iC = col(/asset class/);
+  const rows = [];
+  for (let i = hIdx + 1; i < lines.length; i++) {
+    const c = parseCsvLine(lines[i]);
+    if (c.length < head.length - 2 || !c[iT]) break;
+    if (iC >= 0 && c[iC] && !/equity/i.test(c[iC])) continue;
+    const w = Number(String(c[iW]).replace(/,/g, ''));
+    if (!isFinite(w) || w <= 0) continue;
+    rows.push([c[iT], c[iN] || '', iS >= 0 ? c[iS] : '', Math.round(w * 1000) / 1000]);
+  }
+  rows.sort((a, b) => b[3] - a[3]);
+  return rows.length ? { asOf, rows: rows.slice(0, 150), count: rows.length } : null;
+}
+
+async function refreshEtf(env) {
+  const errs = [];
+  for (const [key, src] of Object.entries(ETF_SOURCES)) {
+    try {
+      const res = await fetch(src.url, { headers: { 'User-Agent': 'Mozilla/5.0 (investment-tracker; persoonlijk gebruik)', Accept: 'text/csv,*/*' } });
+      if (!res.ok) throw new Error('status ' + res.status);
+      const parsed = parseHoldings(await res.text());
+      if (!parsed) throw new Error('geen lijst in het bestand');
+      await setKv(env, 'etf_' + key, JSON.stringify(Object.assign({ label: src.label, fund: src.fund }, parsed)));
+    } catch (e) { errs.push('ETF ' + src.label + ': ' + e.message); }
+  }
+  if (!errs.length) await setKv(env, 'etf_updated', new Date().toISOString().slice(0, 10));
+  return errs;
+}
+
+async function extraData(env) {
+  const out = { orders: [], posExtra: {}, peil: [], settings: {}, etf: {} };
+  try { out.posExtra = JSON.parse((await getKv(env, 'pos_extra')) || '{}'); } catch (e) { /* leeg */ }
+  out.settings = await getSettings(env);
+  if ((await getKv(env, 'orders_schema')) === '1') {
+    const { results } = await env.DB.prepare('SELECT ts, ticker, name, side, qty, price, currency, fx_rate, net, realised, fee_fx, fee_other, kind FROM orders ORDER BY ts').all();
+    out.orders = results.map((r) => [isoLocal(r.ts), r.ticker, r.name, r.side, r.qty, r.price, r.currency, r.fx_rate, r.net, r.realised, r.fee_fx, r.fee_other, r.kind]);
+  }
+  const { results: kvs } = await env.DB.prepare("SELECT key, value FROM kv WHERE key LIKE 'peil_%' OR key LIKE 'etf\\_%' ESCAPE '\\'").all();
+  kvs.forEach((r) => {
+    try {
+      if (r.key.startsWith('peil_')) out.peil.push(JSON.parse(r.value));
+      else if (r.key !== 'etf_updated') out.etf[r.key.slice(4)] = JSON.parse(r.value);
+    } catch (e) { /* overslaan */ }
+  });
+  out.peil.sort((a, b) => a.date.localeCompare(b.date));
+  return out;
+}
 
 // ---------- Markt: sector, branche en vergelijkbare bedrijven (FMP) ----------
 // Gratis bij FMP: bedrijfsprofielen (sector, branche, beurswaarde, beta, jaarbereik, koers), vergelijkbare
