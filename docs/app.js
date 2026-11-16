@@ -1120,7 +1120,7 @@
           (d.ex && d.pay && d.ex !== d.pay ? ', ex-dividend ' + fDM.format(d.ex) : ''),
           isNum(d.eur) ? '≈ ' + eur(d.eur) : '', d.kind)).join('') + '</div>' +
           '<p class="sub" style="margin-top:8px">Komende 90 dagen ongeveer ' + esc(eur(E.next90)) + '. Aangekondigde bedragen zijn bruto (voor bronbelasting); verwachte bedragen volgen je eerdere netto uitkeringen.</p>'
-      : '<p class="muted">' + (E.fmp ? 'Geen aangekondigde of verwachte dividenden in de komende maanden.' : 'Nog geen dividend ontvangen om een verwachting op te baseren. Met een FMP-sleutel zie je ook aangekondigde dividenden.') + '</p>';
+      : '<p class="muted">' + (E.fmp ? 'Geen aangekondigde of verwachte dividenden in de komende maanden.' : (E.received.length ? 'Voor een verwachting zijn per aandeel minstens 2 eerdere uitkeringen nodig.' : 'Nog geen dividend ontvangen om een verwachting op te baseren.') + ' Met een FMP-sleutel zie je ook aangekondigde dividenden.') + '</p>';
     const top = [...E.byTk.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3);
     const recBody = E.received.length
       ? '<p class="v big">' + esc(eur(E.last12)) + '</p><p class="sub">ontvangen in de laatste 12 maanden' + (isNum(E.yieldOnCost) ? ', ' + esc(P2.format(E.yieldOnCost)) + ' op je inleg' : '') + '</p>' +
