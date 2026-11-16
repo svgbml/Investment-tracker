@@ -38,7 +38,7 @@ Alle adressen vragen je toegangscode, als `?token=…` of als header `Authorizat
 | Openstaande opnames bekijken / wissen | `GET` / `DELETE /api/pending` |
 | Agenda nu bijwerken (dividenden, kwartaalcijfers) | `POST /api/events` |
 | Orders (aan- en verkopen) nu ophalen | `POST /api/orders` |
-| Samenstelling van de indexfondsen nu ophalen | `POST /api/etf` |
+| Samenstelling van de indexfondsen nu ophalen / zelf toevoegen | `POST /api/etf` / `POST /api/etf-upload` met `{"key": "SP500" of "NDX", "csv": "…"}` |
 | Instellingen van de site (streefverdeling, inleg, doel) | `GET` / `POST /api/settings` |
 | Sector- en vergelijkingsgegevens: taken klaarzetten en afwerken | `POST /api/market?plan=1&steps=3` (zonder `plan` alleen afwerken) |
 | Eenmalig gegevens uit de sheet overnemen | `POST /api/import` met `{"url": "<Apps Script /exec-adres>", "token": "<code van de sheet>"}` |
@@ -76,7 +76,7 @@ Gegevens staan in de tabellen `ext_profile`, `ext_peers`, `ext_prices` en `ext_p
 - **Orders:** buiten de meettijden haalt de Worker één keer per dag de uitgevoerde orders op (de eerste keer de hele geschiedenis, daarna de nieuwste 100). Per order: aantal, prijs, wisselkoers, bedrag, gerealiseerd resultaat en kosten (tabel `orders`).
 - **Valuta-effect:** bij elke meting bewaart de Worker per positie de gemiddelde aankoopprijs, de valuta en het valuta-effect (`fxImpact`) van Trading 212 (`pos_extra` in `kv`).
 - **Peildatum:** op 1 januari legt de Worker de stand van beleggingen en vrij saldo vast (`peil_JAAR` in `kv`).
-- **Werkelijke spreiding:** wekelijks haalt de Worker de samenstelling van de S&P 500 en de Nasdaq-100 op uit de holdings-CSV van iShares (CSPX en CNDX). ETF's op dezelfde index (zoals VUAG en SXRV) worden daarmee doorgerekend.
+- **Werkelijke spreiding:** de samenstelling van de S&P 500 en de Nasdaq-100 komt uit de holdings-CSV van iShares (CSPX en CNDX); ETF's op dezelfde index (zoals VUAG en SXRV) worden daarmee doorgerekend. De Worker probeert het bestand wekelijks op te halen; weigert iShares dat, voeg het dan zelf toe op de pagina Plannen (`POST /api/etf-upload`).
 
 ## Grenzen
 

@@ -556,3 +556,12 @@ button.m-stat.clickable:active { background: var(--bg); }
 .install-box { margin: 16px 0 4px; padding-top: 14px; border-top: 1px solid var(--rule); }
 .install-box h3 { font-size: 15px; margin-bottom: 4px; }
 .install-box .btn { margin-top: 8px; }
+
+.etf-up { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--rule); }
+.etf-up summary { cursor: pointer; font-weight: 600; }
+.etf-up .sub { margin: 8px 0; }
+.etf-btns { display: flex; flex-direction: column; gap: 10px; }
+.etf-b { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 10px 12px; border-radius: 12px; background: var(--bg); }
+.etf-b b { min-width: 90px; }
+.etf-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+.etf-acts .btn { cursor: pointer; }

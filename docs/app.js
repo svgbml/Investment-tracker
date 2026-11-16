@@ -1706,14 +1706,31 @@
     });
     const list = [...ex.values()].map((o) => Object.assign(o, { total: o.direct + o.via })).sort((a, b) => b.total - a.total);
     const overlapVia = sum(list.filter((o) => o.direct > 0).map((o) => o.via));
-    return { list, covered, funds, used: [...used].map((k) => etf[k]), overlap: covered ? overlapVia / covered : null };
+    const needed = [...new Set(M.companies.map(keyFor).filter(Boolean))];
+    return { list, covered, funds, used: [...used].map((k) => etf[k]), overlap: covered ? overlapVia / covered : null, needed };
+  }
+
+  const ETF_PAGES = {
+    SP500: ['S&P 500', 'iShares Core S&P 500 (CSPX)', 'https://www.ishares.com/uk/individual/en/products/253743/ishares-core-sp-500-ucits-etf-acc-fund'],
+    NDX: ['Nasdaq-100', 'iShares Nasdaq 100 (CNDX)', 'https://www.ishares.com/uk/individual/en/products/253741/ishares-nasdaq-100-ucits-etf'],
+  };
+  function etfUpload(L, open) {
+    const etf = data.etf || {};
+    return '<details class="etf-up"' + (open ? ' open' : '') + '><summary>' + (open ? 'Samenstelling toevoegen' : 'Samenstelling bijwerken') + '</summary>' +
+      '<p class="sub">Open de pagina van het fonds bij iShares, ga naar <b>Holdings</b> en kies <b>Download latest fund holdings CSV data</b>. Kies dat bestand hier. ' +
+      'Je eigen fonds hoeft niet van iShares te zijn: een fonds op dezelfde index heeft vrijwel dezelfde samenstelling.</p>' +
+      '<div class="etf-btns">' + L.needed.map((k) => { const [label, fund, url] = ETF_PAGES[k]; const have = etf[k];
+        return '<div class="etf-b"><b>' + esc(label) + '</b><span class="muted small">' + esc(have ? have.count + ' bedrijven, stand ' + (have.asOf || '?') : 'nog niet toegevoegd') + '</span>' +
+          '<span class="etf-acts"><a class="btn ghost" href="' + esc(url) + '#holdings" target="_blank" rel="noopener">' + esc(fund) + ' ↗</a>' +
+          '<label class="btn primary">Bestand kiezen<input type="file" accept=".csv,text/csv" data-etf="' + k + '" hidden></label></span></div>'; }).join('') + '</div>' +
+      '<p class="small plan-status" id="etf-status" role="status"></p></details>';
   }
 
   function exposureTile() {
     const L = lookThrough();
     const total = M.totalValue || 0;
     if (!L.funds) return '<section class="tile pad"><h3>Werkelijke spreiding</h3><p class="muted">Je hebt geen indexfondsen, dus je spreiding is gelijk aan je posities.</p></section>';
-    if (!L.covered) return '<section class="tile pad"><h3>Werkelijke spreiding</h3><p class="muted">De samenstelling van je indexfondsen wordt één keer per week opgehaald bij iShares. Dat is nog niet gebeurd.</p></section>';
+    if (!L.covered) return '<section class="tile pad exposure"><h3>Werkelijke spreiding</h3><p class="muted">Hiervoor is de samenstelling van je indexfondsen nodig. iShares geeft het bestand niet automatisch aan de Worker, maar je kunt het zelf downloaden en hier toevoegen (een paar keer per jaar is genoeg).</p>' + etfUpload(L, true) + '</section>';
     const top = L.list.slice(0, 15);
     const top10 = sum(L.list.slice(0, 10).map((o) => o.total));
     const mx = Math.max(...top.map((o) => o.total));
@@ -1731,7 +1748,7 @@
         ['Aantal bedrijven via fondsen', NI.format(L.list.filter((o) => o.via > 0).length) + (L.used.some((x) => x.count > x.rows.length) ? '+ (grootste ' + L.used.map((x) => x.rows.length).join(' en ') + ' per fonds)' : '')],
       ]) + '</div>' +
       '<p class="sub" style="margin-top:8px">Samenstelling volgens ' + esc(L.used.map((x) => x.fund + (x.asOf ? ', ' + x.asOf : '')).join(' en ')) +
-        '. Je eigen fonds kan iets afwijken, maar volgt dezelfde index. Alphabet A en C zijn samengeteld.</p></section>';
+        '. Je eigen fonds kan iets afwijken, maar volgt dezelfde index. Alphabet A en C zijn samengeteld.</p>' + etfUpload(L, false) + '</section>';
   }
 
   // Exporteren naar CSV (komma's, puntkomma-vrij; Excel en Google Sheets lezen dit direct)
@@ -1796,6 +1813,25 @@
         catch (err) { plan.status = 'Opslaan is mislukt: ' + err.message + '.'; }
         renderPlan();
       }
+    });
+    host.addEventListener('change', async (e) => {
+      const el = e.target;
+      if (!el.matches('input[type="file"][data-etf]') || !el.files[0]) return;
+      const st = $('etf-status');
+      const say = (t, cls) => { if (st) { st.textContent = t; st.className = 'small plan-status ' + (cls || ''); } };
+      if (demo) { say('In de voorbeeldweergave is dit niet nodig.'); return; }
+      if (!isWorker()) { say('Dit kan alleen met de Cloudflare Worker.', 'loss'); return; }
+      try {
+        say('Bezig met inlezen…');
+        const csv = await el.files[0].text();
+        const res = await fetch(getUrl().replace(/\/api\/data$/, '/api/etf-upload'), {
+          method: 'POST', headers: { Authorization: 'Bearer ' + getToken(), 'Content-Type': 'application/json' }, body: JSON.stringify({ key: el.dataset.etf, csv }),
+        });
+        const j = await res.json().catch(() => null);
+        if (!res.ok || !j || !j.ok) throw new Error((j && j.error) || 'de Worker gaf status ' + res.status);
+        say(j.message + ' De gegevens worden opnieuw geladen.', 'gain');
+        load();
+      } catch (err) { say('Inlezen is mislukt: ' + err.message, 'loss'); }
     });
     host.addEventListener('input', (e) => {
       const el = e.target;

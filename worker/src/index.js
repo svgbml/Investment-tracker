@@ -90,6 +90,10 @@ export default {
         await setKv(env, 'data_cache', JSON.stringify(await buildData(env)));
         return json({ ok: !errs.length, message: errs.length ? errs.join(' ') : 'Samenstelling van de fondsen bijgewerkt.' }, 200, cors);
       }
+      if (url.pathname === '/api/etf-upload' && request.method === 'POST') {
+        const body = await request.json();
+        return json({ ok: true, message: await uploadEtf(env, body && body.key, body && body.csv) }, 200, cors);
+      }
       if (url.pathname === '/api/orders' && request.method === 'POST') {
         return json({ ok: true, message: await syncOrders(env) }, 200, cors);
       }
@@ -667,8 +671,13 @@ async function refreshEvents(env) {
   out.earnings.sort((a, b) => a.date.localeCompare(b.date));
   try {
     const last = (await getKv(env, 'etf_updated')) || '';
-    if (last < new Date(Date.now() - 6 * 864e5).toISOString().slice(0, 10)) out.errors.push(...(await refreshEtf(env)));
-  } catch (e) { out.errors.push('ETF-samenstelling: ' + e.message); }
+    // Fouten hier niet in de agenda tonen; de site legt bij de spreiding uit hoe je het bestand zelf toevoegt
+    if (last < new Date(Date.now() - 6 * 864e5).toISOString().slice(0, 10)) {
+      const errs = await refreshEtf(env);
+      await setKv(env, 'etf_updated', new Date().toISOString().slice(0, 10)); // hoe dan ook pas over een week opnieuw
+      await setKv(env, 'etf_error', errs.join(' '));
+    }
+  } catch (e) { await setKv(env, 'etf_error', String(e.message || e)); }
   await flushFmp(env);
   await setKv(env, 'events', JSON.stringify(out));
   await setKv(env, 'data_cache', JSON.stringify(await buildData(env)));
@@ -767,8 +776,10 @@ async function saveSettings(env, body) {
 // Voor ETF's op de S&P 500 en de Nasdaq-100 gebruiken we de lijst van het iShares-fonds op dezelfde index.
 const ETF_SOURCES = {
   SP500: { label: 'S&P 500', fund: 'iShares Core S&P 500 UCITS ETF (CSPX)',
+    page: 'https://www.ishares.com/uk/individual/en/products/253743/ishares-core-sp-500-ucits-etf-acc-fund',
     url: 'https://www.ishares.com/uk/individual/en/products/253743/ishares-core-sp-500-ucits-etf-acc-fund/latest-holdings.csv' },
   NDX: { label: 'Nasdaq-100', fund: 'iShares Nasdaq 100 UCITS ETF (CNDX)',
+    page: 'https://www.ishares.com/uk/individual/en/products/253741/ishares-nasdaq-100-ucits-etf',
     url: 'https://www.ishares.com/uk/individual/en/products/253741/ishares-nasdaq-100-ucits-etf/latest-holdings.csv' },
 };
 
@@ -824,6 +835,19 @@ async function refreshEtf(env) {
   return errs;
 }
 
+// Zelf gedownload bestand van de iShares-site (knop "Download latest fund holdings CSV data")
+async function uploadEtf(env, key, csv) {
+  const src = ETF_SOURCES[key];
+  if (!src) throw new Error('Onbekend fonds.');
+  if (typeof csv !== 'string' || csv.length > 3e6) throw new Error('Geen geldig bestand.');
+  const parsed = parseHoldings(csv);
+  if (!parsed) throw new Error('In dit bestand staat geen lijst met Ticker en Weight (%). Gebruik de holdings-CSV van iShares.');
+  await setKv(env, 'etf_' + key, JSON.stringify(Object.assign({ label: src.label, fund: src.fund, uploaded: true }, parsed)));
+  await setKv(env, 'etf_error', '');
+  await setKv(env, 'data_cache', JSON.stringify(await buildData(env)));
+  return `${src.label}: ${parsed.count} bedrijven ingelezen (stand ${parsed.asOf || 'onbekend'}).`;
+}
+
 async function extraData(env) {
   const out = { orders: [], posExtra: {}, peil: [], settings: {}, etf: {} };
   try { out.posExtra = JSON.parse((await getKv(env, 'pos_extra')) || '{}'); } catch (e) { /* leeg */ }
@@ -836,7 +860,7 @@ async function extraData(env) {
   kvs.forEach((r) => {
     try {
       if (r.key.startsWith('peil_')) out.peil.push(JSON.parse(r.value));
-      else if (r.key !== 'etf_updated') out.etf[r.key.slice(4)] = JSON.parse(r.value);
+      else if (r.key !== 'etf_updated' && r.key !== 'etf_error') out.etf[r.key.slice(4)] = JSON.parse(r.value);
     } catch (e) { /* overslaan */ }
   });
   out.peil.sort((a, b) => a.date.localeCompare(b.date));
