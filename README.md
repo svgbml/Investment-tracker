@@ -5,7 +5,11 @@ Persoonlijke beleggingstracker voor Trading 212: een Google Sheet die via de Tra
 **Website openen:** [svgbml.github.io/Investment-tracker](https://svgbml.github.io/Investment-tracker/)
 
 - `apps-script/Code.gs`: het Apps Script dat aan de Google Sheet hangt (wekelijkse snapshots, metingen elke 10 minuten, terugrekenen van oude weken, JSON-koppeling voor de website).
-- `docs/`: de website (GitHub Pages).
+- `docs/`: de website (GitHub Pages), zonder externe bibliotheken. Drie weergaven:
+  - **Overzicht**: grafiek van de totale waarde (vandaag, 3 dagen, 30 dagen, alles), kerncijfers, de 5 grootste veranderingen, weekoverzicht, patronen (kalender, per uur, per weekdag, grootte van dagbewegingen) en statistieken.
+  - **Bedrijven**: alle posities als tegels met grafiek, zoeken, filteren en sorteren.
+  - **Bedrijfspagina**: klik op een tegel en de pagina zoomt erop in. Met grafiek (ook tegen de hele portefeuille), positie, dagbereik, historie en patronen per bedrijf. Het adres `#bedrijf/TICKER` werkt ook als link.
+  - Probeer het met voorbeeldgegevens via `?demo`.
 - `worker/`: dezelfde tracker als Cloudflare Worker, zonder Google Sheets. Zie [worker/README.md](worker/README.md).
 
 Er staan geen sleutels of portefeuillegegevens in deze repository. De Trading 212 API-sleutel staat alleen in de scripteigenschappen van Apps Script of als geheim bij Cloudflare; de website vraagt een eigen toegangscode die alleen in je browser wordt bewaard.

@@ -407,7 +407,7 @@ async function buildData(env) {
   });
 
   const { results: intra } = await env.DB.prepare(
-    'SELECT ts, ticker, name, value, unrealized FROM intraday ORDER BY ts'
+    'SELECT ts, ticker, name, value, unrealized, qty FROM intraday ORDER BY ts'
   ).all();
 
   // Posities: laatste meting, anders laatste weeksnapshot
@@ -418,6 +418,7 @@ async function buildData(env) {
     positions = intra.filter((r) => r.ts === lastTs && r.ticker !== TOTAL).map((r) => ({
       ticker: r.ticker, name: r.name, value: r.value, unrealized: r.unrealized,
       cost: r2(r.value - r.unrealized), resultPct: r.value - r.unrealized ? r.unrealized / (r.value - r.unrealized) : 0,
+      quantity: r.qty,
     }));
   } else {
     const last = await env.DB.prepare('SELECT MAX(date) AS d FROM positions').first();
