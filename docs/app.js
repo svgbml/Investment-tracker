@@ -267,7 +267,7 @@
           label: (c) => ' ' + signed(c.parsed.y, eur) + ' (' + signed(w[c.dataIndex].weekResultPct || 0, pct) + ')',
         } } },
         scales: {
-          x: { type: 'time', time: { unit: 'week', tooltipFormat: 'd MMM' }, grid: { display: false }, ticks: { color: t.ink2 }, border: { color: t.rule } },
+          x: { type: 'time', time: { unit: 'week' }, grid: { display: false }, ticks: { color: t.ink2, callback: (v) => nlTick(v, false) }, border: { color: t.rule } },
           y: { grid: { color: t.track }, ticks: { color: t.ink2, callback: (v) => eur0.format(v) }, border: { display: false } },
         },
       }),
@@ -361,17 +361,27 @@
       options: baseOptions({
         plugins: {
           legend: { display: !!opt.legend },
-          tooltip: { callbacks: { label: (c) => ' ' + c.dataset.label + ': ' + eur.format(c.parsed.y) } },
+          tooltip: { callbacks: {
+            title: (c) => c.length ? dtFmt.format(new Date(c[0].parsed.x)) : '',
+            label: (c) => ' ' + c.dataset.label + ': ' + eur.format(c.parsed.y),
+          } },
         },
         scales: {
           x: opt.time ? {
             type: 'time', time: { tooltipFormat: 'd MMM HH:mm', displayFormats: { hour: 'HH:mm', day: 'd MMM', week: 'd MMM', month: 'MMM yyyy' } },
-            grid: { display: false }, ticks: { color: t.ink2, maxTicksLimit: opt.compact ? 5 : 8 }, border: { color: t.rule },
+            grid: { display: false }, border: { color: t.rule },
+            ticks: { color: t.ink2, maxTicksLimit: opt.compact ? 5 : 8, callback: (v) => nlTick(v, opt.compact) },
           } : {},
           y: { grid: { color: t.track }, ticks: { color: t.ink2, maxTicksLimit: 5, callback: (v) => eur0.format(v) }, border: { display: false } },
         },
       }),
     });
+  }
+
+  function nlTick(v, intraday) {
+    const d = new Date(v);
+    if (intraday) return d.toLocaleString('nl-NL', { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+    return d.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' });
   }
 
   function deepMerge(a, b) {
