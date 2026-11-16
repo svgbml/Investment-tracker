@@ -3146,7 +3146,7 @@
     const base = R.days && R.days.length >= 60 ? sim((x) => x.w, 0) : null;
     const canIdx = !!idxR && isNum(base);
     const monthly = isNum(M.settings && M.settings.monthly) && M.settings.monthly > 0 ? M.settings.monthly : (typeof monthlyGuess === 'function' ? monthlyGuess() : null);
-    const viaInleg = (D) => (D > 0 ? ' Zonder te verkopen: ongeveer ' + eur(D) + ' nieuwe inleg in andere posities' + (isNum(monthly) && monthly > 0 ? ', ' + Math.max(1, Math.ceil(D / monthly)) + ' maanden bij ' + eur(monthly) + ' per maand' : '') + '.' : '');
+    const viaInleg = (D, where) => (D > 0 ? ' Zonder te verkopen: ongeveer ' + eur(D) + ' nieuwe inleg ' + (where || 'in andere posities') + (isNum(monthly) && monthly > 0 ? ', ' + Math.max(1, Math.ceil(D / monthly)) + ' maanden bij ' + eur(monthly) + ' per maand' : '') + '.' : '');
     const stocks = M.companies.filter((c) => !isFundC(c));
 
     // 1. Grootste aanjager van het risico
@@ -3168,7 +3168,7 @@
     if (isNum(R.fundsW) && R.fundsW < 0.5 && stocks.length) {
       const k = (1 - 0.5) / Math.max(1e-9, 1 - R.fundsW);
       out.push({ title: 'De helft in brede indexfondsen',
-        text: 'Nu ' + P1.format(R.fundsW) + ' in fondsen. Een indexfonds spreidt over honderden bedrijven, waardoor tegenvallers van één bedrijf weinig uitmaken. In het voorbeeld gaat ' + P1.format(0.5 - R.fundsW) + ' van je losse aandelen (naar verhouding) naar ' + idxName + '.' + viaInleg(total * (1 - 2 * R.fundsW)),
+        text: 'Nu ' + P1.format(R.fundsW) + ' in fondsen. Een indexfonds spreidt over honderden bedrijven, waardoor tegenvallers van één bedrijf weinig uitmaken. In het voorbeeld gaat ' + P1.format(0.5 - R.fundsW) + ' van je losse aandelen (naar verhouding) naar ' + idxName + '.' + viaInleg(total * (1 - 2 * R.fundsW), 'in brede fondsen'),
         to: canIdx ? sim((x) => (isFundC(x.c) ? x.w : x.w * k), 0.5 - R.fundsW) : null });
     }
     // 4. Eén sector
@@ -3280,7 +3280,7 @@
       ['Valuta', fxE, 'Effect van de euro-dollarkoers op je open posities sinds aankoop'],
       ['Verkocht', T.has ? real : null, 'Gerealiseerd resultaat bij verkopen'],
       ['Dividend', divs.length ? div : null, 'Ontvangen dividend (' + divs.length + ' uitkeringen)'],
-      ['Overig', rest, 'Verschil: rente op je saldo, kosten, afronding en wat buiten de gegevens valt'],
+      ['Overig', rest, 'Wat overblijft: resultaat van vóór je orderhistorie, rente op je saldo en afronding'],
     ];
     const build = '<section class="tile pad span-2"><h3>Waar je resultaat vandaan komt</h3>' + signedBars(parts) +
       '<div style="margin-top:12px">' + kvList([
@@ -3289,7 +3289,7 @@
         ['Totaal resultaat', isNum(res) ? seur(res) + ' (' + spct1(res / lw.netDeposits) + ')' : '–', tone(res)],
         ['Waarvan open posities', seur(unreal), tone(unreal)],
         ['Betaalde kosten (zitten al in de bedragen)', T.has ? eur(T.fees) : '–'],
-      ]) + '</div><p class="sub" style="margin-top:8px">Koers en valuta uit je posities, verkopen en kosten uit je orders, dividend uit Trading 212. "Overig" is wat overblijft.</p></section>';
+      ]) + '</div><p class="sub" style="margin-top:8px">Koers en valuta uit je posities, verkopen en kosten uit je orders, dividend uit Trading 212. "Overig" is wat overblijft: resultaat van vóór je orderhistorie, rente op je saldo en afronding.</p></section>';
     const W = M.weeks.filter((w) => isNum(w.weekResultPct));
     let idx = 1; W.forEach((w) => { idx *= 1 + w.weekResultPct; });
     const bestW = W.slice().sort((a, b) => b.weekResult - a.weekResult)[0], worstW = W.slice().sort((a, b) => a.weekResult - b.weekResult)[0];
