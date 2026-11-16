@@ -609,24 +609,28 @@ async function fmp(env, path) {
 async function probeSources(env) {
   const k = encodeURIComponent(env.FMP_KEY || '');
   const tests = [
-    ['fmp profile AAPL', FMP_BASE + '/profile?symbol=AAPL&apikey=' + k],
-    ['fmp profile TTWO', FMP_BASE + '/profile?symbol=TTWO&apikey=' + k],
-    ['fmp peers AAPL', FMP_BASE + '/stock-peers?symbol=AAPL&apikey=' + k],
-    ['fmp eod AAPL', FMP_BASE + '/historical-price-eod/light?symbol=AAPL&from=2026-10-01&apikey=' + k],
-    ['fmp eod XLK', FMP_BASE + '/historical-price-eod/light?symbol=XLK&from=2026-10-01&apikey=' + k],
-    ['fmp eod LLY', FMP_BASE + '/historical-price-eod/light?symbol=LLY&from=2026-10-01&apikey=' + k],
-    ['fmp sector perf', FMP_BASE + '/sector-performance-snapshot?date=2026-11-13&apikey=' + k],
-    ['fmp quote XLK', FMP_BASE + '/quote?symbol=XLK&apikey=' + k],
-    ['yahoo chart XLK', 'https://query1.finance.yahoo.com/v8/finance/chart/XLK?range=1mo&interval=1d'],
-    ['yahoo chart LLY', 'https://query2.finance.yahoo.com/v8/finance/chart/LLY?range=1mo&interval=1d'],
-    ['stooq ita.us', 'https://stooq.com/q/d/l/?s=ita.us&i=d'],
+    ['price-change TTWO', FMP_BASE + '/stock-price-change?symbol=TTWO&apikey=' + k],
+    ['price-change LLY', FMP_BASE + '/stock-price-change?symbol=LLY&apikey=' + k],
+    ['price-change XLK', FMP_BASE + '/stock-price-change?symbol=XLK&apikey=' + k],
+    ['ratios-ttm TTWO', FMP_BASE + '/ratios-ttm?symbol=TTWO&apikey=' + k],
+    ['key-metrics-ttm LLY', FMP_BASE + '/key-metrics-ttm?symbol=LLY&apikey=' + k],
+    ['hist sector perf', FMP_BASE + '/historical-sector-performance?sector=Technology&from=2026-08-01&apikey=' + k],
+    ['industry perf', FMP_BASE + '/industry-performance-snapshot?date=2026-11-13&apikey=' + k],
+    ['hist industry perf', FMP_BASE + '/historical-industry-performance?industry=Biotechnology&from=2026-10-01&apikey=' + k],
+    ['sector pe', FMP_BASE + '/sector-pe-snapshot?date=2026-11-13&apikey=' + k],
+    ['industry pe', FMP_BASE + '/industry-pe-snapshot?date=2026-11-13&apikey=' + k],
+    ['profile LLY', FMP_BASE + '/profile?symbol=LLY&apikey=' + k],
+    ['peers LLY', FMP_BASE + '/stock-peers?symbol=LLY&apikey=' + k],
+    ['quote LLY', FMP_BASE + '/quote?symbol=LLY&apikey=' + k],
+    ['profile ASML', FMP_BASE + '/profile?symbol=ASML&apikey=' + k],
+    ['profile SPCX', FMP_BASE + '/profile?symbol=SPCX&apikey=' + k],
   ];
   const out = [];
   for (const [name, u] of tests) {
     try {
       const r = await fetch(u, { headers: { 'User-Agent': 'Mozilla/5.0 (investment-tracker)', Accept: 'application/json,text/csv,*/*' } });
       const t = await r.text();
-      out.push({ name, status: r.status, body: t.slice(0, 260) });
+      out.push({ name, status: r.status, body: t.slice(0, 700) });
     } catch (e) { out.push({ name, error: String(e.message || e) }); }
   }
   return out;
