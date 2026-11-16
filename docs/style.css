@@ -811,3 +811,28 @@ button.alt:hover { outline: 2px solid var(--accent); }
 .tile.folded .donut.fit-chart { width: var(--fit-h); }
 .tile.fold.fit::after { height: 44px; background-position: center bottom 4px, 0 0; background-size: 18px, auto; }
 @media (prefers-reduced-motion: reduce) { .bars, .chart, svg.dual, .donut, .fin-bars { transition: none; } }
+
+/* Overgangen: meten zonder animatie, en pagina's die in elkaar overlopen */
+.no-tr, .no-tr *, .no-tr::before, .no-tr::after, .no-tr *::before, .no-tr *::after { transition: none !important; }
+.tile.fold.fold-anim { will-change: max-height; }
+.tile.fold:active:not(:has(button:active, a:active, input:active)) { transform: scale(.995); }
+.tile.fold { transition: transform .15s; }
+.tile.fold.fold-anim { transition: max-height .38s cubic-bezier(.2, .7, .2, 1), transform .15s; }
+@supports (view-transition-name: none) {
+  .topbar { view-transition-name: topbar; }
+  .m-top { view-transition-name: mtop; }
+  .m-tabs { view-transition-name: mtabs; }
+  ::view-transition-old(topbar), ::view-transition-old(mtop), ::view-transition-old(mtabs) { display: none; }
+  ::view-transition-new(topbar), ::view-transition-new(mtop), ::view-transition-new(mtabs) { animation: none; }
+  ::view-transition-group(topbar), ::view-transition-group(mtop), ::view-transition-group(mtabs) { animation: none; z-index: 2; }
+  html[data-nav]::view-transition-old(root) { animation: vtOutL .22s cubic-bezier(.4, 0, 1, 1) both; }
+  html[data-nav]::view-transition-new(root) { animation: vtInR .36s cubic-bezier(.2, .7, .2, 1) both; }
+  html[data-nav="b"]::view-transition-old(root) { animation-name: vtOutR; }
+  html[data-nav="b"]::view-transition-new(root) { animation-name: vtInL; }
+}
+@keyframes vtOutL { to { opacity: 0; transform: translateX(-40px); } }
+@keyframes vtOutR { to { opacity: 0; transform: translateX(40px); } }
+@keyframes vtInR { from { opacity: 0; transform: translateX(56px); } }
+@keyframes vtInL { from { opacity: 0; transform: translateX(-56px); } }
+@media (prefers-reduced-motion: reduce) { ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; } }
+.tile.folded .donut.fit-chart { height: auto !important; }

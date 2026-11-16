@@ -22,6 +22,10 @@
   const MIN_DAYS_SD = 5;       // voor beweeglijkheid
   const MIN_DAYS_CORR = 10;    // voor samenhang met de portefeuille
   const ZOOM_MS = 450;
+  const unfolded = new Set();
+  const FOLD_ROOTS = ['page-home', 'm-home', 'm-stats'];
+  const FOLD_SKIP = '.grid.stats, .m-grid2, #kpis, #movers, #stats';
+  let foldTimer = null;
   const HOUR = 3600e3;
   const DAY = 864e5;
 
@@ -3352,7 +3356,7 @@
       if (!isNum(x.to) || !isNum(I.base)) return '';
       const c0 = srri(I.base), c1 = srri(x.to), d = x.to - I.base;
       return '<div class="sug-eff"><span class="lvl" style="--k:' + c0 + '">' + c0 + '</span><span class="arr" aria-hidden="true">→</span><span class="lvl" style="--k:' + c1 + '">' + c1 + '</span>' +
-        '<span class="small">beweeglijkheid ' + esc(P1.format(I.base)) + ' → <b class="' + (d < 0 ? 'gain' : 'loss') + '">' + esc(P1.format(x.to)) + '</b> per jaar</span></div>';
+        '<span class="small">met je huidige verdeling: ' + esc(P1.format(I.base)) + ' → <b class="' + (d < 0 ? 'gain' : 'loss') + '">' + esc(P1.format(x.to)) + '</b> per jaar</span></div>';
     };
     const ranked = I.ideas.slice().sort((a, b) => (isNum(a.to) ? a.to : 9) - (isNum(b.to) ? b.to : 9));
     const sugg = '<section class="tile pad sugg span-2"><h3>Wat het risico verlaagt</h3>' +
@@ -3462,7 +3466,7 @@
       ['Gemiddeld per maand', months ? seur((ins + outs) / months) : '–'],
       ['Weken met een storting', dep.length + ' van ' + W.length],
       ['Laatste storting', dep.length ? seur(dep[dep.length - 1].newDeposits) + ', week tot ' + fDM.format(dep[dep.length - 1].t) : '–'],
-      ['Maandbedrag op Plannen', isNum(monthly) ? eur(monthly) : isNum(guess) ? 'niet ingesteld (geschat ' + eur(guess) + ')' : 'niet ingesteld'],
+      ['Maandbedrag op Plannen', isNum(monthly) ? eur(monthly) : isNum(guess) && guess > 0 ? 'niet ingesteld (geschat ' + eur(guess) + ')' : 'niet ingesteld'],
     ]) + '</section>';
     // Per maand
     const byM = new Map();
@@ -3762,26 +3766,48 @@
   function showPage(p, animate, force) {
     if (mode === 'd' && p === 'stats') p = 'home';
     const prev = ui.page;
-    if (typeof foldSoon === 'function') setTimeout(foldSoon, 0);
     ui.page = p;
-    document.body.dataset.page = p;
-    $$('.pillnav a, .m-tabs a').forEach((a) => {
-      if (a.dataset.page === p) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
-    });
-    $('m-title').textContent = TITLES[p];
-    { const cs = getComputedStyle(document.documentElement); document.querySelector('meta[name="theme-color"]').content = (mode === 'm' && p !== 'home' ? cs.getPropertyValue('--bg') : cs.getPropertyValue('--band')).trim(); }
-    placeIndicators();
     const ids = mode === 'm' ? ['home', 'list', 'stats', 'plan'] : ['home', 'list', 'plan'];
-    ids.forEach((k) => { $(pageId(k)).hidden = k !== p; });
     const el = $(pageId(p));
-    if (animate && !reduceMotion()) {
-      el.classList.remove('in-r', 'in-l', 'enter');
-      void el.offsetWidth;
-      if (prev !== p) el.classList.add(ORDER[p] > ORDER[prev] ? 'in-r' : 'in-l');
-      el.classList.add('enter');
-      setTimeout(() => el.classList.remove('in-r', 'in-l', 'enter'), 1400);
+    const move = animate && !reduceMotion();
+    const swap = () => {
+      document.body.dataset.page = p;
+      $$('.pillnav a, .m-tabs a').forEach((a) => {
+        if (a.dataset.page === p) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
+      });
+      $('m-title').textContent = TITLES[p];
+      { const cs = getComputedStyle(document.documentElement); document.querySelector('meta[name="theme-color"]').content = (mode === 'm' && p !== 'home' ? cs.getPropertyValue('--bg') : cs.getPropertyValue('--band')).trim(); }
+      ids.forEach((k) => { $(pageId(k)).hidden = k !== p; });
+      placeIndicators();
+      if (prev !== p || force) window.scrollTo(0, 0);
+      foldAll(); // meteen in de juiste (ingeklapte) vorm, vóór de eerste keer tekenen
+    };
+    clearTimeout(showPage.timer);
+    $$('.page, .m-view').forEach((x) => x.classList.remove('in-r', 'in-l', 'enter'));
+    const dir = ORDER[p] > ORDER[prev] ? 'f' : 'b';
+    // Browsers met view transitions: de oude pagina schuift weg terwijl de nieuwe binnenkomt
+    if (move && prev !== p && document.startViewTransition && !ui.detail) {
+      const root = document.documentElement;
+      root.dataset.nav = dir;
+      let vt;
+      try { vt = document.startViewTransition(() => { swap(); el.classList.add('enter'); }); } catch (e) { vt = null; }
+      if (vt) {
+        const clean = () => { if (showPage.vt === vt) delete root.dataset.nav; };
+        showPage.vt = vt;
+        vt.finished.then(clean, clean);
+        if (vt.ready) vt.ready.catch(() => {}); // een snel volgende wissel breekt deze af; dat is geen fout
+        showPage.timer = setTimeout(() => el.classList.remove('enter'), 1400);
+        return;
+      }
+      delete root.dataset.nav;
     }
-    if (prev !== p || force) window.scrollTo(0, 0);
+    swap();
+    if (move) {
+      void el.offsetWidth;
+      if (prev !== p) el.classList.add(dir === 'f' ? 'in-r' : 'in-l');
+      el.classList.add('enter');
+      showPage.timer = setTimeout(() => el.classList.remove('in-r', 'in-l', 'enter'), 1400);
+    }
   }
 
   function parseHash() {
@@ -3808,7 +3834,7 @@
 
   window.addEventListener('hashchange', () => route(false));
   window.addEventListener('resize', () => { placeIndicators(); setMtop(); });
-  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { placeIndicators(); setMtop(); });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { placeIndicators(); setMtop(); foldAll(); });
 
   // ---------- Tekenen ----------
   function renderAll() {
@@ -3821,16 +3847,14 @@
 
   // ---------- Panelen inklappen: lange tegels op de beginpagina's starten compact ----------
   // Tegels in dezelfde rij krijgen ingeklapt dezelfde hoogte; een klik op een leeg stuk van de tegel klapt hem uit of in.
-  const unfolded = new Set();
-  const FOLD_ROOTS = ['page-home', 'm-home', 'm-stats'];
-  const FOLD_SKIP = '.grid.stats, .m-grid2, #kpis, #movers, #stats';
-  let foldTimer = null;
-  function foldSoon() { cancelAnimationFrame(foldTimer); foldTimer = requestAnimationFrame(() => requestAnimationFrame(foldAll)); }
+  function foldSoon() { foldAll(); cancelAnimationFrame(foldTimer); foldTimer = requestAnimationFrame(() => requestAnimationFrame(foldAll)); }
   function foldAll() {
     const H = mode === 'm' ? 300 : 320;
     FOLD_ROOTS.forEach((rid) => {
       const root = $(rid);
       if (!root || root.hidden || !root.offsetParent) return;
+      if (root.querySelector('.fold-anim')) return; // midden in een animatie: niet opnieuw meten
+      root.classList.add('no-tr'); // meten en instellen zonder overgangen, anders "ademen" de grafieken bij elke meting
       const tiles = [...root.querySelectorAll('.tile.pad, .m-stack > .tile')].filter((t) => !t.closest(FOLD_SKIP) && !t.classList.contains('fold-anim'));
       // Eerst alles op natuurlijke hoogte meten
       tiles.forEach((t) => { t.classList.remove('folded', 'fit'); t.style.minHeight = ''; t.style.maxHeight = ''; t.querySelectorAll('.fit-chart').forEach((c) => c.classList.remove('fit-chart')); });
@@ -3859,6 +3883,8 @@
           b.textContent = open ? 'Minder tonen' : 'Meer tonen';
         });
       });
+      void root.offsetHeight;
+      root.classList.remove('no-tr');
     });
   }
   // Ingeklapt moet een grafiek met zijn labels helemaal zichtbaar zijn: maak hem zo nodig lager (de y-as wordt dan samengedrukt)
@@ -3883,25 +3909,39 @@
     ch.classList.add('fit-chart');
   }
   function toggleFold(t) {
+    if (t.classList.contains('fold-anim')) return;
     const key = t.dataset.fold;
     const open = !unfolded.has(key);
     if (open) unfolded.add(key); else unfolded.delete(key);
     const b = t.querySelector(':scope > .fold-btn');
     if (b) { b.textContent = open ? 'Minder tonen' : 'Meer tonen'; b.setAttribute('aria-expanded', open ? 'true' : 'false'); }
-    const H = parseFloat(getComputedStyle(t).getPropertyValue('--fold-h')) || 320;
     if (reduceMotion()) { t.classList.toggle('folded', !open); return; }
-    // Hoogte animeren: van de huidige naar de nieuwe hoogte, daarna weer vrij laten
+    // 1. Meet de eindhoogte in de eindtoestand, zonder overgangen (anders meet je een half gegroeide grafiek)
     const from = t.getBoundingClientRect().height;
-    t.classList.add('fold-anim');
+    t.classList.add('no-tr');
     t.classList.toggle('folded', !open);
-    const to = open ? t.scrollHeight : Math.max(H, parseFloat(t.style.minHeight) || 0);
+    t.style.maxHeight = '';
+    const to = t.getBoundingClientRect().height;
+    // 2. Terug naar de begintoestand, vastgezet op de beginhoogte
+    t.classList.toggle('folded', open);
     t.style.maxHeight = from + 'px';
     void t.offsetHeight;
+    t.classList.remove('no-tr');
+    // 3. Animeren: tegel en grafiek bewegen met dezelfde duur en curve
+    t.classList.add('fold-anim');
+    t.classList.toggle('folded', !open);
     t.style.maxHeight = to + 'px';
-    const done = () => { t.classList.remove('fold-anim'); t.style.maxHeight = ''; t.removeEventListener('transitionend', done); };
+    let fin = false;
+    const done = (e) => {
+      if (e && (e.target !== t || e.propertyName !== 'max-height')) return; // overgangen van onderdelen in de tegel tellen niet
+      if (fin) return; fin = true;
+      t.removeEventListener('transitionend', done);
+      t.classList.add('no-tr'); t.classList.remove('fold-anim'); t.style.maxHeight = ''; void t.offsetHeight; t.classList.remove('no-tr');
+    };
     t.addEventListener('transitionend', done);
-    setTimeout(done, 450);
-    if (!open) { const r = t.getBoundingClientRect(); if (r.top < 60) window.scrollBy({ top: r.top - 80, behavior: 'smooth' }); }
+    setTimeout(() => done(), 520);
+    if (Math.abs(to - from) < 1) done();
+    if (!open) { const r = t.getBoundingClientRect(); const topbar = mode === 'm' ? 64 : 96; if (r.top < topbar) window.scrollBy({ top: r.top - topbar - 12, behavior: 'smooth' }); }
   }
   // Klik op een leeg stuk van de tegel (niet op een knop, link, invoerveld of regel die zelf iets opent)
   const FOLD_IGNORE = 'a, input, select, textarea, label, summary, details, [data-open], [data-ticker]:not(.tile), [data-act], [data-plan], [data-cal], [data-export], [data-seg], .seg, [contenteditable]';
