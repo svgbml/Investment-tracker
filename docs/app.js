@@ -1204,7 +1204,7 @@
       ['Gevoeligheid', isNum(S.beta) ? N2.format(S.beta) + '× de portefeuille' : 'na ' + MIN_DAYS_CORR + ' dagen'],
     ].concat((() => { const r = companyRisk(c); return r ? [['Risicoklasse (1–7)', r.cls + ', ' + RISK_WORDS[r.cls] + ' (' + P1.format(r.vol) + ' per jaar)', r.cls >= 6 ? 'loss' : r.cls <= 4 ? 'gain' : ''],
       ['Aandeel in je risico', isNum(r.contrib) ? P1.format(r.contrib) + ' bij ' + P1.format(c.weight || 0) + ' van de waarde' : '–']] : [['Risicoklasse (1–7)', 'te weinig koershistorie']]; })())) + '</section>';
-    return { S, kpis, rangeTile, posTile, histTile, agendaTile: companyAgenda(c), tradeTile: companyTrades(c), market: companyMarket(c), research: companyResearch(c), patterns: patternTiles(c.tk, S) };
+    return { S, kpis, rangeTile, posTile, histTile, riskTile: companyWhyTile(c), agendaTile: companyAgenda(c), tradeTile: companyTrades(c), market: companyMarket(c), research: companyResearch(c), patterns: patternTiles(c.tk, S) };
   }
 
   const FOOT = 'Dagresultaten zijn de verandering ten opzichte van het slot van de vorige handelsdag (of de eerste meting als die er niet is). Dagen die meer dan 25% bewegen, tellen niet mee: dat is bijna altijd een aankoop of verkoop. ' +
@@ -2891,7 +2891,7 @@
       '</div>' +
       '<div class="wrap' + sw + '">' +
         '<div class="grid">' + I.kpis.join('') + '</div>' +
-        '<div class="grid wide" style="margin-top:16px">' + I.rangeTile + I.posTile + I.tradeTile + I.histTile + I.agendaTile + '</div>' +
+        '<div class="grid wide" style="margin-top:16px">' + I.rangeTile + I.posTile + I.tradeTile + I.histTile + I.agendaTile + I.riskTile + '</div>' +
         '<div class="section-head"><h2>Nieuws, analisten en cijfers</h2></div>' +
         '<div class="grid wide">' + I.research.join('') + '</div>' +
         '<div class="section-head"><h2>Sector en vergelijkbare bedrijven</h2></div>' +
@@ -2992,7 +2992,7 @@
     const sw = swapDir ? ' swap-' + swapDir : '';
     const tabs = [['pos', 'Positie'], ['res', 'Onderzoek'], ['cmp', 'Vergelijk'], ['hist', 'Historie'], ['pat', 'Patronen']];
     const panel = ui.mTab === 'hist' ? I.histTile : ui.mTab === 'pat' ? '<div class="m-stack">' + I.patterns.join('') + '</div>'
-      : ui.mTab === 'cmp' ? I.market.tiles.join('') + I.market.table : ui.mTab === 'res' ? I.research.join('') : I.rangeTile + I.posTile + I.tradeTile + I.agendaTile;
+      : ui.mTab === 'cmp' ? I.riskTile + I.market.tiles.join('') + I.market.table : ui.mTab === 'res' ? I.research.join('') : I.rangeTile + I.posTile + I.tradeTile + I.agendaTile;
     return '<div class="md">' +
       '<div class="m-dtop"><button type="button" class="m-back" data-act="back">‹ Terug</button><span class="t">' + esc(c.tk) + '</span>' +
         '<div class="m-nav"><button type="button" data-act="prev" aria-label="Vorige: ' + esc(prev.name) + '">‹</button><button type="button" data-act="next" aria-label="Volgende: ' + esc(next.name) + '">›</button></div></div>' +
@@ -3211,6 +3211,139 @@
     return { ideas: out, base, idxName, canIdx };
   }
 
+  // ---------- Risico per bedrijf: waarom hoger of lager, en rustigere alternatieven ----------
+  const SECTOR_RISK = {
+    'Technology': [1, 'Technologie: de koers hangt sterk af van groeiverwachtingen en de rente, dus verwachtingen die bijstellen geven grote uitslagen.'],
+    'Communication Services': [1, 'Communicatie en media: advertentie-inkomsten dalen snel als de economie afkoelt.'],
+    'Consumer Cyclical': [1, 'Cyclische consumptie: als consumenten minder uitgeven, dalen omzet en winst snel.'],
+    'Energy': [1, 'Energie: winst hangt af van olie- en gasprijzen, die sterk schommelen.'],
+    'Basic Materials': [1, 'Grondstoffen: winst volgt grondstofprijzen en de wereldeconomie.'],
+    'Financial Services': [0, 'Financiële diensten: gevoelig voor rente en kredietzorgen, maar vaak met stabiele inkomsten.'],
+    'Industrials': [0, 'Industrie: volgt de economische cyclus, met orders die per jaar kunnen verschillen.'],
+    'Real Estate': [0, 'Vastgoed: gevoelig voor de rente, maar met vaste huurinkomsten.'],
+    'Healthcare': [-1, 'Gezondheidszorg: de vraag naar zorg hangt weinig af van de economie.'],
+    'Consumer Defensive': [-1, 'Basisconsumptie: mensen blijven deze producten kopen, ook in een slechte economie.'],
+    'Utilities': [-1, 'Nutsbedrijven: stabiele, vaak gereguleerde inkomsten.'],
+  };
+  const INDUSTRY_RISK = {
+    'Semiconductors': [1, 'Chips: een sterk cyclische branche; vraag en prijzen wisselen snel, met grote koersuitslagen.'],
+    'Semiconductor Equipment & Materials': [1, 'Chipmachines: orders hangen af van investeringen van chipmakers en wisselen sterk per jaar.'],
+    'Biotechnology': [1, 'Biotechnologie: de koers hangt af van onderzoeksresultaten en goedkeuringen, die alles-of-niets kunnen zijn.'],
+    'Aerospace & Defense': [0, 'Defensie en ruimtevaart: lange contracten, maar afhankelijk van overheidsbudgetten en grote projecten.'],
+  };
+
+  // Dagrendementen van de S&P 500 in euro: eigen fonds of FRED
+  function spRets(R) {
+    const own = R.items.find((x) => x.n >= 60 && BENCHES[0][1].test(x.c.tk));
+    if (own) return { rets: own.rets, vol: own.vol, name: own.c.tk };
+    if (!(data.idx && data.idx.series && data.idx.series.SP500)) return null;
+    const days = [...R.fx.keys()].sort(); let j = 0, last = null, prev = null; const rets = new Map();
+    data.idx.series.SP500.forEach(([d, v]) => { while (j < days.length && days[j] <= d) { last = R.fx.get(days[j]); j++; } if (!last) return; const e = v / last; if (prev) { const r = e / prev - 1; if (Math.abs(r) < 0.5) rets.set(d, r); } prev = e; });
+    const arr = [...rets.values()].slice(-260);
+    return rets.size >= 60 ? { rets, vol: stdev(arr) * Math.sqrt(252), name: 'de S&P 500' } : null;
+  }
+
+  function riskWhy(c) {
+    const R = riskModel();
+    const x = R.items.find((i) => i.c.tk === c.tk) || { w: c.weight || 0 };
+    const p = M.mk.ok ? M.mk.profOf(c.tk) : null;
+    const isFund = isFundC(c);
+    const sp = spRets(R);
+    const mktVol = sp && isNum(sp.vol) ? sp.vol : 0.17;
+    const up = [], down = [];
+    const add = (d, t) => (d > 0 ? up : down).push(t);
+    if (isNum(x.vol)) {
+      const ratio = x.vol / mktVol;
+      if (ratio >= 1.25) add(1, 'Schommelde het laatste jaar ' + P1.format(x.vol) + ' per jaar, ongeveer ' + N1.format(ratio) + ' keer zo veel als ' + (sp ? sp.name : 'de brede markt') + ' (' + P1.format(mktVol) + ').');
+      else if (ratio <= 0.85) add(-1, 'Schommelde het laatste jaar ' + P1.format(x.vol) + ' per jaar, minder dan ' + (sp ? sp.name : 'de brede markt') + ' (' + P1.format(mktVol) + ').');
+    }
+    if (isFund) {
+      if (BENCHES[1][1].test(c.tk) || /nasdaq/i.test(c.name)) { add(-1, 'Een fonds met 100 bedrijven: een tegenvaller bij één bedrijf weegt weinig.'); add(1, 'Wel geconcentreerd in grote technologiebedrijven, daardoor beweeglijker dan een breed fonds.'); }
+      else add(-1, 'Een breed indexfonds met honderden bedrijven uit allerlei sectoren: tegenvallers bij één bedrijf middelen uit.');
+    } else if (p) {
+      if (isNum(p.beta) && p.beta >= 1.3) add(1, 'Reageert sterk op de markt (beta ' + N2.format(p.beta) + '): daalt de markt 10%, dan daalt dit aandeel gemiddeld zo\'n ' + Math.round(p.beta * 10) + '%.');
+      else if (isNum(p.beta) && p.beta > 0 && p.beta <= 0.8) add(-1, 'Rustiger dan de markt (beta ' + N2.format(p.beta) + '): beweegt gemiddeld minder mee met dalingen en stijgingen.');
+      if (isNum(p.marketCap) && p.marketCap < 10e9) add(1, 'Kleiner bedrijf (beurswaarde ' + mcap(p.marketCap, p.currency) + '): nieuws heeft meer invloed op de koers.');
+      else if (isNum(p.marketCap) && p.marketCap > 200e9) add(-1, 'Een van de grootste bedrijven ter wereld (beurswaarde ' + mcap(p.marketCap, p.currency) + '): gevestigd en veel gevolgd.');
+      const ind = p.industry && INDUSTRY_RISK[p.industry], sec = p.sector && SECTOR_RISK[p.sector];
+      if (ind) { if (ind[0]) add(ind[0], ind[1]); } else if (sec && sec[0]) add(sec[0], sec[1]);
+      if (p.ipoDate && Date.now() - ymd(p.ipoDate) < 5 * 365 * DAY) add(1, 'Pas sinds ' + new Date(ymd(p.ipoDate)).getFullYear() + ' op de beurs: weinig koersgeschiedenis en vaak sterke reacties op cijfers.');
+    }
+    const Fin = (data.fin || {})[c.tk];
+    if (Fin && Fin.series) {
+      const rev = new Map((Fin.series.rev && Fin.series.rev.rows) || []), net = new Map((Fin.series.net && Fin.series.net.rows) || []);
+      const ys = [...net.keys()].sort((a, b) => a - b), ly = ys[ys.length - 1];
+      if (ly && net.get(ly) < 0) add(1, 'Maakte in ' + ly + ' verlies: de koers leunt op verwachtingen voor later.');
+      else if (ly && rev.get(ly) && net.get(ly) / rev.get(ly) > 0.2) add(-1, 'Zeer winstgevend (nettomarge ' + P1.format(net.get(ly) / rev.get(ly)) + ' in ' + ly + ').');
+    }
+    if ((c.weight || 0) > 0.1) add(1, 'Groot deel van je portefeuille (' + P1.format(c.weight) + '): een daling hier raakt je totaal direct.');
+    if (isNum(x.contrib) && x.contrib > (x.w / (R.coverage || 1)) * 1.5) add(1, 'Levert ' + P1.format(x.contrib) + ' van je totale risico bij ' + P1.format(x.w) + ' van je waarde.');
+    else if (isNum(x.contrib) && x.contrib < (x.w / (R.coverage || 1)) * 0.5) add(-1, 'Beweegt anders dan de rest van je portefeuille en spreidt daardoor (' + P1.format(x.contrib) + ' van het risico bij ' + P1.format(x.w) + ' van de waarde).');
+    if (p && p.currency && p.currency !== 'USD' && p.currency !== 'EUR') add(1, 'Noteert in ' + p.currency + ': ook die wisselkoers telt mee.');
+    if (p && p.currency === 'EUR') add(-1, 'Noteert in euro: geen wisselkoersrisico.');
+    const verdict = isNum(x.vol) ? (x.vol / mktVol >= 1.25 ? 'hoger dan de markt' : x.vol / mktVol <= 0.85 ? 'lager dan de markt' : 'ongeveer als de markt')
+      : up.length > down.length ? 'waarschijnlijk hoger dan de markt' : down.length > up.length ? 'waarschijnlijk lager dan de markt' : 'onbekend';
+
+    // Rustigere alternatieven: vergelijkbare bedrijven met een lagere beta, en fondsen
+    const alts = [];
+    if (!isFund && M.mk.ok && p) {
+      const myB = isNum(p.beta) ? p.beta : null;
+      M.mk.peersOf(c.tk).map((s2) => M.mk.prof(s2)).filter(Boolean)
+        .filter((q) => isNum(q.beta) && q.beta > 0 && (myB == null ? q.beta < 1 : q.beta <= myB - 0.15))
+        .sort((a, b) => a.beta - b.beta).slice(0, 3)
+        .forEach((q) => {
+          const held = M.mk.heldBySym.get(q.symbol);
+          const bits = ['beta ' + N2.format(q.beta)];
+          if (isNum(q.marketCap)) bits.push('beurswaarde ' + mcap(q.marketCap, q.currency));
+          if (q.industry && p.industry && q.industry === p.industry) bits.push('zelfde branche'); else if (q.sector) bits.push(sectorNl(q.sector));
+          alts.push({ sym: q.symbol, name: q.name || q.symbol, held, text: bits.join(', ') + (held ? '; heb je al' : '') });
+        });
+    }
+    const funds = [];
+    const ownBroad = M.companies.find((d) => BENCHES[0][1].test(d.tk) || BENCHES[2][1].test(d.tk));
+    if (isFund) {
+      if (BENCHES[1][1].test(c.tk) || /nasdaq/i.test(c.name)) funds.push('Een breed S&P 500- of wereldfonds: minder afhankelijk van technologie, daardoor meestal minder beweeglijk.');
+      else if (BENCHES[0][1].test(c.tk)) funds.push('Een wereldfonds (MSCI World of FTSE All-World) spreidt ook over Europa, Japan en andere landen, en minder over de dollar.');
+      funds.push('Een obligatiefonds of geld schommelt veel minder, maar levert op lange termijn meestal ook minder op.');
+    } else {
+      if (p && p.sector) funds.push('Een sectorfonds voor ' + sectorNl(p.sector).toLowerCase() + ': dezelfde sector, maar verspreid over tientallen bedrijven.');
+      funds.push(ownBroad ? 'Meer in je brede fonds (' + ownBroad.tk + '): honderden bedrijven in één keer.' : 'Een breed indexfonds (S&P 500 of wereld): honderden bedrijven in één keer.');
+      if (p && SECTOR_RISK[p.sector] && SECTOR_RISK[p.sector][0] > 0) funds.push('Bedrijven uit rustigere sectoren (basisconsumptie, nutsbedrijven, gezondheidszorg) schommelen meestal minder.');
+    }
+    return { x, p, up, down, verdict, alts, funds, cls: x.cls, vol: x.vol };
+  }
+
+  function whyBody(c, W) {
+    const li = (arr, cls) => arr.map((t) => '<li class="' + cls + '">' + esc(t) + '</li>').join('');
+    return (W.up.length || W.down.length ? '<ul class="why">' + li(W.up, 'up') + li(W.down, 'down') + '</ul>' : '<p class="small muted">Nog te weinig gegevens om het risico te verklaren.</p>') +
+      '<p class="why-h">Minder risicovolle alternatieven</p>' +
+      (W.alts.length ? '<div class="alt-list">' + W.alts.map((a) => '<' + (a.held ? 'button type="button" data-open="' + esc(a.held) + '"' : 'div') + ' class="alt"><b>' + esc(a.sym) + '</b><span>' + esc(a.name) + '</span><span class="muted small">' + esc(a.text) + '</span></' + (a.held ? 'button' : 'div') + '>').join('') + '</div>' : '') +
+      '<ul class="why alt-f">' + W.funds.map((t) => '<li>' + esc(t) + '</li>').join('') + '</ul>';
+  }
+
+  function companyWhyTile(c) {
+    const W = riskWhy(c);
+    return '<section class="tile pad"><h3>Risico van ' + esc(c.tk) + '</h3>' +
+      '<div class="why-top">' + (W.cls ? '<span class="lvl" style="--k:' + W.cls + '">' + W.cls + '</span>' : '') + '<span>Risico <b>' + esc(W.verdict) + '</b>' + (isNum(W.vol) ? ', ' + esc(P1.format(W.vol)) + ' per jaar' : '') + '</span></div>' +
+      whyBody(c, W) + '<p class="sub" style="margin-top:8px">Alternatieven: vergelijkbare bedrijven met een lagere beta (FMP) en soorten fondsen. Minder risico betekent meestal ook minder verwacht rendement; dit is geen beleggingsadvies.</p></section>';
+  }
+
+  function whyListTile() {
+    const R = riskModel();
+    const list = M.companies.slice().sort((a, b) => {
+      const xa = R.items.find((i) => i.c === a), xb = R.items.find((i) => i.c === b);
+      return ((xb && isNum(xb.contrib) ? xb.contrib : 0) - (xa && isNum(xa.contrib) ? xa.contrib : 0)) || b.value - a.value;
+    });
+    return '<section class="tile pad span-2 why-list"><h3>Per bedrijf: waarom dit risico, en rustigere alternatieven</h3>' +
+      list.map((c) => {
+        const W = riskWhy(c);
+        return '<details class="why-d"><summary>' + (W.cls ? '<span class="lvl" style="--k:' + W.cls + '">' + W.cls + '</span>' : '<span class="lvl na">–</span>') +
+          '<span class="nm"><b>' + esc(c.tk) + '</b> <span class="muted">' + esc(c.name) + '</span></span><span class="small ' + (/hoger/.test(W.verdict) ? 'loss' : /lager/.test(W.verdict) ? 'gain' : 'muted') + '">' + esc(W.verdict) + '</span></summary>' +
+          '<div class="why-in">' + whyBody(c, W) + '</div></details>';
+      }).join('') +
+      '<p class="sub" style="margin-top:10px">Gesorteerd op aandeel in je risico. Rood: redenen voor meer risico, groen: voor minder. Alternatieven zijn vergelijkbare bedrijven met een lagere beta (FMP) en soorten fondsen; minder risico betekent meestal ook minder verwacht rendement. Geen beleggingsadvies.</p></section>';
+  }
+
   function renderRiskView() {
     const R = riskModel();
     const total = M.totalValue || 0;
@@ -3249,7 +3382,8 @@
 
     const t = riskTiles(true);
     const head = pseudoHead('Risico-indicatie', R.cls ? R.cls + ' van 7' : 'Nog geen indicatie', R.cls ? RISK_WORDS[R.cls] + ', beweeglijkheid ongeveer ' + P1.format(R.vol) + ' per jaar' : 'Er zijn nog te weinig gegevens.');
-    return pseudoPage('Risico', head, [[sugg, year], [t[0], t[1], t[2]], [per]], [sugg, year, t[0], t[1], t[2], per]);
+    const why = whyListTile();
+    return pseudoPage('Risico', head, [[sugg, year], [why], [t[0], t[1], t[2]], [per]], [sugg, why, year, t[0], t[1], t[2], per]);
   }
 
   function plTile() {
@@ -3686,8 +3820,10 @@
   }
 
   // ---------- Panelen inklappen: lange tegels op de beginpagina's starten compact ----------
+  // Tegels in dezelfde rij krijgen ingeklapt dezelfde hoogte; een klik op een leeg stuk van de tegel klapt hem uit of in.
   const unfolded = new Set();
   const FOLD_ROOTS = ['page-home', 'm-home', 'm-stats'];
+  const FOLD_SKIP = '.grid.stats, .m-grid2, #kpis, #movers, #stats';
   let foldTimer = null;
   function foldSoon() { cancelAnimationFrame(foldTimer); foldTimer = requestAnimationFrame(() => requestAnimationFrame(foldAll)); }
   function foldAll() {
@@ -3695,41 +3831,70 @@
     FOLD_ROOTS.forEach((rid) => {
       const root = $(rid);
       if (!root || root.hidden || !root.offsetParent) return;
-      root.querySelectorAll('.tile.pad, .m-stack > .tile').forEach((t, i) => {
-        if (t.closest('.grid.stats, .m-grid2, #kpis, #movers')) return;
+      const tiles = [...root.querySelectorAll('.tile.pad, .m-stack > .tile')].filter((t) => !t.closest(FOLD_SKIP) && !t.classList.contains('fold-anim'));
+      // Eerst alles op natuurlijke hoogte meten
+      tiles.forEach((t) => { t.classList.remove('folded'); t.style.minHeight = ''; t.style.maxHeight = ''; });
+      const info = tiles.map((t, i) => {
         const h3 = t.querySelector('h3');
-        const key = rid + ':' + (h3 ? h3.textContent : i);
-        t.dataset.foldKey = key;
-        const btn = t.querySelector(':scope > .fold-btn');
-        const isBtn = t.tagName === 'BUTTON';
-        const wasFolded = t.classList.contains('folded');
-        t.classList.remove('folded');
-        const full = t.scrollHeight;
-        if (full <= H + 90) { t.classList.remove('fold'); if (btn) btn.remove(); return; }
-        t.classList.add('fold');
-        t.style.setProperty('--fold-h', H + 'px');
-        const open = unfolded.has(key);
-        if (!open || (wasFolded && !open)) t.classList.add('folded');
-        if (isBtn) return; // een klikbare tegel opent zijn eigen pagina met alles
-        const b = btn || Object.assign(document.createElement('button'), { type: 'button', className: 'fold-btn' });
-        b.dataset.fold = key;
-        b.setAttribute('aria-expanded', open ? 'true' : 'false');
-        b.textContent = open ? 'Minder tonen' : 'Meer tonen';
-        if (!btn) t.appendChild(b);
+        return { t, key: rid + ':' + (h3 ? h3.textContent : i), full: t.scrollHeight, row: (t.parentElement.id || '') + ':' + t.offsetTop };
+      });
+      const rows = new Map();
+      info.forEach((x) => { const r = rows.get(x.row) || []; r.push(x); rows.set(x.row, r); });
+      rows.forEach((row) => {
+        const even = row.length > 1 ? Math.min(H, Math.max(...row.map((x) => x.full))) : 0;
+        row.forEach((x) => {
+          const t = x.t;
+          t.style.setProperty('--fold-h', H + 'px');
+          if (even) t.style.minHeight = even + 'px';
+          if (x.full <= H + 24) { t.classList.remove('fold'); t.removeAttribute('data-fold'); const b = t.querySelector(':scope > .fold-btn'); if (b) b.remove(); return; }
+          t.classList.add('fold');
+          t.dataset.fold = x.key;
+          const open = unfolded.has(x.key);
+          t.classList.toggle('folded', !open);
+          if (t.tagName === 'BUTTON') return; // een klikbare tegel opent zijn eigen pagina met alles
+          let b = t.querySelector(':scope > .fold-btn');
+          if (!b) { b = Object.assign(document.createElement('button'), { type: 'button', className: 'fold-btn' }); t.appendChild(b); }
+          b.setAttribute('aria-expanded', open ? 'true' : 'false');
+          b.textContent = open ? 'Minder tonen' : 'Meer tonen';
+        });
       });
     });
   }
-  document.addEventListener('click', (e) => {
-    const b = e.target.closest('[data-fold]');
-    if (!b) return;
-    const t = b.closest('.tile');
-    const key = b.dataset.fold;
+  function toggleFold(t) {
+    const key = t.dataset.fold;
     const open = !unfolded.has(key);
     if (open) unfolded.add(key); else unfolded.delete(key);
+    const b = t.querySelector(':scope > .fold-btn');
+    if (b) { b.textContent = open ? 'Minder tonen' : 'Meer tonen'; b.setAttribute('aria-expanded', open ? 'true' : 'false'); }
+    const H = parseFloat(getComputedStyle(t).getPropertyValue('--fold-h')) || 320;
+    if (reduceMotion()) { t.classList.toggle('folded', !open); return; }
+    // Hoogte animeren: van de huidige naar de nieuwe hoogte, daarna weer vrij laten
+    const from = t.getBoundingClientRect().height;
+    t.classList.add('fold-anim');
     t.classList.toggle('folded', !open);
-    b.textContent = open ? 'Minder tonen' : 'Meer tonen';
-    b.setAttribute('aria-expanded', open ? 'true' : 'false');
-    if (!open) { const r = t.getBoundingClientRect(); if (r.top < 0) t.scrollIntoView({ block: 'start', behavior: reduceMotion() ? 'auto' : 'smooth' }); }
+    const to = open ? t.scrollHeight : Math.max(H, parseFloat(t.style.minHeight) || 0);
+    t.style.maxHeight = from + 'px';
+    void t.offsetHeight;
+    t.style.maxHeight = to + 'px';
+    const done = () => { t.classList.remove('fold-anim'); t.style.maxHeight = ''; t.removeEventListener('transitionend', done); };
+    t.addEventListener('transitionend', done);
+    setTimeout(done, 450);
+    if (!open) { const r = t.getBoundingClientRect(); if (r.top < 60) window.scrollBy({ top: r.top - 80, behavior: 'smooth' }); }
+  }
+  // Klik op een leeg stuk van de tegel (niet op een knop, link, invoerveld of regel die zelf iets opent)
+  const FOLD_IGNORE = 'a, input, select, textarea, label, summary, details, [data-open], [data-ticker]:not(.tile), [data-act], [data-plan], [data-cal], [data-export], [data-seg], .seg, [contenteditable]';
+  document.addEventListener('click', (e) => {
+    const t = e.target.closest('.tile.fold[data-fold]');
+    if (!t || t.tagName === 'BUTTON') return;
+    const fb = e.target.closest('.fold-btn');
+    if (!fb) {
+      const hit = e.target.closest(FOLD_IGNORE);
+      if (hit && t.contains(hit)) return;
+      const btn = e.target.closest('button');
+      if (btn && btn !== t && t.contains(btn)) return;
+      if (window.getSelection && String(window.getSelection()).length) return;
+    }
+    toggleFold(t);
   });
   let foldResize = null;
   window.addEventListener('resize', () => { clearTimeout(foldResize); foldResize = setTimeout(foldAll, 200); });
