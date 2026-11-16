@@ -9,7 +9,7 @@ crons = ["*/10 * * * *"]
 [[d1_databases]]
 binding = "DB"
 database_name = "investment-tracker"
-database_id = "VUL-HIER-HET-DATABASE-ID-IN"
+database_id = "fa2a3bfc-427c-4ee5-98a8-7f1737575f09"
 
 [vars]
 T212_BASE = "https://live.trading212.com"

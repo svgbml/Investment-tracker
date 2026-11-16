@@ -35,7 +35,14 @@ export default {
     }
     try {
       if (url.pathname === '/api/data' && request.method === 'GET') {
-        return json(await buildData(env), 200, cors);
+        // Het overzicht wordt na elke meting opgebouwd en bewaard; zo leest een websitevraag maar één rij.
+        const cached = await getKv(env, 'data_cache');
+        if (cached && !url.searchParams.has('fresh')) {
+          return new Response(cached, { status: 200, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...cors } });
+        }
+        const data = await buildData(env);
+        await setKv(env, 'data_cache', JSON.stringify(data));
+        return json(data, 200, cors);
       }
       if (url.pathname === '/api/run' && request.method === 'POST') {
         return json({ ok: true, message: await tick(env, new Date(), true) }, 200, cors);
@@ -208,7 +215,9 @@ async function tick(env, now, force) {
     const last = await getKv(env, 'last_week_snapshot');
     if (last !== p.day) msgs.push(await weeklySnapshot(env, now, false));
   }
-  return msgs.filter(Boolean).join(' ');
+  const text = msgs.filter(Boolean).join(' ');
+  if (text) await setKv(env, 'data_cache', JSON.stringify(await buildData(env)));
+  return text;
 }
 
 async function housekeeping(env, now) {
@@ -312,6 +321,7 @@ async function weeklySnapshot(env, now, force) {
     r2(num(p.walletImpact.currentValue)), r2(num(p.walletImpact.unrealizedProfitLoss)), num(p.quantity))));
   await batchChunks(env, stmts);
   await setKv(env, 'last_week_snapshot', day);
+  await setKv(env, 'data_cache', JSON.stringify(await buildData(env)));
   return `Weeksnapshot ${day}: accountwaarde €${account.toFixed(2)}, netto gestort €${netDeposits.toFixed(2)}.`;
 }
 
@@ -421,10 +431,20 @@ async function buildData(env) {
     const dayRows = intra.filter((r) => dayOf(r.ts) === lastDay);
     const byT = new Map();
     dayRows.forEach((r) => { if (!byT.has(r.ticker)) byT.set(r.ticker, []); byT.get(r.ticker).push(r); });
-    const { results: hist } = await env.DB.prepare(
-      'SELECT ticker, MAX(high) AS hi, MIN(low) AS lo FROM hours GROUP BY ticker'
+    // Hoogste/laagste ooit: uit de dagtabel, plus uren die nog niet in een dag zijn samengevat
+    const lastDayDone = (await getKv(env, 'last_day')) || '';
+    const sinceHour = lastDayDone ? Date.parse(lastDayDone + 'T00:00:00Z') + 22 * HOUR_MS : 0;
+    const { results: histD } = await env.DB.prepare(
+      'SELECT ticker, MAX(high) AS hi, MIN(low) AS lo FROM days GROUP BY ticker'
     ).all();
-    const histMap = new Map(hist.map((h) => [h.ticker, h]));
+    const { results: histH } = await env.DB.prepare(
+      'SELECT ticker, MAX(high) AS hi, MIN(low) AS lo FROM hours WHERE hour >= ? GROUP BY ticker'
+    ).bind(sinceHour).all();
+    const histMap = new Map();
+    [...histD, ...histH].forEach((h) => {
+      const o = histMap.get(h.ticker);
+      histMap.set(h.ticker, o ? { hi: Math.max(o.hi, h.hi), lo: Math.min(o.lo, h.lo) } : { hi: h.hi, lo: h.lo });
+    });
     const { results: ranges } = await env.DB.prepare(
       'SELECT ticker, AVG(range) AS ar, AVG(range_pct) AS arp, COUNT(*) AS n FROM days GROUP BY ticker'
     ).all();
@@ -497,6 +517,7 @@ async function importFromSheet(env, url, token) {
   if (lastH) await setKv(env, 'last_hour', String(lastH));
   const lastD = (data.days && data.days.rows || []).reduce((m, r) => (r[0].slice(0, 10) > m ? r[0].slice(0, 10) : m), '');
   if (lastD) await setKv(env, 'last_day', lastD);
+  await setKv(env, 'data_cache', JSON.stringify(await buildData(env)));
   return {
     weeks: (data.weeks || []).length,
     intraday: (data.intraday && data.intraday.rows || []).length,
