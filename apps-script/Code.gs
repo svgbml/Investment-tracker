@@ -135,14 +135,18 @@ function takeSnapshot_(overwriteToday) {
     const positions = t212Get_('/api/v0/equity/positions');
     const netDeposits = getNetDeposits_();
 
+    // Waarde en kostprijs uit de posities zelf: investments.currentValue en totalCost van
+    // Trading 212 bevatten ook cash (bijv. in pies), dus die optellen bij de cash telt dubbel.
     const cash = liveCash_(sum);
-    const accountValue = round2_(num_(sum.investments.currentValue) + cash);
+    const posValue = positions.reduce((s, p) => s + num_(p.walletImpact.currentValue), 0);
+    const posCost = positions.reduce((s, p) => s + num_(p.walletImpact.totalCost), 0);
+    const accountValue = round2_(posValue + cash);
 
     // Weekoverzicht
     const weekRow = findRowForDate_(shWeek, todayStr);
     if (weekRow.exists && !overwriteToday) return 'Snapshot van ' + todayStr + ' bestond al; niets toegevoegd.';
     shWeek.getRange(weekRow.row, 1, 1, W_INPUT_COLS).setValues([[
-      todayStr, accountValue, round2_(netDeposits), round2_(cash), round2_(num_(sum.investments.totalCost)),
+      todayStr, accountValue, round2_(netDeposits), round2_(cash), round2_(posCost),
     ]]);
     shWeek.getRange(weekRow.row, W_SRC_COL).setValue(SRC_API);
 

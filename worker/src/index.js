@@ -317,10 +317,14 @@ async function weeklySnapshot(env, now, force) {
   const positions = await t212(env, '/api/v0/equity/positions');
   const netDeposits = await netDepositsNow(env);
   const cash = num(sum.cash && sum.cash.availableToTrade) + num(sum.cash && sum.cash.inPies) + num(sum.cash && sum.cash.reservedForOrders);
-  const account = r2(num(sum.investments.currentValue) + cash);
+  // Waarde en kostprijs uit de posities zelf: investments.currentValue en totalCost van
+  // Trading 212 bevatten ook cash (bijv. in pies), dus die optellen bij de cash telt dubbel.
+  const posValue = positions.reduce((s, p) => s + num(p.walletImpact.currentValue), 0);
+  const posCost = positions.reduce((s, p) => s + num(p.walletImpact.totalCost), 0);
+  const account = r2(posValue + cash);
 
   const stmts = [env.DB.prepare('INSERT OR REPLACE INTO weeks (date, account_value, net_deposits, cash, cost_basis, source) VALUES (?,?,?,?,?,?)')
-    .bind(day, account, r2(netDeposits), r2(cash), r2(num(sum.investments.totalCost)), 'API')];
+    .bind(day, account, r2(netDeposits), r2(cash), r2(posCost), 'API')];
   const pStmt = env.DB.prepare('INSERT OR REPLACE INTO positions (date, ticker, name, value, unrealized, qty) VALUES (?,?,?,?,?,?)');
   positions.forEach((p) => stmts.push(pStmt.bind(day, shortTicker(p.instrument.ticker), p.instrument.name,
     r2(num(p.walletImpact.currentValue)), r2(num(p.walletImpact.unrealizedProfitLoss)), num(p.quantity))));

@@ -416,3 +416,33 @@ body[data-page="list"] .m-top, body[data-page="stats"] .m-top { background: rgba
 .md .m-hero .m-swipe { padding: 0 16px; }
 .m-chart { margin-top: 30px; }
 .m-chart .marker i { height: 12px; }
+
+/* Accountwaarde en markt */
+.clickable { cursor: pointer; border: 0; text-align: left; font: inherit; color: inherit; }
+button.m-stat.clickable:active { background: var(--bg); }
+.clickable .more { position: absolute; top: 18px; right: 18px; font-size: 12px; font-weight: 600; color: var(--accent); }
+.m-stat.clickable .more { position: static; order: 3; margin-top: 2px; }
+.tag { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--empty); color: var(--ink-2); }
+.tag.gain { background: #D7EEE2; color: #075E3A; }
+.tag.loss { background: #F6DDD7; color: #8E2617; }
+.tile.market { background: var(--band); }
+.tile.market .tag { background: #FFFFFF; color: var(--ink); }
+.m-row.market { background: var(--band); }
+.donut { position: relative; width: min(240px, 100%); aspect-ratio: 1; margin: 4px auto 8px; }
+.donut svg { width: 100%; height: 100%; animation: spinin .7s var(--ease) both; }
+.donut circle { cursor: pointer; transition: stroke-width .15s; }
+.donut circle:hover { stroke-width: 6.6; }
+.donut-c { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; pointer-events: none; }
+.donut-c b { font-size: 22px; }
+.donut-c span { font-size: 13px; color: var(--ink-2); }
+.legend-list .legend-row { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 0 4px; border-top: 1px solid var(--rule); }
+.legend-list i { flex: none; }
+.hbars { display: flex; flex-direction: column; }
+.hbars .r { display: grid; grid-template-columns: 58px minmax(0, 1fr) 84px; align-items: center; gap: 10px; min-height: 34px; padding: 0 4px; border: 0; border-top: 1px solid var(--rule); background: transparent; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.hbars .r:hover { background: var(--bg); }
+.hbars .tk { font-weight: 700; }
+.hbars .track { position: relative; height: 14px; }
+.hbars .mid { position: absolute; left: 50%; top: -4px; bottom: -4px; width: 1px; background: #C9CED6; }
+.hbars .pos { position: absolute; left: 50%; top: 0; bottom: 0; border-radius: 0 4px 4px 0; background: var(--gain); }
+.hbars .neg { position: absolute; right: 50%; top: 0; bottom: 0; border-radius: 4px 0 0 4px; background: var(--loss); }
+@keyframes spinin { from { opacity: 0; transform: rotate(-60deg) scale(.92); } to { opacity: 1; transform: none; } }

@@ -297,6 +297,19 @@
     m.companies.forEach((c) => { c.weight = m.totalValue ? c.value / m.totalValue : null; });
     m.byTk = new Map(m.companies.map((c) => [c.tk, c]));
     m.weeks = (data.weeks || []).filter((w) => isNum(w.accountValue)).map((w) => Object.assign({}, w, { t: parse(w.date) }));
+    const lw = m.weeks[m.weeks.length - 1];
+    if (m.tot.base && m.tot.base.kind === 'open' && lw && isNum(lw.cash) && m.lastT && lw.t < dayStart(m.lastT) && dayStart(m.lastT) - lw.t <= 4 * DAY) {
+      const prevInv = lw.accountValue - lw.cash;
+      if (prevInv > 0 && Math.abs(m.tot.value / prevInv - 1) <= MAX_DAY_MOVE) {
+        m.tot.change = m.tot.value - prevInv;
+        m.tot.changePct = m.tot.value / prevInv - 1;
+        m.tot.base = { kind: 'week', t: lw.t };
+      }
+    }
+    m.lastWeek = lw || null;
+    m.cash = lw && isNum(lw.cash) ? lw.cash : null;
+    m.accountNow = m.totalValue + (m.cash || 0);
+    m.bench = findBench(m.companies);
     const allT = seriesOf(TOTAL).daily;
     m.since = allT.length ? allT[0].t : m.lastT;
     m.canImport = !demo && isWorker();
@@ -355,9 +368,23 @@
   function baseText(o) {
     if (!o.base) return '';
     if (o.base.kind === 'close') return 'sinds het slot van ' + fD.format(o.base.t);
+    if (o.base.kind === 'week') return 'sinds de weekmeting van ' + fD.format(o.base.t);
     if (!o.base.t) return 'sinds de opening';
     const d = new Date(o.base.t);
     return d.getHours() * 60 + d.getMinutes() <= 8 * 60 + 30 ? 'sinds de opening om ' + fHM.format(o.base.t) : 'sinds de eerste meting om ' + fHM.format(o.base.t);
+  }
+
+  const BENCHES = [
+    ['S&P 500', /^(VUAG|VUSA|CSPX|SXR8|IUSA|SPY|VOO|IVV)$/, /s&p ?500/i],
+    ['Nasdaq 100', /^(SXRV|EQQQ|CNDX|EQAC|QQQ)$/, /nasdaq/i],
+    ['MSCI World', /^(IWDA|SWDA|EUNL|VWRL|VWCE|VWRA)$/, /msci world|all-world|ftse all/i],
+  ];
+  function findBench(list) {
+    for (const [label, re, nameRe] of BENCHES) {
+      const c = list.find((x) => re.test(x.tk)) || list.find((x) => nameRe.test(x.name));
+      if (c) return { label, c };
+    }
+    return null;
   }
 
   const itemOf = (tk) => (tk === TOTAL ? M.tot : M.byTk.get(tk));
@@ -733,11 +760,18 @@
     const unreal = sum(M.companies.map((c) => (isNum(c.unreal) ? c.unreal : 0)));
     const none = M.canImport ? 'Nog geen weekmeting' : 'De eerste weekmeting volgt zaterdag';
     return [
-      stat('Accountwaarde', last ? eur(last.accountValue) : '–', last ? (isNum(last.cash) ? 'incl. ' + eur(last.cash) + ' vrij saldo, ' : '') + 'stand ' + fDM.format(last.t) : none, '', spark(wk('accountValue'), C.accent)),
+      clickable(stat('Accountwaarde', eur(M.accountNow), M.cash != null ? 'beleggingen ' + eur(M.totalValue) + ' + ' + eur(M.cash) + ' vrij saldo' : 'alleen beleggingen; vrij saldo volgt na een weekmeting', '',
+        spark(wk('accountValue').concat(M.lastT ? [{ t: M.lastT, v: M.accountNow }] : []), C.accent)), '@account', 'Accountwaarde: bekijk waar je geld zit'),
       stat('Netto gestort', last ? eur(last.netDeposits) : '–', last ? (isNum(last.newDeposits) && last.newDeposits ? seur(last.newDeposits) + ' in de laatste week' : 'geen storting in de laatste week') : none, '', spark(wk('netDeposits'), C.ink2)),
       stat('Totaal resultaat', last ? seur(last.totalResult) : '–', last ? spct(last.totalResultPct) + ' op je inleg' : none, last ? tone(last.totalResult) : '', spark(wk('totalResult'), toneColor(last && last.totalResult))),
       stat('Ongerealiseerd', seur(unreal), 'open posities, nu', tone(unreal), spark(wk('unrealized'), toneColor(unreal))),
     ];
+  }
+
+  // Maak van een kaart een knop die inzoomt
+  function clickable(html, key, label) {
+    return html.replace(/^<section class="([^"]*)">/, '<button type="button" class="$1 clickable" data-ticker="' + key + '" aria-label="' + esc(label) + '">')
+      .replace(/<\/section>$/, '<span class="more" aria-hidden="true">Verdeling ›</span></button>');
   }
 
   function statCards(S) {
@@ -922,15 +956,16 @@
     const up = withChange.filter((c) => c.change > 0).length, down = withChange.filter((c) => c.change < 0).length;
     $('breadth').innerHTML = withChange.length ? split(up, down) + esc(up + ' gestegen, ' + down + ' gedaald') : '';
     $('link-all').textContent = 'Alle ' + M.companies.length + ' bedrijven bekijken';
-    $('movers-title').textContent = 'Grootste veranderingen ' + M.dayWord;
-    const top = withChange.slice().sort((a, b) => Math.abs(b.change) - Math.abs(a.change)).slice(0, 5);
-    fill('movers', top.length ? top.map((c) =>
-      '<button type="button" class="tile" data-ticker="' + esc(c.tk) + '" aria-label="' + esc(c.name + ', ' + seur(c.change) + ' ' + M.dayWord + '. Inzoomen') + '">' +
-        '<span class="row"><span class="tk">' + esc(c.tk) + '</span><span class="sub">' + esc(eur(c.value)) + '</span></span>' +
+    $('movers-title').textContent = 'Stijgers, markt en dalers ' + M.dayWord;
+    const mv = moversModel();
+    const moverTile = (c, kind) =>
+      '<button type="button" class="tile" data-ticker="' + esc(c.tk) + '" aria-label="' + esc(c.name + ', ' + spct(c.changePct) + ' ' + M.dayWord + '. Inzoomen') + '">' +
+        '<span class="row"><span class="tk">' + esc(c.tk) + '</span><span class="tag ' + tone(c.changePct) + '">' + esc(kind) + '</span></span>' +
         '<span class="nm">' + esc(c.name) + '</span>' +
-        '<span class="v big ' + tone(c.change) + '">' + esc(seur(c.change)) + '</span>' +
-        '<span class="' + tone(c.change) + '" style="font-weight:600">' + esc(spct(c.changePct)) + '</span>' +
-        spark(seriesFor(c.tk, 'today'), toneColor(c.change), 'spark tall') + '</button>')
+        '<span class="v big ' + tone(c.changePct) + '">' + esc(spct(c.changePct)) + '</span>' +
+        '<span class="sub"><b class="' + tone(c.change) + '">' + esc(seur(c.change)) + '</b> op ' + esc(eur(c.value)) + '</span>' +
+        spark(seriesFor(c.tk, 'today'), toneColor(c.changePct), 'spark tall') + '</button>';
+    fill('movers', mv.up.length ? mv.up.map((c) => moverTile(c, c.changePct > 0 ? 'Stijger' : 'Beste')).concat([marketTile(mv)], mv.down.map((c) => moverTile(c, c.changePct < 0 ? 'Daler' : 'Zwakste')))
       : ['<p class="empty">Nog geen metingen van vandaag.</p>']);
 
     fill('weeks', weekCards());
@@ -939,6 +974,42 @@
     fill('patterns', patternTiles(TOTAL, S));
     $('stats-note').textContent = statsNote(S);
     fill('stats', statCards(S));
+  }
+
+  function moversModel() {
+    const bench = M.bench;
+    const pool = M.companies.filter((c) => isNum(c.changePct) && (!bench || c.tk !== bench.c.tk));
+    const byPct = pool.slice().sort((a, b) => b.changePct - a.changePct);
+    const up = byPct.slice(0, 2);
+    const down = byPct.slice(-2).reverse().filter((c) => !up.includes(c));
+    // Portefeuille over dezelfde periode als de marktmaatstaf
+    let mine = M.tot.changePct;
+    if (bench && bench.c.base && M.tot.base && bench.c.base.kind !== M.tot.base.kind) {
+      const k = M.lastT == null ? null : dayKey(M.lastT);
+      const pts = (M.intra.get(TOTAL) || []).filter((p) => dayKey(p.t) === k);
+      mine = pts.length > 1 && pts[0].v > 0 ? pts[pts.length - 1].v / pts[0].v - 1 : null;
+    }
+    return { up, down, bench, mine, diff: bench && isNum(mine) && isNum(bench.c.changePct) ? mine - bench.c.changePct : null };
+  }
+
+  function vsMarket(mv) {
+    if (!isNum(mv.diff)) return '';
+    const pp = N2.format(Math.abs(mv.diff * 100)) + ' procentpunt';
+    return 'Jouw portefeuille ' + spct(mv.mine) + ': ' + (Math.abs(mv.diff) < 0.0005 ? 'gelijk aan de markt' : pp + (mv.diff > 0 ? ' beter' : ' slechter'));
+  }
+
+  function marketTile(mv) {
+    if (!mv.bench) {
+      return '<section class="tile market pad"><span class="row"><span class="tk">Markt</span></span>' +
+        '<span class="sub">Geen indexfonds (zoals een S&amp;P 500-ETF) in je portefeuille gevonden om de markt mee te meten.</span></section>';
+    }
+    const b = mv.bench.c;
+    return '<button type="button" class="tile market" data-ticker="' + esc(b.tk) + '" aria-label="' + esc('Markt, ' + mv.bench.label + ', ' + spct(b.changePct) + '. Inzoomen op ' + b.name) + '">' +
+      '<span class="row"><span class="tk">Markt</span><span class="tag">' + esc(mv.bench.label) + '</span></span>' +
+      '<span class="nm">gemeten via ' + esc(b.tk) + ', in euro</span>' +
+      '<span class="v big ' + tone(b.changePct) + '">' + esc(spct(b.changePct)) + '</span>' +
+      '<span class="sub">' + esc(vsMarket(mv)) + '</span>' +
+      spark(seriesFor(b.tk, 'today'), C.accent, 'spark tall') + '</button>';
   }
 
   const SORTS = [['move', 'Verandering'], ['value', 'Waarde'], ['result', 'Sinds aankoop'], ['name', 'Naam']];
@@ -1040,9 +1111,18 @@
     const withChange = M.companies.filter((c) => isNum(c.change));
     const up = withChange.filter((c) => c.change > 0).length, down = withChange.filter((c) => c.change < 0).length;
     $('m-breadth').innerHTML = withChange.length ? split(up, down) + esc(up + ' omhoog, ' + down + ' omlaag') : '';
-    $('m-movers-title').textContent = 'Grootste veranderingen';
-    const top = withChange.slice().sort((a, b) => Math.abs(b.change) - Math.abs(a.change)).slice(0, 5);
-    fill('m-movers', (top.length ? top.map((c) => mRow(c, seriesFor(c.tk, 'today'), { top: seur(c.change), bottom: spct(c.changePct), tone: c.change }))
+    $('m-movers-title').textContent = 'Stijgers, markt en dalers';
+    const mv = moversModel();
+    const row = (c) => mRow(c, seriesFor(c.tk, 'today'), { top: spct(c.changePct), bottom: seur(c.change), tone: c.changePct });
+    let market = '';
+    if (mv.bench) {
+      const b = mv.bench.c;
+      market = '<button type="button" class="m-row market" data-ticker="' + esc(b.tk) + '" aria-label="' + esc('Markt, ' + mv.bench.label + ', ' + spct(b.changePct)) + '">' +
+        '<span class="l"><span class="tk">Markt: ' + esc(mv.bench.label) + '</span><span class="nm">' + esc(isNum(mv.diff) ? 'Jij ' + spct(mv.mine) + ', ' + N2.format(Math.abs(mv.diff * 100)) + ' pp ' + (mv.diff >= 0 ? 'beter' : 'slechter') : 'via ' + b.tk) + '</span></span>' +
+        spark(seriesFor(b.tk, 'today'), C.accent, 'mspark') +
+        '<span class="rt"><b class="' + tone(b.changePct) + '">' + esc(spct(b.changePct)) + '</b><span class="chip-chg">via ' + esc(b.tk) + '</span></span></button>';
+    }
+    fill('m-movers', (mv.up.length ? mv.up.map(row).concat(market ? [market] : [], mv.down.map(row))
       : ['<p class="m-sub" style="padding:16px">Nog geen metingen van vandaag.</p>'])
       .concat(['<a class="m-more" href="#bedrijven">Alle ' + M.companies.length + ' bedrijven</a>']));
     fill('m-weeks', weekCards());
@@ -1114,8 +1194,97 @@
       '</div></div>';
   }
 
+  // ---------- Accountwaarde: waar zit je geld? ----------
+  const ACC = '@account';
+  const hasView = (k) => k === ACC || (M && M.byTk.has(k));
+  const viewHash = (k) => (k === ACC ? '#accountwaarde' : '#bedrijf/' + encodeURIComponent(k));
+  const PIE = ['#1E3A8A', '#2B5BD7', '#5B86E5', '#8FAEF0', '#0E7490', '#4FB3C8', '#6D28D9', '#A78BFA'];
+  const CASH = '#0B7A4B', REST = '#C9CED6';
+  const ETF_RE = /\bETF\b|UCITS|\((Acc|Dist)\)|iShares|Vanguard|Xtrackers|Amundi|SPDR|Invesco|Lyxor/i;
+
+  function donut(slices, c1, c2, label) {
+    const tot = sum(slices.map((x) => x.v)) || 1;
+    const gap = slices.length > 1 ? 0.5 : 0;
+    let acc = 0;
+    const arcs = slices.map((x) => {
+      const pct = (x.v / tot) * 100;
+      const len = Math.max(0.01, pct - gap);
+      const off = 25 - acc;
+      acc += pct;
+      return '<circle r="15.915" cx="21" cy="21" fill="none" stroke="' + x.color + '" stroke-width="5.4" stroke-dasharray="' + len.toFixed(3) + ' ' + (100 - len).toFixed(3) +
+        '" stroke-dashoffset="' + off.toFixed(3) + '" data-tip="' + esc(x.label + ': ' + eur(x.v) + ' (' + P1.format(x.v / tot) + ')') + '"></circle>';
+    }).join('');
+    return '<div class="donut"><svg viewBox="0 0 42 42" role="img" aria-label="' + esc(label) + '">' + arcs + '</svg>' +
+      '<div class="donut-c"><b>' + esc(c1) + '</b><span>' + esc(c2) + '</span></div></div>';
+  }
+
+  function renderAccount() {
+    const total = M.accountNow;
+    const cash = M.cash || 0;
+    const sorted = M.companies.slice().sort((a, b) => b.value - a.value);
+    const own = sorted.slice(0, PIE.length), rest = sorted.slice(PIE.length);
+    const restV = sum(rest.map((c) => c.value));
+    const slices = own.map((c, i) => ({ label: c.tk + ' ' + c.name, v: c.value, color: PIE[i], tk: c.tk }));
+    if (rest.length) slices.push({ label: 'Overige ' + rest.length + ' posities', v: restV, color: REST });
+    if (cash > 0) slices.push({ label: 'Vrij saldo', v: cash, color: CASH });
+    const pctOf = (v) => (total ? P1.format(v / total) : '–');
+    const legend = '<div class="legend-list">' + sorted.map((c, i) =>
+      '<button type="button" data-open="' + esc(c.tk) + '"><i style="background:' + (i < PIE.length ? PIE[i] : REST) + '"></i>' +
+      '<span class="nm">' + esc(c.tk) + ' <span class="muted">' + esc(c.name) + '</span></span>' +
+      '<span class="muted small">' + esc(eur(c.value)) + '</span><b style="min-width:52px;text-align:right">' + esc(pctOf(c.value)) + '</b></button>').join('') +
+      (cash > 0 ? '<div class="legend-row"><i style="background:' + CASH + '"></i><span class="nm">Vrij saldo</span><span class="muted small">' + esc(eur(cash)) + '</span><b style="min-width:52px;text-align:right">' + esc(pctOf(cash)) + '</b></div>' : '') + '</div>';
+
+    const etf = sum(M.companies.filter((c) => ETF_RE.test(c.name) || BENCHES.some((b) => b[1].test(c.tk))).map((c) => c.value));
+    const stocks = M.totalValue - etf;
+    const kinds = [{ label: 'Fondsen (ETF’s)', v: etf, color: '#1E3A8A' }, { label: 'Losse aandelen', v: stocks, color: '#8FAEF0' }];
+    if (cash > 0) kinds.push({ label: 'Vrij saldo', v: cash, color: CASH });
+    const kindLegend = '<div class="legend-list">' + kinds.filter((k) => k.v > 0).map((k) =>
+      '<div class="legend-row"><i style="background:' + k.color + '"></i><span class="nm">' + esc(k.label) + '</span><span class="muted small">' + esc(eur(k.v)) + '</span><b style="min-width:52px;text-align:right">' + esc(pctOf(k.v)) + '</b></div>').join('') + '</div>';
+
+    const pl = M.companies.filter((c) => isNum(c.unreal)).sort((a, b) => b.unreal - a.unreal);
+    const mx = Math.max(1e-9, ...pl.map((c) => Math.abs(c.unreal)));
+    const plBars = '<div class="hbars">' + pl.map((c) => {
+      const w = (Math.abs(c.unreal) / mx * 50).toFixed(1) + '%';
+      return '<button type="button" class="r" data-open="' + esc(c.tk) + '" data-tip="' + esc(c.name + ': ' + seur(c.unreal) + ' (' + spct1(c.resultPct) + ')') + '">' +
+        '<span class="tk">' + esc(c.tk) + '</span><span class="track"><span class="mid"></span><span class="' + (c.unreal < 0 ? 'neg' : 'pos') + '" style="width:' + w + '"></span></span>' +
+        '<span class="' + tone(c.unreal) + '" style="text-align:right;font-weight:600">' + esc(seur(c.unreal)) + '</span></button>';
+    }).join('') + '</div>';
+
+    const lw = M.lastWeek;
+    const unreal = sum(pl.map((c) => c.unreal));
+    const facts = kvList([
+      ['Beleggingen nu', eur(M.totalValue)],
+      ['Vrij saldo', M.cash != null ? eur(cash) + ' (stand ' + fDM.format(lw.t) + ')' : 'na de eerste weekmeting'],
+      ['Netto gestort', lw ? eur(lw.netDeposits) : '–'],
+      ['Resultaat nu', lw ? seur(total - lw.netDeposits) + ' (' + spct1((total - lw.netDeposits) / lw.netDeposits) + ')' : '–', lw ? tone(total - lw.netDeposits) : ''],
+      ['Ongerealiseerd', seur(unreal), tone(unreal)],
+      ['Posities', String(M.companies.length)],
+      ['Grootste positie', sorted[0] ? sorted[0].tk + ', ' + pctOf(sorted[0].value) : '–'],
+    ]);
+
+    const tiles = [
+      '<section class="tile pad"><h3>Verdeling over posities</h3>' + donut(slices, eur(total), 'accountwaarde', 'Verdeling van je accountwaarde over posities en vrij saldo') + legend + '</section>',
+      '<section class="tile pad"><h3>Soort belegging</h3>' + donut(kinds.filter((k) => k.v > 0), pctOf(etf), 'in fondsen', 'Verdeling over fondsen, losse aandelen en vrij saldo') + kindLegend +
+        '<p class="sub" style="margin-top:10px">Fondsen herkend aan de naam (ETF, UCITS, iShares, Vanguard en dergelijke).</p></section>',
+      '<section class="tile pad"><h3>Winst en verlies per positie</h3>' + plBars + '<p class="sub" style="margin-top:10px">Ongerealiseerd resultaat ten opzichte van wat je erin hebt gestoken. Klik op een positie voor de details.</p></section>',
+      '<section class="tile pad"><h3>In cijfers</h3>' + facts + '</section>',
+    ];
+    const head = '<p class="hero-label">Accountwaarde nu</p><h2 id="d-title" class="' + (mode === 'm' ? 'm-value' : 'hero-value') + '">' + esc(eur(total)) + '</h2>' +
+      '<p class="' + (mode === 'm' ? 'base' : 'hero-change muted') + '" style="' + (mode === 'm' ? 'padding:6px 0 0' : '') + '">' +
+      esc(M.cash != null ? 'Beleggingen ' + eur(M.totalValue) + ' nu, plus ' + eur(cash) + ' vrij saldo uit de weekmeting van ' + fDM.format(lw.t) + '.' : 'Alleen beleggingen; het vrije saldo komt uit de weekmeting.') + '</p>';
+    if (mode === 'm') {
+      return '<div class="md"><div class="m-dtop"><button type="button" class="m-back" data-act="back">‹ Terug</button><span class="t">Accountwaarde</span><span></span></div>' +
+        '<div class="m-hero"><div class="m-swipe">' + head + '</div></div>' +
+        '<div class="m-body"><div class="m-stack">' + tiles.join('') + '</div></div></div>';
+    }
+    return '<div class="band" style="padding-bottom:24px"><div class="d-top"><button type="button" class="btn dark" data-act="back">← Terug</button></div>' +
+      '<div class="hero-head"><div>' + head + '</div></div></div>' +
+      '<div class="wrap"><div class="grid wide">' + tiles.slice(0, 2).join('') + tiles[3] + '</div><div style="margin-top:16px">' + tiles[2] + '</div></div>';
+  }
+
   // ---------- Bedrijfspagina (beide weergaven) ----------
   function renderDetail(animate, swapDir) {
+    if (ui.detail === ACC) { $('detail-inner').innerHTML = renderAccount(); return; }
     const c = M.byTk.get(ui.detail);
     if (!c) return;
     const inner = $('detail-inner');
@@ -1153,6 +1322,8 @@
   }
 
   $('detail').addEventListener('click', (e) => {
+    const op = e.target.closest('[data-open]');
+    if (op) { switchDetail(op.dataset.open, 'r'); return; }
     const tab = e.target.closest('[data-tab]');
     if (tab) { ui.mTab = tab.dataset.tab; renderDetail(false); return; }
     const b = e.target.closest('[data-act]');
@@ -1209,7 +1380,7 @@
   }
 
   function openDetail(tk, originEl, push) {
-    if (!M || !M.byTk.has(tk)) return;
+    if (!M || !hasView(tk)) return;
     clearTimeout(zoomTimer);
     hideTip();
     const sh = shellEl();
@@ -1218,7 +1389,7 @@
     ui.compare = false;
     ui.mTab = 'pos';
     ui.origin = tk;
-    if (push) { history.pushState({ detail: tk }, '', '#bedrijf/' + encodeURIComponent(tk)); pushedDetail = true; }
+    if (push) { history.pushState({ detail: tk }, '', viewHash(tk)); pushedDetail = true; }
     renderDetail(true);
     ov.querySelectorAll('.ghost').forEach((g) => g.remove());
     ov.classList.remove('anim', 'open', 'pop', 'fade-out');
@@ -1258,10 +1429,10 @@
   }
 
   function switchDetail(tk, dir) {
-    if (!M.byTk.has(tk)) return;
+    if (!hasView(tk)) return;
+    if (ui.detail === ACC) { ui.detailRange = '3d'; ui.compare = false; ui.mTab = 'pos'; } else ui.origin = tk;
     ui.detail = tk;
-    ui.origin = tk;
-    history.replaceState({ detail: tk }, '', '#bedrijf/' + encodeURIComponent(tk));
+    history.replaceState({ detail: tk }, '', viewHash(tk));
     ov.scrollTo({ top: 0, behavior: reduceMotion() ? 'auto' : 'smooth' });
     renderDetail(false, reduceMotion() ? null : dir);
   }
@@ -1395,6 +1566,7 @@
   function parseHash() {
     const h = decodeURIComponent(location.hash.replace(/^#/, ''));
     if (h.indexOf('bedrijf/') === 0) return { tk: h.slice(8) };
+    if (h === 'accountwaarde') return { tk: '@account' };
     return { page: h === 'bedrijven' ? 'list' : h === 'statistieken' ? 'stats' : 'home' };
   }
 
@@ -1431,7 +1603,7 @@
     $$('.updated').forEach((e) => { e.textContent = mode === 'm' ? upd.replace('Bijgewerkt ', '') : upd; });
     renderAll();
     if (ui.detail) {
-      if (M.byTk.has(ui.detail)) renderDetail(false);
+      if (hasView(ui.detail)) renderDetail(false);
       else closeDetail();
     }
     if (firstRender) { firstRender = false; route(true); }
