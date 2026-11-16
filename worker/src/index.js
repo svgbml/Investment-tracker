@@ -65,6 +65,14 @@ export default {
     const url = new URL(request.url);
     const cors = corsHeaders(request, envIn);
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
+    // Agenda-abonnement: eigen code in het adres (Google Agenda kan geen kopregels meesturen)
+    const cal = /^\/cal\/([A-Za-z0-9_-]{20,80})\.ics$/.exec(url.pathname);
+    if (cal && request.method === 'GET') {
+      await ensureSchema(envIn);
+      const want = (await getKv(envIn, 'cal_token')) || '';
+      if (!want || !safeEqual(want, cal[1])) return new Response('Niet gevonden', { status: 404 });
+      return new Response(await buildIcs(envIn), { status: 200, headers: { 'Content-Type': 'text/calendar; charset=utf-8', 'Cache-Control': 'max-age=3600' } });
+    }
     if (!envIn.WEB_TOKEN) {
       return json({ ok: false, error: 'De Worker heeft nog geen WEB_TOKEN. Voeg die toe als geheim bij Cloudflare (Settings > Variables and Secrets).' }, 401, cors);
     }
@@ -75,6 +83,17 @@ export default {
     try {
       await ensureSchema(envIn);
       const env = await withKeys(envIn);
+      if (url.pathname === '/api/calendar' && request.method === 'POST') {
+        const body = await request.json().catch(() => ({}));
+        let tok = await getKv(env, 'cal_token');
+        if (!tok || (body && body.rotate)) {
+          const bytes = crypto.getRandomValues(new Uint8Array(24));
+          tok = btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+          await setKv(env, 'cal_token', tok);
+        }
+        if (body && body.off) { await setKv(env, 'cal_token', ''); return json({ ok: true, url: null }, 200, cors); }
+        return json({ ok: true, url: url.origin + '/cal/' + tok + '.ics' }, 200, cors);
+      }
       if (url.pathname === '/api/features' && request.method === 'GET') {
         return json({ ok: true, features: await featureStatus(env, envIn) }, 200, cors);
       }
@@ -246,7 +265,7 @@ async function saveKey(env, name, value) {
   await setKv(env, 'mkt_planned', '');
 }
 
-const FEATURE_DEFAULTS = { fx: true, inflation: true, sec: true, etfAuto: true };
+const FEATURE_DEFAULTS = { fx: true, inflation: true, sec: true, etfAuto: true, indices: true };
 async function featureFlags(env) {
   const s = await getSettings(env);
   return Object.assign({}, FEATURE_DEFAULTS, (s && s.features) || {});
@@ -293,6 +312,40 @@ function json(obj, status, headers) {
     status: status || 200,
     headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...(headers || {}) },
   });
+}
+
+function safeEqual(a, b) {
+  if (a.length !== b.length) return false;
+  let d = 0;
+  for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return d === 0;
+}
+
+// Agenda met kwartaalcijfers en dividenden (aangekondigd) als iCalendar-bestand
+async function buildIcs(env) {
+  let ev = null;
+  try { ev = JSON.parse((await getKv(env, 'events')) || 'null'); } catch (e) { ev = null; }
+  const esc2 = (t) => String(t).replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
+  const d8 = (s) => String(s).slice(0, 10).replace(/-/g, '');
+  const next = (s) => { const d = new Date(String(s).slice(0, 10) + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + 1); return d.toISOString().slice(0, 10).replace(/-/g, ''); };
+  const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
+  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//investment-tracker//NL', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
+    'X-WR-CALNAME:Beleggingen', 'X-WR-TIMEZONE:Europe/Amsterdam', 'REFRESH-INTERVAL;VALUE=DURATION:PT12H', 'X-PUBLISHED-TTL:PT12H'];
+  const add = (uid, date, summary, desc) => {
+    lines.push('BEGIN:VEVENT', 'UID:' + uid + '@investment-tracker', 'DTSTAMP:' + stamp, 'DTSTART;VALUE=DATE:' + d8(date), 'DTEND;VALUE=DATE:' + next(date),
+      'SUMMARY:' + esc2(summary), 'DESCRIPTION:' + esc2(desc), 'TRANSP:TRANSPARENT', 'END:VEVENT');
+  };
+  if (ev) {
+    (ev.earnings || []).forEach((e) => add('earn-' + e.ticker + '-' + e.date, e.date, 'Kwartaalcijfers ' + e.ticker,
+      'Verwachte winst per aandeel: ' + (e.epsEst != null ? e.epsEst : 'onbekend') + '. Bron: Financial Modeling Prep.'));
+    (ev.dividends || []).filter((d) => d.announced).forEach((d) => {
+      if (d.exDate) add('exdiv-' + d.ticker + '-' + d.exDate, d.exDate, 'Ex-dividend ' + d.ticker, 'Wie het aandeel vóór deze dag heeft, krijgt het dividend' + (d.estEur != null ? ' (ongeveer €' + d.estEur.toFixed(2) + ' bruto).' : '.'));
+      if (d.payDate) add('pay-' + d.ticker + '-' + d.payDate, d.payDate, 'Dividend ' + d.ticker + (d.estEur != null ? ' ≈ €' + d.estEur.toFixed(2) : ''), 'Uitbetaling van het dividend. Bron: Financial Modeling Prep.');
+    });
+  }
+  lines.push('END:VCALENDAR');
+  // Regels van max. 75 tekens (iCalendar)
+  return lines.map((l) => { let out = '', rest = l; while (rest.length > 74) { out += rest.slice(0, 74) + '\r\n '; rest = rest.slice(74); } return out + rest; }).join('\r\n') + '\r\n';
 }
 
 function authorized(request, url, env) {
@@ -741,6 +794,7 @@ async function buildData(env) {
     fin: extra.fin || {},
     fx: extra.fx || null,
     hicp: extra.hicp || null,
+    idx: extra.idx || null,
     features: { flags: extra.flags || {}, has: extra.has || {} },
     currency: 'EUR',
     weeks,
@@ -787,8 +841,10 @@ async function refreshEvents(env) {
   let prev = null;
   try { prev = JSON.parse((await getKv(env, 'events')) || 'null'); } catch (e) { prev = null; }
   const failed = new Set();
+  const watchList = (await watchStocks(env)).filter((w) => !held.some((h) => (SYMBOL_MAP[h.ticker] || h.ticker) === w.symbol))
+    .map((w) => ({ ticker: w.ticker, name: w.symbol, qty: 0, value: 0, eurPerUnit: null, etf: false, watch: true }));
   if (env.FMP_KEY) {
-    for (const h of held.filter((x) => !x.etf)) {
+    for (const h of held.filter((x) => !x.etf).concat(watchList)) {
       const sym = SYMBOL_MAP[h.ticker] || h.ticker;
       try {
         const er = await fmp(env, '/earnings?symbol=' + encodeURIComponent(sym));
@@ -922,6 +978,9 @@ async function saveSettings(env, body) {
     if (body && body[k] !== undefined) { const n = Number(body[k]); if (isFinite(n) && n >= 0 && n < 1e9) clean[k] = n; }
   });
   if (body && typeof body.targetMode === 'string' && /^(position|sector)$/.test(body.targetMode)) clean.targetMode = body.targetMode;
+  if (body && Array.isArray(body.watchlist)) {
+    clean.watchlist = [...new Set(body.watchlist.map((x) => String(x || '').trim().toUpperCase()).filter((x) => /^[A-Z0-9][A-Z0-9.\-]{0,11}$/.test(x)))].slice(0, 20);
+  }
   if (body && body.features && typeof body.features === 'object') {
     clean.features = Object.assign({}, cur.features || {});
     Object.keys(FEATURE_DEFAULTS).forEach((k) => { if (typeof body.features[k] === 'boolean') clean.features[k] = body.features[k]; });
@@ -1017,11 +1076,11 @@ async function extraData(env) {
     out.orders = results.map((r) => [isoLocal(r.ts), r.ticker, r.name, r.side, r.qty, r.price, r.currency, r.fx_rate, r.net, r.realised, r.fee_fx, r.fee_other, r.kind]);
   }
   out.research = {}; out.fin = {}; out.fx = null; out.hicp = null;
-  const { results: ext } = await env.DB.prepare("SELECT key, value FROM kv WHERE key LIKE 'rs\\_%' ESCAPE '\\' OR key LIKE 'fin\\_%' ESCAPE '\\' OR key IN ('fx', 'hicp')").all();
+  const { results: ext } = await env.DB.prepare("SELECT key, value FROM kv WHERE key LIKE 'rs\\_%' ESCAPE '\\' OR key LIKE 'fin\\_%' ESCAPE '\\' OR key IN ('fx', 'hicp', 'idx')").all();
   ext.forEach((r) => {
     try {
       const v = JSON.parse(r.value);
-      if (r.key === 'fx') out.fx = v; else if (r.key === 'hicp') out.hicp = v;
+      if (r.key === 'fx') out.fx = v; else if (r.key === 'hicp') out.hicp = v; else if (r.key === 'idx') out.idx = v;
       else if (r.key.startsWith('rs_')) out.research[r.key.slice(3)] = v; else out.fin[r.key.slice(4)] = v;
     } catch (e) { /* overslaan */ }
   });
@@ -1045,7 +1104,8 @@ const ymdUTC = (ms) => new Date(ms).toISOString().slice(0, 10);
 
 async function getJson(url, headers) {
   const res = await fetch(url, { headers: headers || {} });
-  return { status: res.status, ok: res.ok, body: res.ok ? await res.json() : await res.text().catch(() => '') };
+  if (!res.ok) return { status: res.status, ok: false, body: await res.text().catch(() => '') };
+  try { return { status: res.status, ok: true, body: await res.json() }; } catch (e) { return { status: res.status, ok: false, body: '' }; }
 }
 
 // Geeft het aantal gebruikte externe verzoeken terug
@@ -1076,6 +1136,19 @@ async function externalTask(env, kind, arg) {
     if (Object.keys(out.series).length) { await setKv(env, 'hicp', JSON.stringify(out)); await noteExtError(env, 'inflation', null); }
     return 2;
   }
+  if (kind === 'idx') {
+    // Dagkoersen van de S&P 500 en de Nasdaq-100 (koersindex, in dollars) uit FRED van de Federal Reserve Bank of St. Louis
+    const out = { updated: isoLocal(Date.now()), source: 'FRED (Federal Reserve Bank of St. Louis)', series: {} };
+    for (const id of ['SP500', 'NASDAQ100']) {
+      const res = await fetch('https://fred.stlouisfed.org/graph/fredgraph.csv?id=' + id + '&cosd=' + ymdUTC(Date.now() - 400 * 864e5),
+        { headers: { 'User-Agent': 'investment-tracker (persoonlijke beleggingstracker)' } });
+      if (!res.ok) { await noteExtError(env, 'indices', 'FRED gaf ' + res.status); continue; }
+      out.series[id] = (await res.text()).trim().split(/\r?\n/).slice(1).map((l) => l.split(','))
+        .filter((c) => /^\d{4}-\d{2}-\d{2}$/.test(c[0]) && isFinite(Number(c[1])) && c[1] !== '').map((c) => [c[0], Number(c[1])]);
+    }
+    if (Object.keys(out.series).length) { await setKv(env, 'idx', JSON.stringify(out)); await noteExtError(env, 'indices', null); }
+    return 2;
+  }
   if (kind === 'fh') return finnhubTask(env, arg);
   if (kind === 'sec') return secTask(env, arg);
   return 0;
@@ -1093,6 +1166,8 @@ async function finnhubTask(env, tk) {
     rec: '/stock/recommendation?symbol=' + sym,
     eps: '/stock/earnings?symbol=' + sym + '&limit=4',
     insider: '/stock/insider-transactions?symbol=' + sym + '&from=' + ymdUTC(Date.now() - 180 * 864e5) + '&to=' + today,
+    target: '/stock/price-target?symbol=' + sym,
+    sent: '/news-sentiment?symbol=' + sym,
   };
   let prev = {};
   try { prev = JSON.parse((await getKv(env, 'rs_' + tk)) || '{}'); } catch (e) { prev = {}; }
@@ -1118,6 +1193,11 @@ async function finnhubTask(env, tk) {
       const list = (b && Array.isArray(b.data) ? b.data : []).filter((x) => x.transactionDate);
       list.sort((a, c) => c.transactionDate.localeCompare(a.transactionDate));
       out.insider = list.slice(0, 25).map((x) => ({ name: x.name, date: x.transactionDate, code: x.transactionCode, change: numOrNull(x.change), price: numOrNull(x.transactionPrice), shares: numOrNull(x.share) }));
+    } else if (k === 'target') {
+      out.target = b && isFinite(Number(b.targetMean)) && Number(b.targetMean) > 0 ? { mean: numOrNull(b.targetMean), median: numOrNull(b.targetMedian), high: numOrNull(b.targetHigh), low: numOrNull(b.targetLow), updated: b.lastUpdated || null } : null;
+    } else if (k === 'sent') {
+      out.sent = b && b.sentiment ? { bull: numOrNull(b.sentiment.bullishPercent), bear: numOrNull(b.sentiment.bearishPercent), score: numOrNull(b.companyNewsScore),
+        sector: numOrNull(b.sectorAverageNewsScore), articles: b.buzz ? numOrNull(b.buzz.articlesInLastWeek) : null, buzz: b.buzz ? numOrNull(b.buzz.buzz) : null } : null;
     }
   }
   out.denied = denied;
@@ -1262,23 +1342,32 @@ async function heldStocks(env) {
   return results.filter((r) => !ETF_RE.test(r.name || '')).map((r) => ({ ticker: r.ticker, symbol: SYMBOL_MAP[r.ticker] || r.ticker }));
 }
 
+// Volglijst: aandelen die je niet hebt maar wel wilt volgen (ticker = beurssymbool)
+async function watchStocks(env) {
+  const s = await getSettings(env);
+  return ((s && s.watchlist) || []).map((sym) => ({ ticker: sym, symbol: sym, watch: true }));
+}
+
 // Zet de taken voor vandaag klaar (1x per dag na de agenda, of handmatig)
 async function planMarket(env) {
   await ensureMarketTables(env);
   const now = new Date();
   const usDay = lastUsDay(now);
   const held = await heldStocks(env);
+  const watch = (await watchStocks(env)).filter((w) => !held.some((h) => h.symbol === w.symbol));
+  const all = held.concat(watch);
   const tasks = [];
   const flags = await featureFlags(env);
-  // Bronnen zonder sleutel eerst: wisselkoersen en inflatie (1x per dag, klein)
+  // Bronnen zonder sleutel eerst: wisselkoersen, inflatie en indexen (1x per dag, klein)
   if (flags.fx) tasks.push('fx');
   if (flags.inflation) tasks.push('hicp');
-  if (env.FINNHUB_KEY) held.forEach((h) => tasks.push('fh:' + h.ticker));
+  if (flags.indices) tasks.push('idx');
+  if (env.FINNHUB_KEY) all.forEach((h) => tasks.push('fh:' + h.ticker));
   if (flags.sec && env.SEC_CONTACT) {
     const { results: fins } = await env.DB.prepare("SELECT key, value FROM kv WHERE key LIKE 'fin\\_%' ESCAPE '\\'").all();
     const age = new Map(fins.map((r) => { try { return [r.key.slice(4), JSON.parse(r.value).updated || '']; } catch (e) { return [r.key.slice(4), '']; } }));
     const weekAgo2 = new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10);
-    held.forEach((h) => { if ((age.get(h.ticker) || '') < weekAgo2) tasks.push('sec:' + h.ticker); });
+    all.forEach((h) => { if ((age.get(h.ticker) || '') < weekAgo2) tasks.push('sec:' + h.ticker); });
   }
   if (!env.FMP_KEY) {
     await setKv(env, 'mkt_queue', JSON.stringify(tasks));
@@ -1290,6 +1379,7 @@ async function planMarket(env) {
   const weekAgo = new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10);
   const symbols = new Set();
   const later = [];
+  watch.forEach((w) => symbols.add(w.symbol));
   for (const h of held) {
     symbols.add(h.symbol);
     const pr = peerMap.get(h.symbol);
@@ -1331,7 +1421,7 @@ async function marketStep(env) {
     const ci = task.indexOf(':');
     const kind = ci < 0 ? task : task.slice(0, ci), arg = ci < 0 ? '' : task.slice(ci + 1);
     try {
-      if (kind === 'fx' || kind === 'hicp' || kind === 'fh' || kind === 'sec') {
+      if (kind === 'fx' || kind === 'hicp' || kind === 'idx' || kind === 'fh' || kind === 'sec') {
         calls += await externalTask(env, kind, arg);
       } else if (!env.FMP_KEY) {
         // FMP-taak zonder sleutel: overslaan
@@ -1415,6 +1505,8 @@ async function marketData(env) {
     list.forEach((x) => want.add(x));
   });
   held.forEach((h) => want.add(h.symbol));
+  const watch = await watchStocks(env);
+  watch.forEach((w) => want.add(w.symbol));
   const { results: profRows } = await env.DB.prepare('SELECT symbol, data FROM ext_profile').all();
   const profiles = {};
   profRows.forEach((r) => { if (want.has(r.symbol)) profiles[r.symbol] = JSON.parse(r.data); });
@@ -1433,6 +1525,7 @@ async function marketData(env) {
   });
   return {
     symbols: Object.fromEntries(held.map((h) => [h.ticker, h.symbol])),
+    watch: watch.map((w) => w.symbol),
     peers, profiles, prices, sectors, industries: inds,
     updated: await getKv(env, 'mkt_planned'),
   };

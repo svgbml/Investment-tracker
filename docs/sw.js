@@ -3,8 +3,8 @@
  * Eerst het netwerk (zodat updates direct binnenkomen), bij geen verbinding de bewaarde versie.
  * Gegevens van de Worker gaan hier niet doorheen; de laatste stand bewaart de site zelf in de browser.
  */
-const CACHE = 'tracker-v20';
-const FILES = ['./', './index.html', './style.css?v=20', './app.js?v=20', './config.js?v=20', './manifest.webmanifest',
+const CACHE = 'tracker-v21';
+const FILES = ['./', './index.html', './style.css?v=21', './app.js?v=21', './config.js?v=21', './manifest.webmanifest',
   './icon-192.png', './icon-512.png', './apple-touch-icon.png', './favicon.png'];
 
 self.addEventListener('install', (e) => {

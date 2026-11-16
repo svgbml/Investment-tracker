@@ -13,10 +13,11 @@
   <meta name="apple-mobile-web-app-title" content="Beleggen">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>Investeringstracker</title>
+  <script>try{var t=localStorage.getItem('tracker.theme')||'auto';document.documentElement.dataset.theme=(t==='dark'||(t==='auto'&&matchMedia('(prefers-color-scheme: dark)').matches))?'dark':'light';}catch(e){}</script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20">
+  <link rel="stylesheet" href="style.css?v=21">
 </head>
 <body data-page="home">
 
@@ -50,6 +51,7 @@
       </nav>
       <div class="top-actions">
         <span class="updated"></span>
+        <button class="icon-btn btn-hide" type="button" aria-pressed="false" aria-label="Bedragen verbergen"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/><path class="slash" d="M4 4l16 16"/></svg></button>
         <button class="icon-btn btn-refresh" type="button" aria-label="Gegevens vernieuwen">
           <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5"/></svg>
         </button>
@@ -89,6 +91,8 @@
           <div id="sectors" class="grid wide stagger"></div>
           <div class="section-head"><h2>Valuta en koopkracht</h2><p class="muted small">Euro-dollarkoers en inflatie</p></div>
           <div id="macro" class="grid wide stagger"></div>
+          <div class="section-head"><h2>Risico</h2><p class="muted small">Hoe sterk je beleggingen schommelen, en waardoor</p></div>
+          <div id="risk" class="grid wide stagger"></div>
           <div class="section-head"><h2>Weken</h2></div>
           <div id="weeks" class="grid wide stagger"></div>
           <div class="section-head"><h2>Patronen</h2><p class="muted small" id="patterns-note">Van de hele portefeuille</p></div>
@@ -109,6 +113,9 @@
             <div class="group"><span class="lbl">Grafiek</span><div id="list-span" class="seg light" role="group" aria-label="Periode van de grafiek in de tegels"></div></div>
           </div>
           <div id="list-grid" class="grid stagger"></div>
+          <div class="section-head"><h2>Volglijst</h2><p class="muted small">Aandelen die je volgt zonder ze te hebben</p></div>
+          <div id="watch-add"></div>
+          <div id="watch-grid" class="grid stagger"></div>
         </div>
       </div>
 
@@ -129,6 +136,7 @@
       <h1 id="m-title">Overzicht</h1>
       <div class="m-top-actions">
         <span class="updated"></span>
+        <button class="m-icon btn-hide" type="button" aria-pressed="false" aria-label="Bedragen verbergen"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/><path class="slash" d="M4 4l16 16"/></svg></button>
         <button class="m-icon btn-refresh" type="button" aria-label="Gegevens vernieuwen">
           <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5"/></svg>
         </button>
@@ -166,6 +174,9 @@
         </div>
         <p id="m-list-sub" class="m-sub"></p>
         <div id="m-list-rows" class="m-card m-rows stagger"></div>
+        <div class="m-head"><h2>Volglijst</h2></div>
+        <div id="m-watch-add" class="m-list-tools"></div>
+        <div id="m-watch-rows" class="m-card m-rows stagger" style="margin:0 16px 24px"></div>
       </section>
 
       <section id="m-plan" class="m-view" hidden>
@@ -176,6 +187,8 @@
         <div class="m-body">
           <p id="m-stats-note" class="m-sub" style="padding:0"></p>
           <div id="m-stat-cards" class="m-grid2 stagger"></div>
+          <div class="m-head"><h2>Risico</h2></div>
+          <div id="m-risk" class="m-stack stagger"></div>
           <div class="m-head"><h2>Sectoren</h2></div>
           <div id="m-sectors" class="m-stack stagger"></div>
           <div class="m-head"><h2>Valuta en koopkracht</h2></div>
@@ -222,6 +235,14 @@
         <summary>Koppelingen en functies</summary>
         <div id="links-body"><p class="muted small">Sla eerst je toegangscode op.</p></div>
       </details>
+      <div class="install-box">
+        <h3>Weergave</h3>
+        <div class="seg light" role="group" aria-label="Thema">
+          <button type="button" data-theme-pick="light" aria-pressed="false">Licht</button>
+          <button type="button" data-theme-pick="dark" aria-pressed="false">Donker</button>
+          <button type="button" data-theme-pick="auto" aria-pressed="true">Automatisch</button>
+        </div>
+      </div>
       <div class="install-box" id="install-box">
         <h3>Als app op je telefoon of computer</h3>
         <p class="muted small" id="install-text">Zet de tracker op je beginscherm; hij opent dan als losse app en toont zonder verbinding de laatst geladen stand.</p>
@@ -247,8 +268,9 @@
   </dialog>
 
   <div id="tip" class="tip" role="status" hidden></div>
+  <div id="print-area" aria-hidden="true"></div>
 
-  <script src="config.js?v=20"></script>
-  <script src="app.js?v=20"></script>
+  <script src="config.js?v=21"></script>
+  <script src="app.js?v=21"></script>
 </body>
 </html>

@@ -39,7 +39,9 @@ Alle adressen vragen je toegangscode, als `?token=…` of als header `Authorizat
 | Instellingen van de site (streefverdeling, inleg, doel) | `GET` / `POST /api/settings` |
 | Status van koppelingen en functies | `GET /api/features` (alleen waar een sleutel staat, nooit de sleutel zelf) |
 | Sleutel opslaan of wissen | `POST /api/keys` met `{"name": "FINNHUB_KEY", "value": "…"}` (lege waarde wist) |
-| Functie zonder sleutel aan/uit | `POST /api/features` met `{"features": {"fx": true, "inflation": true, "sec": true, "etfAuto": true}}` |
+| Functie zonder sleutel aan/uit | `POST /api/features` met `{"features": {"fx": true, "inflation": true, "sec": true, "etfAuto": true, "indices": true}}` |
+| Agenda-link (iCal) maken, vernieuwen of uitzetten | `POST /api/calendar` met `{}`, `{"rotate": true}` of `{"off": true}` |
+| Agenda als iCal-bestand (zonder toegangscode, met geheime link) | `GET /cal/<token>.ics` |
 | Sector- en vergelijkingsgegevens: taken klaarzetten en afwerken | `POST /api/market?plan=1&steps=3` (zonder `plan` alleen afwerken) |
 | Eenmalig gegevens uit de sheet overnemen | `POST /api/import` met `{"url": "<Apps Script /exec-adres>", "token": "<code van de sheet>"}` |
 
@@ -86,6 +88,17 @@ Na de agenda zet de Worker elke ochtend taken klaar die hij buiten de meettijden
 - **SEC EDGAR** (`SEC_CONTACT`, wekelijks): omzet, nettowinst, bedrijfsresultaat en winst per aandeel per kalenderjaar uit de XBRL-gegevens (`companyconcept`). Elk verzoek draagt `investment-tracker (jouw e-mailadres)` als User-Agent, zoals de SEC vraagt. Alleen bedrijven die bij de SEC rapporteren.
 - **Euro-dollarkoers** (geen sleutel): ECB-referentiekoersen van 400 dagen via Frankfurter.
 - **Inflatie** (geen sleutel): HICP-index (2025 = 100) van de ECB voor Nederland en de eurozone.
+- **Indexen** (geen sleutel): S&P 500 en Nasdaq-100 (koersindex, zonder dividend) van FRED, voor "wat als alles in de index had gezeten" en als koershistorie voor de risicoberekening van indexfondsen.
+- **Koersdoel en nieuwsstemming** (Finnhub `price-target` en `news-sentiment`), als je abonnement ze toestaat.
+- **Volglijst**: symbolen uit `settings.watchlist` (maximaal 20) krijgen dezelfde gegevens als je posities: profiel, koersen, agenda en Finnhub/SEC.
+
+## Agenda in Google Agenda
+
+`POST /api/calendar` maakt een geheime link `…/cal/<token>.ics` met kwartaalcijfers en aangekondigde dividenddata. Voeg hem in Google Agenda toe via *Andere agenda's → Via URL*. Google haalt zo'n agenda zelf op, meestal een paar keer per dag. Met `{"rotate": true}` werkt de oude link niet meer.
+
+## Risico-indicatie
+
+De site rekent de indicatie zelf uit. De indeling volgt de Europese SRRI-klassen (1 tot 7) op basis van de jaarlijkse beweeglijkheid (volatiliteit): onder 0,5%, 2%, 5%, 10%, 15% en 25% en daarboven. Gebruikt worden de dagrendementen in euro van je huidige verdeling over het laatste jaar (koersen van FMP, FRED voor indexfondsen, anders je eigen metingen); is er voor minder dan 60% van je waarde koershistorie, dan je eigen weekrendementen. Het is een indicatie, geen officiële SRRI (die gebruikt 5 jaar weekrendementen).
 
 ## Grenzen
 
