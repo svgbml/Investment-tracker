@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Investeringstracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l5-5 4 3 7-8" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>Investeringstracker</span>
+    </div>
+    <div class="top-actions">
+      <span id="updated" class="muted"></span>
+      <button id="btn-refresh" class="btn ghost" type="button">Vernieuwen</button>
+      <button id="btn-settings" class="btn ghost" type="button">Instellingen</button>
+    </div>
+  </header>
+
+  <div id="demo-banner" class="banner" hidden>Je bekijkt voorbeeldgegevens. <button id="btn-demo-exit" class="linklike" type="button">Mijn eigen gegevens laden</button></div>
+  <div id="error" class="banner error" role="alert" hidden></div>
+
+  <main id="app" hidden>
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="hero-figures">
+        <h1 id="hero-title" class="sr-only">Overzicht</h1>
+        <p class="hero-label">Waarde beleggingen</p>
+        <p id="hero-value" class="hero-value"></p>
+        <p id="hero-change" class="hero-change"></p>
+        <dl class="hero-facts">
+          <div><dt>Accountwaarde</dt><dd id="f-account"></dd></div>
+          <div><dt>Netto gestort</dt><dd id="f-deposits"></dd></div>
+          <div><dt>Totaal resultaat</dt><dd id="f-result"></dd></div>
+          <div><dt>Ongerealiseerd</dt><dd id="f-unreal"></dd></div>
+        </dl>
+      </div>
+      <figure class="hero-chart">
+        <canvas id="chart-today" aria-label="Verloop van de totale waarde over de laatste 3 dagen"></canvas>
+        <figcaption class="muted">Totale waarde, laatste 3 dagen, per 10 minuten</figcaption>
+      </figure>
+    </section>
+
+    <section class="block" aria-labelledby="ladder-title">
+      <div class="block-head">
+        <h2 id="ladder-title">Vandaag per positie</h2>
+        <p class="muted legend-inline">
+          <span class="key key-band"></span> bereik vandaag
+          <span class="key key-avg"></span> gemiddelde
+          <span class="key key-now"></span> nu
+          <span class="key key-hist"></span> bereik in historie
+        </p>
+      </div>
+      <div class="ladder" role="table" aria-label="Dagbereik per positie">
+        <div class="ladder-row ladder-header" role="row">
+          <span role="columnheader">Positie</span>
+          <span role="columnheader" class="col-strip">Laagste tot hoogste</span>
+          <span role="columnheader" class="num">Waarde</span>
+          <span role="columnheader" class="num">Vandaag</span>
+        </div>
+        <div id="ladder-body"></div>
+      </div>
+      <p class="muted small">Klik op een positie voor het verloop per uur en per dag.</p>
+    </section>
+
+    <div class="grid-2">
+      <section class="block" aria-labelledby="weeks-title">
+        <h2 id="weeks-title">Accountwaarde en inleg per week</h2>
+        <div class="chart-box"><canvas id="chart-weeks"></canvas></div>
+      </section>
+      <section class="block" aria-labelledby="alloc-title">
+        <h2 id="alloc-title">Verdeling</h2>
+        <div class="chart-box tall"><canvas id="chart-alloc"></canvas></div>
+      </section>
+    </div>
+
+    <section class="block" aria-labelledby="weekres-title">
+      <h2 id="weekres-title">Beleggingsresultaat per week</h2>
+      <p class="muted small">Verandering van de accountwaarde zonder nieuwe stortingen.</p>
+      <div class="chart-box"><canvas id="chart-weekres"></canvas></div>
+    </section>
+  </main>
+
+  <section id="welcome" class="welcome" hidden>
+    <h1>Je beleggingen in één oogopslag</h1>
+    <p>Deze site toont de gegevens uit je Google Sheet "Investeringstracker Trading212". Vul de toegangscode in die het script in de sheet voor je heeft gemaakt (menu Trading 212, Website-toegangscode maken).</p>
+    <div class="welcome-actions">
+      <button id="btn-welcome-settings" class="btn primary" type="button">Toegangscode invullen</button>
+      <button id="btn-demo" class="btn ghost" type="button">Voorbeeldgegevens bekijken</button>
+    </div>
+  </section>
+
+  <dialog id="dlg-settings" aria-labelledby="dlg-settings-title">
+    <form method="dialog" id="form-settings">
+      <h2 id="dlg-settings-title">Instellingen</h2>
+      <label for="in-token">Toegangscode</label>
+      <input id="in-token" name="token" type="password" autocomplete="off" spellcheck="false" placeholder="Plak de code uit de sheet">
+      <p class="muted small">De code wordt alleen in deze browser bewaard.</p>
+      <label for="in-url">Adres van de web-app</label>
+      <input id="in-url" name="url" type="url" spellcheck="false" placeholder="https://script.google.com/macros/s/.../exec">
+      <p class="muted small">Laat leeg om het standaardadres uit config.js te gebruiken.</p>
+      <div class="dlg-actions">
+        <button value="forget" class="btn ghost danger" type="submit">Code vergeten</button>
+        <span class="spacer"></span>
+        <button value="cancel" class="btn ghost" type="submit">Annuleren</button>
+        <button value="save" class="btn primary" type="submit">Opslaan en laden</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-detail" class="wide" aria-labelledby="detail-title">
+    <div class="detail-head">
+      <h2 id="detail-title"></h2>
+      <button id="btn-detail-close" class="btn ghost" type="button" aria-label="Sluiten">Sluiten</button>
+    </div>
+    <div class="tabs" role="tablist">
+      <button role="tab" data-range="intraday" class="tab" aria-selected="true">3 dagen</button>
+      <button role="tab" data-range="hours" class="tab" aria-selected="false">30 dagen per uur</button>
+      <button role="tab" data-range="days" class="tab" aria-selected="false">Alles per dag</button>
+    </div>
+    <div class="chart-box"><canvas id="chart-detail"></canvas></div>
+    <dl id="detail-stats" class="detail-stats"></dl>
+  </dialog>
+
+  <footer class="foot muted small">
+    Gegevens: Trading 212 Public API via Google Sheets. Teruggerekende weken gebruiken slotkoersen uit Google Finance.
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
