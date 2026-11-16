@@ -814,8 +814,9 @@ async function refreshEtf(env) {
     try {
       const res = await fetch(src.url, { headers: { 'User-Agent': 'Mozilla/5.0 (investment-tracker; persoonlijk gebruik)', Accept: 'text/csv,*/*' } });
       if (!res.ok) throw new Error('status ' + res.status);
-      const parsed = parseHoldings(await res.text());
-      if (!parsed) throw new Error('geen lijst in het bestand');
+      const text = await res.text();
+      const parsed = parseHoldings(text);
+      if (!parsed) throw new Error('geen lijst in het bestand (' + (res.headers.get('content-type') || '?') + ', ' + text.length + ' tekens, begint met: ' + text.slice(0, 160).replace(/\s+/g, ' ') + ')');
       await setKv(env, 'etf_' + key, JSON.stringify(Object.assign({ label: src.label, fund: src.fund }, parsed)));
     } catch (e) { errs.push('ETF ' + src.label + ': ' + e.message); }
   }
