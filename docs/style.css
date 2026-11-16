@@ -610,7 +610,7 @@ button.m-stat.clickable:active { background: var(--bg); }
 
 /* Risico */
 .risk-head { display: flex; align-items: center; gap: 14px; margin: 2px 0 10px; }
-.risk-head .v.big { font-size: 40px; font-weight: 700; line-height: 1; }
+.risk-head .v.big { font-size: 40px; font-weight: 700; line-height: 1; white-space: nowrap; flex: none; }
 .risk-head .v.big small { font-size: 16px; font-weight: 600; color: var(--ink-2); }
 .risk-head > span:last-child { display: flex; flex-direction: column; gap: 2px; }
 .srri { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }

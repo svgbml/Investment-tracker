@@ -2684,7 +2684,7 @@
       '<div style="margin-top:12px">' + kvList([
         ['Met je huidige verdeling, laatste jaar', isNum(R.simVol) ? P1.format(R.simVol) + ' per jaar (klasse ' + srri(R.simVol) + ')' : '–'],
         ['Je eigen weken (' + R.wkN + ')', isNum(R.wkVol) ? P1.format(R.wkVol) + ' per jaar (klasse ' + srri(R.wkVol) + ')' : 'na 4 weken'],
-        ['Een slechte dag (1 op 20)', isNum(R.badDay) ? spct(R.badDay) + ', nu ongeveer ' + eur(R.badDay * total) : '–', 'loss'],
+        ['Een slechte dag (1 op 20)', isNum(R.badDay) ? spct(R.badDay) + ', nu ongeveer ' + seur(R.badDay * total) : '–', 'loss'],
         ['Grootste daling in het laatste jaar', isNum(R.mdd) ? spct1(R.mdd) + ' van top tot dal' : '–', 'loss'],
       ]) + '</div>' +
       '<p class="sub" style="margin-top:8px">Indeling zoals de Europese risico-indicator voor fondsen (SRRI, 1 tot 7): hoe sterker de waarde schommelt, hoe hoger de klasse. ' +
