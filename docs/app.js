@@ -226,6 +226,8 @@
       keys: [['FMP_KEY', 'API-sleutel']], href: 'https://site.financialmodelingprep.com/register' },
     { id: 'finnhub', title: 'Finnhub', need: 'gratis sleutel', what: 'Nieuws per aandeel, wat analisten vinden, verrassingen bij kwartaalcijfers en insiderhandel (Amerikaanse aandelen).',
       keys: [['FINNHUB_KEY', 'API-sleutel']], href: 'https://finnhub.io/register' },
+    { id: 'av', title: 'Alpha Vantage', need: 'gratis sleutel (reserve)', what: 'Reserve voor Finnhub: vult nieuws, nieuwsstemming, analisten, koersdoel, kwartaalcijfers en insiderhandel aan als Finnhub ze niet levert. Gratis zijn 25 verzoeken per dag, dus een paar aandelen per dag.',
+      keys: [['ALPHAVANTAGE_KEY', 'API-sleutel']], href: 'https://www.alphavantage.co/support/#api-key' },
     { id: 'sec', title: 'SEC EDGAR', need: 'e-mailadres', what: 'Bedrijfscijfers over meerdere jaren (omzet, winst, marge) uit de officiële jaarverslagen. De SEC vraagt een contactadres bij elk verzoek; dat blijft in je Worker.',
       keys: [['SEC_CONTACT', 'Je e-mailadres']], flag: 'sec', href: 'https://www.sec.gov/search-filings/edgar-application-programming-interfaces' },
     { id: 'fx', title: 'Euro-dollarkoers (ECB)', need: 'geen sleutel', what: 'Referentiekoersen van de Europese Centrale Bank via Frankfurter, voor het valuta-overzicht.', flag: 'fx', href: 'https://frankfurter.dev/' },
@@ -2078,7 +2080,8 @@
   const FEAT = () => (data && data.features) || { flags: {}, has: {} };
   const offTile = (title, text) => '<section class="tile pad"><h3>' + esc(title) + '</h3><p class="muted">' + esc(text) + '</p>' +
     (demo ? '' : '<button type="button" class="linklike small" data-act="links">Koppelingen openen</button>') + '</section>';
-  const INSIDER_CODES = { P: 'Koop', S: 'Verkoop', M: 'Opties omgezet', A: 'Toegekend', F: 'Ingehouden (belasting)', G: 'Geschonken', D: 'Teruggegeven', C: 'Omgezet', X: 'Opties omgezet' };
+  const srcOf = (R, k) => (R && R.src && R.src[k]) || 'finnhub';
+  const INSIDER_CODES = { AQ: 'Verkregen', DS: 'Afgestaan', P: 'Koop', S: 'Verkoop', M: 'Opties omgezet', A: 'Toegekend', F: 'Ingehouden (belasting)', G: 'Geschonken', D: 'Teruggegeven', C: 'Omgezet', X: 'Opties omgezet' };
   const bigNum = (v, unit) => {
     if (!isNum(v)) return '–';
     const cur = unit && unit !== 'USD' ? ' ' + unit : ' $';
@@ -2095,7 +2098,7 @@
     if (isFund) return ['<section class="tile pad"><h3>Nieuws en cijfers</h3><p class="muted">Voor fondsen zijn er geen bedrijfsnieuws, analisten of jaarcijfers; kijk bij de bedrijven erin (Plannen > Werkelijke spreiding).</p></section>'];
     const R = (data.research || {})[c.tk];
     const tiles = [];
-    const finnhubOff = !F.has.finnhub && !demo;
+    const finnhubOff = !F.has.finnhub && !F.has.av && !demo;
     const wait = 'De gegevens worden opgehaald buiten de meettijden; kom straks terug.';
     // Nieuws
     if (finnhubOff) tiles.push(offTile('Nieuws', 'Zet Finnhub aan (gratis sleutel) om het laatste nieuws per aandeel te zien.'));
@@ -2105,7 +2108,7 @@
       tiles.push('<section class="tile pad"><h3>Nieuws</h3>' + (news.length ? '<div class="news">' + news.map((n) =>
         '<a class="news-i" href="' + esc(n.url) + '" target="_blank" rel="noopener"><span class="news-m">' + toneTag(n) + esc(fD.format(n.t) + (n.source ? ', ' + n.source : '')) + '</span><span class="news-t">' + esc(n.headline) + '</span></a>').join('') + '</div>'
         : '<p class="muted">Geen nieuws in de afgelopen tien dagen' + (c.cur && c.cur !== 'USD' ? ' (Finnhub heeft nieuws alleen voor Noord-Amerikaanse bedrijven)' : '') + '.</p>') +
-        '<p class="sub" style="margin-top:8px">Koppen en links van Finnhub; het artikel opent bij de bron.</p></section>');
+        '<p class="sub" style="margin-top:8px">Koppen en links van ' + (srcOf(R, 'news') === 'av' ? 'Alpha Vantage' : 'Finnhub') + '; het artikel opent bij de bron.</p></section>');
     }
     // Analisten
     if (finnhubOff) tiles.push(offTile('Wat analisten vinden', 'Zet Finnhub aan (gratis sleutel) om aanbevelingen van analisten en kwartaalverrassingen te zien.'));
@@ -2137,19 +2140,22 @@
       if ((R.denied || []).includes('insider')) tiles.push(offTile('Insiderhandel', 'Insiderhandel zit niet in je Finnhub-abonnement.'));
       else {
         const ins = R.insider || [];
-        const ps = ins.filter((x) => x.code === 'P' || x.code === 'S');
+        // Alpha Vantage kent alleen verkregen en afgestaan; kopen en toekenning zijn daar niet te scheiden
+        const avIns = srcOf(R, 'insider') === 'av';
+        const BUY = avIns ? 'AQ' : 'P', SELL = avIns ? 'DS' : 'S';
+        const ps = ins.filter((x) => x.code === BUY || x.code === SELL);
         const netSh = sum(ps.map((x) => x.change || 0));
         const netVal = sum(ps.map((x) => (x.change || 0) * (x.price || 0)));
-        const buyers = new Set(ins.filter((x) => x.code === 'P').map((x) => x.name)).size, sellers = new Set(ins.filter((x) => x.code === 'S').map((x) => x.name)).size;
+        const buyers = new Set(ins.filter((x) => x.code === BUY).map((x) => x.name)).size, sellers = new Set(ins.filter((x) => x.code === SELL).map((x) => x.name)).size;
         tiles.push('<section class="tile pad"><h3>Insiderhandel</h3>' + (ins.length ? kvList([
-            ['Laatste 6 maanden, kopen en verkopen', ps.length ? (netSh >= 0 ? 'per saldo gekocht' : 'per saldo verkocht') : 'geen', ps.length ? (netSh >= 0 ? 'gain' : 'loss') : ''],
+            [avIns ? 'Laatste 6 maanden, verkregen en afgestaan' : 'Laatste 6 maanden, kopen en verkopen', ps.length ? (netSh >= 0 ? (avIns ? 'per saldo verkregen' : 'per saldo gekocht') : (avIns ? 'per saldo afgestaan' : 'per saldo verkocht')) : 'geen', ps.length ? (netSh >= 0 ? 'gain' : 'loss') : ''],
             ['Waarde (koop min verkoop)', ps.length ? bigNum(netVal, 'USD') : '–', tone(netVal)],
             ['Kopers en verkopers', buyers + ' en ' + sellers],
           ]) + '<div class="tx-list" style="margin-top:8px">' + ins.slice(0, 6).map((x) =>
-            '<div class="tx"><span class="tag' + (x.code === 'P' ? ' gain' : x.code === 'S' ? ' loss' : '') + '">' + esc(INSIDER_CODES[x.code] || x.code || '?') + '</span>' +
+            '<div class="tx"><span class="tag' + (x.code === BUY ? ' gain' : x.code === SELL ? ' loss' : '') + '">' + esc(INSIDER_CODES[x.code] || x.code || '?') + '</span>' +
             '<span class="tx-m"><b>' + esc(x.name || '') + '</b><span class="sub">' + esc(x.date ? fD.format(ymd(x.date)) + ' ' + x.date.slice(0, 4) : '') + '</span></span>' +
             '<span class="tx-v">' + esc(isNum(x.change) ? sgn(x.change, NI) + ' st.' : '') + (isNum(x.price) && x.price > 0 ? '<span class="sub">à $' + esc(N2.format(x.price)) + '</span>' : '') + '</span></div>').join('') + '</div>' +
-          '<p class="sub" style="margin-top:8px">Uit meldingen bij de toezichthouder. Verkopen gebeuren vaak volgens vaste plannen of voor belasting; kopen met eigen geld zegt meestal meer.</p>'
+          '<p class="sub" style="margin-top:8px">Uit meldingen bij de toezichthouder' + (avIns ? ', via Alpha Vantage. Verkregen omvat ook toegekende aandelen en opties, dus niet alleen kopen met eigen geld' : '') + '. Verkopen gebeuren vaak volgens vaste plannen of voor belasting; kopen met eigen geld zegt meestal meer.</p>'
           : '<p class="muted">Geen meldingen in de afgelopen 6 maanden.</p>') + '</section>');
       }
     }
@@ -2195,16 +2201,18 @@
     if (!T || !isNum(T.mean)) return (R.denied || []).includes('target') ? '<p class="sub" style="margin-top:8px">Koersdoelen zitten niet in je Finnhub-abonnement.</p>' : '';
     const price = isNum(c.priceNative) ? c.priceNative : null;
     const cur = c.cur || 'USD';
-    const lo = Math.min(T.low, price || T.low), hi = Math.max(T.high, price || T.high);
+    const span = isNum(T.low) && isNum(T.high);
+    const pts = [T.low, T.high, T.mean, price].filter(isNum);
+    const lo = Math.min(...pts), hi = Math.max(...pts);
     const pos = (v) => (hi > lo ? ((v - lo) / (hi - lo) * 100).toFixed(1) + '%' : '50%');
     const up = price ? T.mean / price - 1 : null;
     return '<h3 style="margin-top:14px">Koersdoel</h3>' +
-      '<div class="tgt"><span class="tgt-rail"></span><span class="tgt-band" style="left:' + pos(T.low) + ';width:calc(' + pos(T.high) + ' - ' + pos(T.low) + ')"></span>' +
+      '<div class="tgt"><span class="tgt-rail"></span>' + (span ? '<span class="tgt-band" style="left:' + pos(T.low) + ';width:calc(' + pos(T.high) + ' - ' + pos(T.low) + ')"></span>' : '') +
         '<span class="tgt-mean" style="left:' + pos(T.mean) + '" data-tip="' + esc('Gemiddeld koersdoel ' + money(T.mean, cur)) + '"></span>' +
         (price ? '<span class="tgt-now" style="left:' + pos(price) + '" data-tip="' + esc('Koers nu ' + money(price, cur)) + '"></span>' : '') + '</div>' +
-      '<div class="range-labels"><span>laagste ' + esc(money(T.low, cur)) + '</span><span>hoogste ' + esc(money(T.high, cur)) + '</span></div>' +
+      (span ? '<div class="range-labels"><span>laagste ' + esc(money(T.low, cur)) + '</span><span>hoogste ' + esc(money(T.high, cur)) + '</span></div>' : '') +
       '<p class="sub" style="margin-top:6px">Gemiddeld koersdoel ' + esc(money(T.mean, cur)) + (isNum(up) ? ', ' + esc(spct1(up)) + ' ten opzichte van de koers nu' : '') +
-        '. Streep: gemiddelde, stip: koers nu. Koersdoelen zijn meningen van analisten, geen voorspelling.</p>';
+        '. Streep: gemiddelde, stip: koers nu' + (srcOf(R, 'target') === 'av' ? ' (Alpha Vantage, zonder hoogste en laagste)' : '') + '. Koersdoelen zijn meningen van analisten, geen voorspelling.</p>';
   }
 
   // Stemming in het nieuws (Finnhub, alleen Amerikaanse bedrijven)
@@ -4892,7 +4900,7 @@
     const host = mode === 'm' ? $('m-news-body') : $('news-body');
     if (!host) return;
     const F = FEAT();
-    if (!F.has.finnhub && !demo) { host.innerHTML = '<div class="grid wide">' + offTile('Nieuws en analisten', 'Zet Finnhub aan (gratis sleutel) bij Koppelingen voor nieuws per aandeel, marktnieuws, analisten en insiderhandel.') + '</div>'; return; }
+    if (!F.has.finnhub && !F.has.av && !demo) { host.innerHTML = '<div class="grid wide">' + offTile('Nieuws en analisten', 'Zet Finnhub aan (gratis sleutel) bij Koppelingen voor nieuws per aandeel, marktnieuws, analisten en insiderhandel.') + '</div>'; return; }
     host.innerHTML = '<div class="grid wide">' + newsListTile() + suggestTile() + '</div>' +
       '<div class="section-head"><h2>Analisten</h2><p class="muted small">Aanbevelingen, koersdoelen en hoe betrouwbaar ze zijn</p></div><div class="grid wide">' + analystTableTile() + reliabilityTile() + '</div>' +
       '<div class="section-head"><h2>Insiders</h2><p class="muted small">Kopen en verkopen bestuurders zelf?</p></div><div class="grid wide">' + insiderTile() + '</div>';
@@ -5403,6 +5411,13 @@
       const ph = prices[tk] || [];
       research[tk].targetHist = ph.length > 5 ? ph.filter((p, k) => k % 5 === 0).map(([d, v]) => ({ d, mean: +(v * (0.9 + rnd() * 0.3)).toFixed(2) })) : [];
     });
+    // LMT laat zien hoe een aanvulling van Alpha Vantage eruitziet (koersdoel zonder bandbreedte, verkregen/afgestaan)
+    if (research.LMT) {
+      const L = research.LMT;
+      L.target = { mean: L.target.mean, median: null, high: null, low: null, updated: dIn(-1) };
+      L.insider = [{ name: 'Voorbeeld bestuurder', date: dIn(-12), code: 'DS', change: -1200, price: 470, shares: null }, { name: 'Voorbeeld directeur', date: dIn(-40), code: 'AQ', change: 3000, price: 0, shares: null }];
+      L.src = { target: 'av', insider: 'av', news: 'av' };
+    }
     const marketNews = { updated: iso(now), items: [1, 3, 5, 8, 12, 20, 26, 30].map((h, k) => ({ t: now.getTime() - h * HOUR,
       headline: ['Voorbeeld: centrale bank houdt rente gelijk', 'Voorbeeld: techaandelen stijgen na sterke cijfers', 'Voorbeeld: olieprijs daalt', 'Voorbeeld: euro sterker tegenover dollar',
         'Voorbeeld: chipmakers onder druk', 'Voorbeeld: inflatie in de VS lager dan verwacht', 'Voorbeeld: beurzen in Azië gemengd', 'Voorbeeld: overname in de zorgsector'][k] + ' (geen echt nieuws)',

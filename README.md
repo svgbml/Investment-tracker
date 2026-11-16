@@ -37,6 +37,7 @@ Zet ze aan op de website onder *Instellingen → Koppelingen en functies*. Sleut
 | Agenda (kwartaalcijfers, dividenden), sector en branche, vergelijkbare bedrijven | [Financial Modeling Prep](https://site.financialmodelingprep.com/register) | gratis sleutel (`FMP_KEY`) |
 | Volglijst (aandelen die je niet hebt), agenda in Google Agenda | Financial Modeling Prep | gratis sleutel (`FMP_KEY`) |
 | Nieuws per aandeel, wat analisten vinden, koersdoel, nieuwsstemming, kwartaalverrassingen, insiderhandel | [Finnhub](https://finnhub.io/register) | gratis sleutel (`FINNHUB_KEY`); koersdoel en stemming alleen als je abonnement ze toestaat |
+| Reserve voor Finnhub: vult nieuws, stemming, analisten, koersdoel, kwartaalcijfers en insiderhandel aan als Finnhub ze niet levert | [Alpha Vantage](https://www.alphavantage.co/support/#api-key) | gratis sleutel (`ALPHAVANTAGE_KEY`), optioneel; 25 verzoeken per dag, dus een paar aandelen per dag |
 | Bedrijfscijfers over meerdere jaren (omzet, winst, marge) | [SEC EDGAR](https://www.sec.gov/search-filings/edgar-application-programming-interfaces) | je e-mailadres als contact (`SEC_CONTACT`) |
 | Euro-dollarkoers en dollar-blootstelling | ECB via [Frankfurter](https://frankfurter.dev/) | niets (staat standaard aan) |
 | Rendement na inflatie | [ECB Data Portal](https://data.ecb.europa.eu/main-figures/inflation) (HICP) | niets (staat standaard aan) |

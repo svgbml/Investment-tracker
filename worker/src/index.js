@@ -246,7 +246,7 @@ async function ensureSchema(env) {
 }
 
 // Sleutels die via de website zijn ingevuld; een geheim bij Cloudflare gaat altijd voor
-const KEY_NAMES = ['T212_KEY', 'T212_SECRET', 'FMP_KEY', 'FINNHUB_KEY', 'SEC_CONTACT', 'FRED_KEY'];
+const KEY_NAMES = ['T212_KEY', 'T212_SECRET', 'FMP_KEY', 'FINNHUB_KEY', 'SEC_CONTACT', 'FRED_KEY', 'ALPHAVANTAGE_KEY'];
 
 async function withKeys(env) {
   let stored = {};
@@ -1136,7 +1136,7 @@ async function extraData(env) {
     } catch (e) { /* overslaan */ }
   });
   out.flags = await featureFlags(env);
-  out.has = { fmp: !!env.FMP_KEY, finnhub: !!env.FINNHUB_KEY, sec: !!env.SEC_CONTACT, t212: !!(env.T212_KEY && env.T212_SECRET) };
+  out.has = { fmp: !!env.FMP_KEY, finnhub: !!env.FINNHUB_KEY, av: !!env.ALPHAVANTAGE_KEY, sec: !!env.SEC_CONTACT, t212: !!(env.T212_KEY && env.T212_SECRET) };
   const { results: kvs } = await env.DB.prepare("SELECT key, value FROM kv WHERE key LIKE 'peil_%' OR key LIKE 'etf\\_%' ESCAPE '\\'").all();
   kvs.forEach((r) => {
     try {
@@ -1221,8 +1221,122 @@ async function externalTask(env, kind, arg) {
     return 1;
   }
   if (kind === 'fh') return finnhubTask(env, arg);
+  if (kind === 'av') return avTask(env, arg);
   if (kind === 'sec') return secTask(env, arg);
   return 0;
+}
+
+// ---------- Alpha Vantage: reserve voor Finnhub ----------
+// Gratis sleutel: 25 verzoeken per dag en 5 per minuut. Vult alleen aan wat Finnhub niet levert
+// (geen sleutel, limiet, ontbrekend onderdeel in het abonnement of al dagen geen nieuwe gegevens).
+const AV_BASE = 'https://www.alphavantage.co/query';
+const AV_DAY_BUDGET = 24;
+const AV_PARTS = ['rec', 'target', 'news', 'sent', 'eps', 'insider'];
+
+async function avCount(env, n) {
+  const day = parts(new Date()).day;
+  let c = {};
+  try { c = JSON.parse((await getKv(env, 'av_calls')) || '{}'); } catch (e) { c = {}; }
+  const used = c.day === day ? c.n : 0;
+  if (n === 0) return AV_DAY_BUDGET - used;
+  await setKv(env, 'av_calls', JSON.stringify({ day, n: used + n }));
+  return AV_DAY_BUDGET - used - n;
+}
+
+async function av(env, fn, params) {
+  const url = AV_BASE + '?function=' + fn + '&' + params + '&apikey=' + encodeURIComponent(env.ALPHAVANTAGE_KEY);
+  const r = await getJson(url);
+  if (r.status === 429) throw new Error('Alpha Vantage-limiet bereikt');
+  if (!r.ok) throw new Error('Alpha Vantage gaf ' + r.status);
+  const b = r.body || {};
+  const msg = b.Information || b.Note || b['Error Message'];
+  if (msg) {
+    if (/rate limit|requests per (day|minute)|frequency/i.test(msg)) throw new Error('Alpha Vantage-limiet bereikt');
+    if (/premium/i.test(msg)) return { premium: true };
+    if (b['Error Message']) return { unknown: true };
+  }
+  return b;
+}
+
+// Welke onderdelen Alpha Vantage moet aanvullen voor dit aandeel
+function avNeeds(prev, finnhubOn) {
+  const old = !prev.updated || prev.updated < isoLocal(Date.now() - 2 * 864e5);
+  const denied = prev.denied || [];
+  return AV_PARTS.filter((k) => !finnhubOn || old || denied.includes(k) || prev[k] == null);
+}
+
+async function avTask(env, tk) {
+  if (!env.ALPHAVANTAGE_KEY) return 0;
+  const sym = SYMBOL_MAP[tk] || tk;
+  let prev = {};
+  try { prev = JSON.parse((await getKv(env, 'rs_' + tk)) || '{}'); } catch (e) { prev = {}; }
+  const need = avNeeds(prev, !!env.FINNHUB_KEY);
+  if (!need.length) return 0;
+  const calls = [];
+  if (need.includes('rec') || need.includes('target')) calls.push('OVERVIEW');
+  if (need.includes('news') || need.includes('sent')) calls.push('NEWS_SENTIMENT');
+  if (need.includes('eps')) calls.push('EARNINGS');
+  if (need.includes('insider')) calls.push('INSIDER_TRANSACTIONS');
+  if ((await avCount(env, 0)) < calls.length) throw new Error('Alpha Vantage-limiet bereikt (dagbudget)');
+  const out = Object.assign({}, prev, { symbol: sym });
+  const src = Object.assign({}, prev.src || {});
+  const set = (k, v) => { if (v != null && need.includes(k)) { out[k] = v; src[k] = 'av'; } };
+  let used = 0;
+  try {
+    for (const fn of calls) {
+      if (used) await sleep(1200);
+      used++;
+      if (fn === 'OVERVIEW') {
+        const b = await av(env, fn, 'symbol=' + encodeURIComponent(sym));
+        if (b.premium || b.unknown || !b.Symbol) continue;
+        const n = (k) => numOrNull(b[k]);
+        const rec = { period: parts(new Date()).day.slice(0, 7) + '-01', sb: n('AnalystRatingStrongBuy'), b: n('AnalystRatingBuy'), h: n('AnalystRatingHold'), s: n('AnalystRatingSell'), ss: n('AnalystRatingStrongSell') };
+        if ([rec.sb, rec.b, rec.h, rec.s, rec.ss].some((x) => x != null)) {
+          // Eén momentopname per maand bewaren, nieuwste eerst (zoals bij Finnhub)
+          const hist = (src.rec === 'av' && Array.isArray(prev.rec) ? prev.rec : []).filter((r) => r.period !== rec.period);
+          set('rec', [rec].concat(hist).slice(0, 6));
+        }
+        const t = n('AnalystTargetPrice');
+        if (t != null && t > 0) set('target', { mean: t, median: null, high: null, low: null, updated: parts(new Date()).day });
+      } else if (fn === 'NEWS_SENTIMENT') {
+        const b = await av(env, fn, 'tickers=' + encodeURIComponent(sym) + '&sort=LATEST&limit=50');
+        if (b.premium || !Array.isArray(b.feed)) continue;
+        const when = (s) => { const m = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})/.exec(s || ''); return m ? Date.UTC(+m[1], m[2] - 1, +m[3], +m[4], +m[5]) : null; };
+        const items = b.feed.map((a) => ({ a, t: when(a.time_published), ts: (a.ticker_sentiment || []).find((x) => x.ticker === sym) }))
+          .filter((x) => x.t && x.a.title && x.a.url && (!x.ts || Number(x.ts.relevance_score) >= 0.2));
+        set('news', items.filter((x) => x.t >= Date.now() - 10 * 864e5).slice(0, 6)
+          .map((x) => ({ t: x.t, headline: String(x.a.title).slice(0, 220), source: x.a.source || '', url: x.a.url })));
+        const week = items.filter((x) => x.ts && x.t >= Date.now() - 7 * 864e5);
+        const pos = week.filter((x) => /bullish/i.test(x.ts.ticker_sentiment_label)).length;
+        const neg = week.filter((x) => /bearish/i.test(x.ts.ticker_sentiment_label)).length;
+        if (pos + neg) set('sent', { bull: pos / (pos + neg), bear: neg / (pos + neg), score: null, sector: null, articles: week.length, buzz: null });
+      } else if (fn === 'EARNINGS') {
+        const b = await av(env, fn, 'symbol=' + encodeURIComponent(sym));
+        if (b.premium || !Array.isArray(b.quarterlyEarnings)) continue;
+        set('eps', b.quarterlyEarnings.filter((x) => numOrNull(x.reportedEPS) != null).slice(0, 4)
+          .map((x) => ({ period: x.fiscalDateEnding, actual: numOrNull(x.reportedEPS), estimate: numOrNull(x.estimatedEPS), pct: numOrNull(x.surprisePercentage) })));
+      } else if (fn === 'INSIDER_TRANSACTIONS') {
+        const b = await av(env, fn, 'symbol=' + encodeURIComponent(sym));
+        if (b.premium || !Array.isArray(b.data)) continue;
+        const from = ymdUTC(Date.now() - 180 * 864e5);
+        // Alpha Vantage zegt alleen verkregen (A) of afgestaan (D); kopen en toekenning zijn niet te scheiden
+        set('insider', b.data.filter((x) => x.transaction_date && x.transaction_date >= from)
+          .sort((a, c) => c.transaction_date.localeCompare(a.transaction_date)).slice(0, 25)
+          .map((x) => {
+            const sh = numOrNull(x.shares), d = x.acquisition_or_disposal === 'D';
+            return { name: x.executive, date: x.transaction_date, code: d ? 'DS' : 'AQ', change: sh == null ? null : (d ? -sh : sh), price: numOrNull(x.share_price), shares: null };
+          }));
+      }
+    }
+  } finally {
+    await avCount(env, used);
+  }
+  out.src = src;
+  out.avAt = isoLocal(Date.now());
+  if (!prev.updated) out.updated = out.avAt;
+  await setKv(env, 'rs_' + tk, JSON.stringify(out));
+  await noteExtError(env, 'alphavantage', null);
+  return used;
 }
 
 async function finnhubTask(env, tk) {
@@ -1253,6 +1367,8 @@ async function finnhubTask(env, tk) {
     if (r.status === 403) { denied.push(k); await setKv(env, 'fh_denied', JSON.stringify(denied)); continue; }
     if (!r.ok) continue;
     const b = r.body;
+    // Finnhub levert dit onderdeel weer zelf: de aanvulling van Alpha Vantage vervalt
+    if (out.src && out.src[k]) { out.src = Object.assign({}, out.src); delete out.src[k]; }
     if (k === 'news') {
       out.news = (Array.isArray(b) ? b : []).filter((n) => n.headline && n.url).sort((a, c) => c.datetime - a.datetime).slice(0, 6)
         .map((n) => ({ t: n.datetime * 1000, headline: String(n.headline).slice(0, 220), source: n.source || '', url: n.url }));
@@ -1441,6 +1557,16 @@ async function planMarket(env) {
   if (flags.inflation) tasks.push('hicp');
   if (flags.indices) tasks.push('idx');
   if (env.FINNHUB_KEY) { tasks.push('fhnews'); all.forEach((h) => tasks.push('fh:' + h.ticker)); }
+  if (env.ALPHAVANTAGE_KEY) {
+    // Reserve: aandelen waar Finnhub iets mist, langst niet aangevuld eerst; het dagbudget bepaalt hoeveel er lukken
+    const { results: rs } = await env.DB.prepare("SELECT key, value FROM kv WHERE key LIKE 'rs\\_%' ESCAPE '\\'").all();
+    const rsMap = new Map(rs.map((r) => { try { return [r.key.slice(3), JSON.parse(r.value)]; } catch (e) { return [r.key.slice(3), {}]; } }));
+    const today = parts(now).day;
+    all.map((h) => ({ tk: h.ticker, prev: rsMap.get(h.ticker) || {} }))
+      .filter((x) => (x.prev.avAt || '').slice(0, 10) < today && avNeeds(x.prev, !!env.FINNHUB_KEY).length)
+      .sort((a, b) => (a.prev.avAt || '').localeCompare(b.prev.avAt || ''))
+      .forEach((x) => tasks.push('av:' + x.tk));
+  }
   if (flags.sec && env.SEC_CONTACT) {
     const { results: fins } = await env.DB.prepare("SELECT key, value FROM kv WHERE key LIKE 'fin\\_%' ESCAPE '\\'").all();
     const age = new Map(fins.map((r) => { try { return [r.key.slice(4), JSON.parse(r.value).updated || '']; } catch (e) { return [r.key.slice(4), '']; } }));
@@ -1509,14 +1635,18 @@ async function marketStep(env) {
   const errors = [];
   const noHist = JSON.parse((await getKv(env, 'eod_unavailable')) || '[]');
   const deferred = [];
+  let avThisStep = false;
   let unknown = [];
   try { unknown = JSON.parse((await getKv(env, 'mkt_unknown')) || '[]'); } catch (e) { unknown = []; }
   while (queue.length && calls < MARKET_STEP_CALLS && !stop) {
     const task = queue.shift();
+    // Alpha Vantage staat 5 verzoeken per minuut toe: één aandeel per stap
+    if (task.startsWith('av:') && avThisStep) { deferred.push(task); continue; }
+    if (task.startsWith('av:')) avThisStep = true;
     const ci = task.indexOf(':');
     const kind = ci < 0 ? task : task.slice(0, ci), arg = ci < 0 ? '' : task.slice(ci + 1);
     try {
-      if (kind === 'fx' || kind === 'hicp' || kind === 'idx' || kind === 'fh' || kind === 'fhnews' || kind === 'sec') {
+      if (kind === 'fx' || kind === 'hicp' || kind === 'idx' || kind === 'fh' || kind === 'fhnews' || kind === 'sec' || kind === 'av') {
         calls += await externalTask(env, kind, arg);
       } else if (!env.FMP_KEY) {
         // FMP-taak zonder sleutel: overslaan
@@ -1604,13 +1734,23 @@ async function marketStep(env) {
       done++;
     } catch (e) {
       errors.push(task + ': ' + e.message);
-      if (/Finnhub-limiet/.test(e.message)) {
+      if (/Alpha Vantage-limiet/.test(e.message)) {
+        // Morgen verder: de av-taken blijven staan, achteraan
+        deferred.push(task, ...queue.filter((t) => t.startsWith('av:')));
+        queue = queue.filter((t) => !t.startsWith('av:'));
+        if (/dagbudget|limiet bereikt$/.test(e.message)) await noteExtError(env, 'alphavantage', 'Daglimiet van Alpha Vantage bereikt; morgen verder.');
+      } else if (/Finnhub-limiet/.test(e.message)) {
         // Finnhub zit aan zijn limiet: Finnhub-taken naar achteren, de rest (zoals FMP-koersen) gaat door
         const fh = [task].concat(queue.filter((t) => t.startsWith('fh:') || t === 'fhnews'));
         queue = queue.filter((t) => !(t.startsWith('fh:') || t === 'fhnews'));
         deferred.push(...fh);
       } else if (/limiet|subrequests/i.test(e.message)) { queue.unshift(task); stop = true; }
-      else if (/ongeldig/i.test(e.message) && /^fh:/.test(task)) { queue = queue.filter((t) => !t.startsWith('fh:')); }
+      else if (/ongeldig/i.test(e.message) && /^fh:/.test(task)) {
+        // Finnhub-sleutel werkt niet: Alpha Vantage neemt het over als die sleutel er is
+        const fhTasks = [task].concat(queue.filter((t) => t.startsWith('fh:')));
+        queue = queue.filter((t) => !t.startsWith('fh:'));
+        if (env.ALPHAVANTAGE_KEY) fhTasks.forEach((t) => { const a = 'av:' + t.slice(3); if (!queue.includes(a)) queue.push(a); });
+      }
     }
   }
   queue.push(...deferred);
