@@ -315,6 +315,7 @@
     m.since = allT.length ? allT[0].t : m.lastT;
     m.canImport = !demo && isWorker();
     m.ev = deriveEvents(data.events, m);
+    m.mk = deriveMarket(data.market, m);
     return m;
   }
 
@@ -1000,7 +1001,7 @@
       ['Beweegt mee met portefeuille', corrText(S.corr, S.n)],
       ['Gevoeligheid', isNum(S.beta) ? N2.format(S.beta) + '× de portefeuille' : 'na ' + MIN_DAYS_CORR + ' dagen'],
     ]) + '</section>';
-    return { S, kpis, rangeTile, posTile, histTile, agendaTile: companyAgenda(c), patterns: patternTiles(c.tk, S) };
+    return { S, kpis, rangeTile, posTile, histTile, agendaTile: companyAgenda(c), market: companyMarket(c), patterns: patternTiles(c.tk, S) };
   }
 
   const FOOT = 'Dagresultaten zijn de verandering ten opzichte van het slot van de vorige handelsdag (of de eerste meting als die er niet is). Dagen die meer dan 25% bewegen, tellen niet mee: dat is bijna altijd een aankoop of verkoop. ' +
@@ -1161,6 +1162,246 @@
     return '<section class="tile pad"><h3>Agenda</h3>' + kvList(rows) + '</section>';
   }
 
+
+  // ---------- Markt: sector, branche en vergelijkbare bedrijven ----------
+  const SECTOR_NL = {
+    'Technology': 'Technologie', 'Healthcare': 'Gezondheidszorg', 'Industrials': 'Industrie', 'Communication Services': 'Communicatie en media',
+    'Consumer Cyclical': 'Luxe en cyclische consumptie', 'Consumer Defensive': 'Basisconsumptie', 'Financial Services': 'Financiële diensten',
+    'Energy': 'Energie', 'Basic Materials': 'Grondstoffen', 'Real Estate': 'Vastgoed', 'Utilities': 'Nutsbedrijven',
+  };
+  const INDUSTRY_NL = {
+    'Aerospace & Defense': 'Lucht- en ruimtevaart en defensie', 'Drug Manufacturers - General': 'Farmacie', 'Drug Manufacturers - Specialty & Generic': 'Farmacie (specialistisch en generiek)',
+    'Biotechnology': 'Biotechnologie', 'Medical - Devices': 'Medische apparatuur', 'Semiconductors': 'Halfgeleiders (chips)',
+    'Semiconductor Equipment & Materials': 'Chipmachines en -materialen', 'Software - Infrastructure': 'Software (infrastructuur)',
+    'Software - Application': 'Software (toepassingen)', 'Software - Services': 'Software (diensten)', 'Internet Content & Information': 'Internet en informatie',
+    'Consumer Electronics': 'Consumentenelektronica', 'Specialty Retail': 'Detailhandel (gespecialiseerd)', 'Internet Retail': 'Internetwinkels',
+    'Beverages - Non-Alcoholic': 'Frisdranken', 'Beverages - Alcoholic': 'Alcoholische dranken', 'Electronic Gaming & Multimedia': 'Games en multimedia',
+    'Information Technology Services': 'IT-dienstverlening', 'Communication Equipment': 'Communicatieapparatuur', 'Computer Hardware': 'Computerhardware',
+    'Entertainment': 'Entertainment', 'Banks - Diversified': 'Banken', 'Banks - Regional': 'Regionale banken', 'Auto - Manufacturers': 'Autofabrikanten',
+    'Oil & Gas Integrated': 'Olie en gas', 'Packaged Foods': 'Verpakte voeding', 'Household & Personal Products': 'Huishoud- en verzorgingsproducten',
+    'Discount Stores': 'Discountwinkels', 'Healthcare Plans': 'Zorgverzekeraars', 'Medical - Diagnostics & Research': 'Diagnostiek en onderzoek',
+    'Electronic Components': 'Elektronische componenten', 'Hardware, Equipment & Parts': 'Hardware en onderdelen', 'Advertising Agencies': 'Reclamebureaus',
+  };
+  const sectorNl = (x) => SECTOR_NL[x] || x || 'Onbekend';
+  const industryNl = (x) => INDUSTRY_NL[x] || x || 'Onbekend';
+  const FUNDS = 'Fondsen (breed gespreid)';
+  const SECTOR_COLORS = ['#1E3A8A', '#2B5BD7', '#5B86E5', '#8FAEF0', '#0E7490', '#4FB3C8', '#6D28D9', '#A78BFA', '#B45309', '#F59E0B', '#475569'];
+
+  function mcap(v, cur) {
+    if (!isNum(v)) return '–';
+    const u = cur && cur !== 'USD' ? ' ' + cur : ' $';
+    if (v >= 1e12) return N1.format(v / 1e12) + ' bln' + u;
+    if (v >= 1e9) return NI.format(v / 1e9) + ' mld' + u;
+    return NI.format(v / 1e6) + ' mln' + u;
+  }
+
+  function deriveMarket(mk, m) {
+    const X = { ok: !!(mk && mk.profiles && Object.keys(mk.profiles).length), updated: mk && mk.updated };
+    if (!X.ok) return X;
+    X.sym = (tk) => (mk.symbols && mk.symbols[tk]) || tk;
+    X.prof = (sym) => mk.profiles[sym] || null;
+    X.profOf = (tk) => X.prof(X.sym(tk));
+    X.peersOf = (tk) => (mk.peers && mk.peers[tk]) || [];
+    X.heldBySym = new Map(Object.entries(mk.symbols || {}).map(([tk, sym]) => [sym, tk]));
+    X.prices = (sym) => ((mk.prices && mk.prices[sym]) || []).map(([d, v]) => ({ day: d, t: ymd(d), v })).filter((p) => p.t != null && isNum(p.v));
+    // Dagveranderingen per sector of branche; per beurs of het gemiddelde van de beurzen
+    const perfMap = (kind, name, exch) => {
+      const src = ((kind === 'sector' ? mk.sectors : mk.industries) || {})[name];
+      if (!src) return new Map();
+      const lists = exch && src[exch] ? [src[exch]] : Object.values(src);
+      const acc = new Map();
+      lists.forEach((l) => l.forEach(([d, v]) => { const o = acc.get(d) || []; o.push(v); acc.set(d, o); }));
+      return new Map([...acc.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([d, a]) => [d, mean(a) / 100]));
+    };
+    X.perf = perfMap;
+    const days = new Set();
+    Object.values(mk.sectors || {}).forEach((ex) => Object.values(ex).forEach((l) => l.forEach(([d]) => days.add(d))));
+    X.days = [...days].sort();
+    X.lastDay = X.days[X.days.length - 1] || null;
+    X.sectorNames = Object.keys(mk.sectors || {});
+    X.sectorOf = (c) => {
+      if (ETF_RE.test(c.name) || BENCHES.some((b) => b[1].test(c.tk))) return FUNDS;
+      const p = X.profOf(c.tk);
+      return p && p.sector ? p.sector : 'Onbekend';
+    };
+    return X;
+  }
+
+  // Groei sinds de startdag, voor koersen of voor dagveranderingen van een sector of branche
+  function growthFromPrices(pts, startDay) {
+    const from = pts.filter((p) => p.day >= startDay);
+    if (from.length < 2) return null;
+    const p0 = from[0].v;
+    return new Map(from.map((p) => [p.day, p.v / p0 - 1]));
+  }
+  function growthFromPerf(map, startDay) {
+    let idx = 1;
+    const out = new Map();
+    for (const [d, r] of map) {
+      if (d < startDay) continue;
+      if (out.size) idx *= 1 + r; // de eerste dag is het startpunt
+      out.set(d, idx - 1);
+    }
+    return out.size >= 2 ? out : null;
+  }
+
+  function rangeBar(p) {
+    const m = /^\s*([\d.]+)\s*-\s*([\d.]+)/.exec(p && p.range || '');
+    if (!m || !isNum(p.price)) return { html: '<span class="muted">–</span>', off: null };
+    const lo = Number(m[1]), hi = Number(m[2]);
+    if (!(hi > lo)) return { html: '<span class="muted">–</span>', off: null };
+    const x = Math.max(0, Math.min(1, (p.price - lo) / (hi - lo)));
+    return {
+      html: '<span class="yr" data-tip="' + esc('52 weken: ' + N2.format(lo) + ' – ' + N2.format(hi) + ' ' + (p.currency || '') + ', nu ' + N2.format(p.price)) + '"><span class="yr-rail"></span><span class="yr-dot" style="left:' + (x * 100).toFixed(1) + '%"></span></span>',
+      off: p.price / hi - 1,
+    };
+  }
+
+  // Sectorvergelijking en vergelijkbare bedrijven voor één bedrijf
+  function companyMarket(c) {
+    const X = M.mk;
+    const isFund = ETF_RE.test(c.name) || BENCHES.some((b) => b[1].test(c.tk));
+    if (isFund) return { tiles: ['<section class="tile pad"><h3>Sector</h3><p class="muted">Dit is een fonds dat over veel bedrijven en sectoren is gespreid; een vergelijking met één sector past daar niet bij.</p></section>'], table: '' };
+    if (!X.ok) return { tiles: ['<section class="tile pad"><h3>Sector en vergelijkbare bedrijven</h3><p class="muted">Deze gegevens komen van Financial Modeling Prep en worden elke ochtend opgehaald. Ze zijn er nog niet.</p></section>'], table: '' };
+    const sym = X.sym(c.tk);
+    const p = X.prof(sym);
+    if (!p) return { tiles: ['<section class="tile pad"><h3>Sector en vergelijkbare bedrijven</h3><p class="muted">Nog geen profiel van ' + esc(sym) + ' opgehaald.</p></section>'], table: '' };
+    const exch = p.exchange;
+    const secMap = X.perf('sector', p.sector, exch), indMap = X.perf('industry', p.industry, exch);
+    const lastD = X.lastDay;
+    const own = X.prices(sym);
+    // Startdag: eerste dag waarop zowel de sectorreeks als (zo mogelijk) een koers bestaat
+    const window = X.days.slice(-260);
+    const startCandidates = window.filter((d) => own.some((q) => q.day === d));
+    const startDay = startCandidates.length >= 2 ? startCandidates[0] : window[0];
+    const gOwn = growthFromPrices(own, startDay);
+    const gSec = growthFromPerf(secMap, startDay), gInd = growthFromPerf(indMap, startDay);
+    const lastOf = (g) => (g ? [...g.values()].pop() : null);
+    const nDays = window.filter((d) => d >= startDay).length;
+
+    const peers = X.peersOf(c.tk).map((s2) => X.prof(s2)).filter(Boolean);
+    const betas = peers.map((q) => q.beta).filter((b) => isNum(b) && b > 0);
+    const dayRows = [
+      [c.tk, p.change, C.accent],
+      [industryNl(p.industry), indMap.get(lastD) != null ? indMap.get(lastD) * 100 : null, C.ink2],
+      [sectorNl(p.sector), secMap.get(lastD) != null ? secMap.get(lastD) * 100 : null, '#9AA3B5'],
+    ];
+    const mx = Math.max(0.5, ...dayRows.map((r) => (isNum(r[1]) ? Math.abs(r[1]) : 0)));
+    const dayBars = '<div class="hbars cmp">' + dayRows.map(([lbl, v]) =>
+      '<div class="r"><span class="tk" title="' + esc(lbl) + '">' + esc(lbl) + '</span><span class="track"><span class="mid"></span>' +
+      (isNum(v) ? '<span class="' + (v < 0 ? 'neg' : 'pos') + '" style="width:' + (Math.abs(v) / mx * 50).toFixed(1) + '%"></span>' : '') + '</span>' +
+      '<span class="' + tone(v) + '" style="text-align:right;font-weight:600">' + esc(isNum(v) ? spct(v / 100) : '–') + '</span></div>').join('') + '</div>';
+
+    const info = '<section class="tile pad"><h3>Sector en branche</h3>' + kvList([
+      ['Sector', sectorNl(p.sector)],
+      ['Branche', industryNl(p.industry)],
+      ['Beurswaarde', mcap(p.marketCap, p.currency)],
+      ['Beta (beweeglijkheid t.o.v. de markt)', isNum(p.beta) && p.beta > 0 ? N2.format(p.beta) + (betas.length ? ', branchegenoten gemiddeld ' + N2.format(mean(betas)) : '') : '–'],
+      ['Land en beurs', [p.country, p.exchange].filter(Boolean).join(', ') || '–'],
+      ['Beursgang', p.ipoDate ? fDM.format(ymd(p.ipoDate)) + ' ' + p.ipoDate.slice(0, 4) : '–'],
+    ]) + '<h3 style="margin-top:16px">Laatste handelsdag in de VS</h3>' + dayBars +
+      '<p class="sub" style="margin-top:8px">Koersverandering' + (lastD ? ' op ' + esc(fD.format(ymd(lastD))) : '') + ', in dollars. Branche en sector zijn het gemiddelde van alle bedrijven op ' + esc(exch || 'de beurs') + '.</p></section>';
+
+    const chartTile = '<section class="tile pad"><h3>Tegenover branche en sector</h3>' +
+      (gSec ? '<div class="chart" data-chart="sector" data-tk="' + esc(c.tk) + '" style="height:170px"></div><div class="xlabels" data-x="sector"></div>' +
+        '<div class="legend chart-legend" style="margin-top:8px">' +
+          (gOwn ? '<span><i style="background:' + C.accent + '"></i>' + esc(c.tk) + ' ' + esc(spct1(lastOf(gOwn))) + '</span>' : '') +
+          (gInd ? '<span><i class="dash"></i>' + esc(industryNl(p.industry)) + ' ' + esc(spct1(lastOf(gInd))) + '</span>' : '') +
+          '<span><i style="background:#9AA3B5"></i>' + esc(sectorNl(p.sector)) + ' ' + esc(spct1(lastOf(gSec))) + '</span></div>' +
+        '<p class="sub" style="margin-top:8px">' + esc(nDays + ' handelsdagen sinds ' + fD.format(ymd(startDay)) + '.') +
+          (gOwn ? '' : ' Voor ' + esc(c.tk) + ' geeft het gratis abonnement geen koershistorie; die bouwt de tracker vanaf nu elke dag op.') + '</p>'
+        : '<p class="muted">Nog te weinig handelsdagen opgehaald voor een vergelijking.</p>') + '</section>';
+
+    // Tabel met vergelijkbare bedrijven
+    const rows = [p].concat(peers);
+    const periodHead = 'Sinds ' + fDM.format(ymd(startDay));
+    const rowHtml = (q, i) => {
+      const heldTk = X.heldBySym.get(q.symbol);
+      const g = lastOf(growthFromPrices(X.prices(q.symbol), startDay));
+      const rb = rangeBar(q);
+      const tag = i === 0 ? '<span class="tag">Dit bedrijf</span>' : heldTk ? '<span class="tag gain">In bezit</span>' : '';
+      const open = i > 0 && heldTk ? ' data-open="' + esc(heldTk) + '" tabindex="0" role="button"' : '';
+      return '<tr class="' + (i === 0 ? 'me' : '') + (open ? ' link' : '') + '"' + open + '>' +
+        '<td class="co"><b>' + esc(q.symbol) + '</b> ' + tag + '<span class="nm">' + esc(q.name || '') + '</span></td>' +
+        '<td class="num ' + tone(q.change) + '">' + esc(isNum(q.change) ? spct(q.change / 100) : '–') + '</td>' +
+        '<td class="num ' + tone(g) + '">' + esc(isNum(g) ? spct1(g) : '–') + '</td>' +
+        '<td class="yrc">' + rb.html + '<span class="sub">' + esc(isNum(rb.off) ? (rb.off > -0.005 ? 'bij de top' : P1.format(-rb.off) + ' onder top') : '') + '</span></td>' +
+        '<td class="num">' + esc(mcap(q.marketCap, q.currency)) + '</td>' +
+        '<td class="num">' + esc(isNum(q.beta) && q.beta > 0 ? N2.format(q.beta) : '–') + '</td></tr>';
+    };
+    const table = peers.length
+      ? '<section class="tile pad peers"><h3>Vergelijkbare bedrijven</h3><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Bedrijf</th><th class="num">Laatste dag</th><th class="num">' + esc(periodHead) + '</th><th>Jaarbereik</th><th class="num">Beurswaarde</th><th class="num">Beta</th></tr></thead><tbody>' +
+        rows.map(rowHtml).join('') + '</tbody></table></div>' +
+        '<p class="sub" style="margin-top:8px">Bedrijven die FMP als vergelijkbaar aanmerkt (zelfde branche, vergelijkbare omvang). Jaarbereik: laagste tot hoogste koers van de afgelopen 52 weken, met de stip op de koers nu. “–” bij de periode betekent dat er nog geen koershistorie is.</p></section>'
+      : '';
+    return { tiles: [info, chartTile], table, startDay, gOwn, gSec, gInd };
+  }
+
+  function drawSectorChart(root) {
+    const host = root.querySelector('[data-chart="sector"]');
+    if (!host) return;
+    const c = M.byTk.get(host.dataset.tk);
+    const R = c && companyMarket(c);
+    if (!R || !R.gSec) return;
+    const days = [...R.gSec.keys()];
+    const toPts = (g) => days.map((d) => ({ t: ymd(d), v: g && g.has(d) ? g.get(d) : null }));
+    const sets = [];
+    if (R.gOwn) sets.push({ pts: toPts(R.gOwn), color: C.accent, width: 3, label: c.tk, fmt: spct1 });
+    if (R.gInd) sets.push({ pts: toPts(R.gInd), color: C.ink2, dash: true, width: 2, label: 'Branche', fmt: spct1 });
+    sets.push({ pts: toPts(R.gSec), color: '#9AA3B5', width: 2, label: 'Sector', fmt: spct1 });
+    lineChart(host, sets, { zero: true, top: 0.08, bottom: 0.08, xl: root.querySelector('[data-x="sector"]'), xcount: 3, xfmt: (t) => fDM.format(t), tfmt: (t) => fD.format(t) });
+  }
+
+  // Portefeuille per sector
+  function sectorTiles() {
+    const X = M.mk;
+    if (!X.ok) return ['<p class="empty">Sectorgegevens komen van Financial Modeling Prep en worden elke ochtend opgehaald. Ze zijn er nog niet.</p>'];
+    const groups = new Map();
+    M.companies.forEach((c) => { const s = X.sectorOf(c); if (!groups.has(s)) groups.set(s, []); groups.get(s).push(c); });
+    const list = [...groups.entries()].map(([s, cs]) => ({ s, cs, v: sum(cs.map((c) => c.value)) })).sort((a, b) => b.v - a.v);
+    const pctOf = (v) => (M.totalValue ? P1.format(v / M.totalValue) : '–');
+    const colorOf = (s, i) => (s === FUNDS ? '#C9CED6' : SECTOR_COLORS[i % SECTOR_COLORS.length]);
+    const slices = list.map((g, i) => ({ label: g.s === FUNDS ? FUNDS : sectorNl(g.s), v: g.v, color: colorOf(g.s, i) }));
+    const stocksOnly = list.filter((g) => g.s !== FUNDS && g.s !== 'Onbekend');
+    const legend = '<div class="legend-list">' + list.map((g, i) =>
+      '<div class="legend-row"><i style="background:' + colorOf(g.s, i) + '"></i><span class="nm">' + esc(g.s === FUNDS ? FUNDS : sectorNl(g.s)) +
+      ' <span class="muted small">' + esc(g.cs.map((c) => c.tk).join(', ')) + '</span></span><b style="min-width:52px;text-align:right">' + esc(pctOf(g.v)) + '</b></div>').join('') + '</div>';
+    const pie = '<section class="tile pad"><h3>Verdeling per sector</h3>' + donut(slices, String(stocksOnly.length), stocksOnly.length === 1 ? 'sector' : 'sectoren', 'Verdeling van je beleggingen over sectoren') + legend + '</section>';
+
+    // Laatste handelsdag: jouw aandelen per sector tegenover het sectorgemiddelde
+    const lastD = X.lastDay;
+    const cmp = stocksOnly.map((g) => {
+      const w = g.cs.filter((c) => { const p = X.profOf(c.tk); return p && isNum(p.change); });
+      const tv = sum(w.map((c) => c.value));
+      const mine = tv ? sum(w.map((c) => c.value * X.profOf(c.tk).change)) / tv / 100 : null;
+      const sec = X.perf('sector', g.s).get(lastD);
+      return { g, mine, sec: isNum(sec) ? sec : null };
+    });
+    const mx = Math.max(0.005, ...cmp.flatMap((x) => [x.mine, x.sec]).filter(isNum).map(Math.abs));
+    const bar = (v, cls) => '<span class="track"><span class="mid"></span>' + (isNum(v) ? '<span class="' + (v < 0 ? 'neg' : 'pos') + ' ' + cls + '" style="width:' + (Math.abs(v) / mx * 50).toFixed(1) + '%"></span>' : '') + '</span>';
+    const cmpTile = '<section class="tile pad"><h3>Jij tegenover de sector</h3>' +
+      (cmp.length ? '<div class="sec-cmp">' + cmp.map((x) =>
+        '<div class="sc"><div class="sc-h"><b>' + esc(sectorNl(x.g.s)) + '</b><span class="muted small">' + esc(x.g.cs.map((c) => c.tk).join(', ')) + '</span></div>' +
+        '<div class="hbars cmp"><div class="r"><span class="tk">Jij</span>' + bar(x.mine, '') + '<span class="' + tone(x.mine) + '" style="text-align:right;font-weight:600">' + esc(spct(x.mine)) + '</span></div>' +
+        '<div class="r"><span class="tk muted">Sector</span>' + bar(x.sec, 'soft') + '<span class="' + tone(x.sec) + '" style="text-align:right">' + esc(spct(x.sec)) + '</span></div></div></div>').join('') + '</div>' +
+        '<p class="sub" style="margin-top:8px">Laatste handelsdag in de VS' + (lastD ? ' (' + esc(fD.format(ymd(lastD))) + ')' : '') + ', in dollars. “Jij” is het gewogen gemiddelde van je aandelen in die sector.</p>'
+        : '<p class="muted">Geen losse aandelen met sectorgegevens.</p>') + '</section>';
+
+    // Alle sectoren in de markt over de opgehaalde periode
+    const startDay = X.days[0];
+    const perf = X.sectorNames.map((s) => { const g = growthFromPerf(X.perf('sector', s), startDay); return { s, v: g ? [...g.values()].pop() : null }; })
+      .filter((x) => isNum(x.v)).sort((a, b) => b.v - a.v);
+    const mine = new Set(stocksOnly.map((g) => g.s));
+    const mx2 = Math.max(0.005, ...perf.map((x) => Math.abs(x.v)));
+    const mktTile = '<section class="tile pad"><h3>Sectoren in de markt</h3>' +
+      (perf.length ? '<div class="hbars cmp wide">' + perf.map((x) =>
+        '<div class="r' + (mine.has(x.s) ? ' mine' : '') + '"><span class="tk" title="' + esc(sectorNl(x.s)) + '">' + esc(sectorNl(x.s)) + '</span><span class="track"><span class="mid"></span><span class="' + (x.v < 0 ? 'neg' : 'pos') + '" style="width:' + (Math.abs(x.v) / mx2 * 50).toFixed(1) + '%"></span></span>' +
+        '<span class="' + tone(x.v) + '" style="text-align:right;font-weight:600">' + esc(spct1(x.v)) + '</span></div>').join('') + '</div>' +
+        '<p class="sub" style="margin-top:8px">Gemiddelde koersverandering per sector over ' + esc(days(X.days.length).replace('dag', 'handelsdag')) + ' sinds ' + esc(fD.format(ymd(startDay))) + '. Vetgedrukt: sectoren waarin je aandelen hebt.</p>'
+        : '<p class="muted">Nog geen handelsdagen opgehaald.</p>') + '</section>';
+    return [pie, cmpTile, mktTile];
+  }
+
   // ---------- Desktop ----------
   function renderHome() {
     const T = M.tot;
@@ -1190,6 +1431,7 @@
       : ['<p class="empty">Nog geen metingen van vandaag.</p>']);
 
     fill('agenda', agendaTiles());
+    fill('sectors', sectorTiles());
     fill('weeks', weekCards());
     drawWeekChart($('weeks'));
     const S = statsFor(TOTAL);
@@ -1306,6 +1548,9 @@
       '<div class="wrap' + sw + '">' +
         '<div class="grid">' + I.kpis.join('') + '</div>' +
         '<div class="grid wide" style="margin-top:16px">' + I.rangeTile + I.posTile + I.histTile + I.agendaTile + '</div>' +
+        '<div class="section-head"><h2>Sector en vergelijkbare bedrijven</h2></div>' +
+        '<div class="grid wide">' + I.market.tiles.join('') + '</div>' +
+        (I.market.table ? '<div style="margin-top:16px">' + I.market.table + '</div>' : '') +
         '<div class="section-head"><h2>Patronen</h2></div>' +
         '<div class="grid">' + I.patterns.join('') + '</div>' +
         '<p class="foot">' + esc(FOOT) + '</p>' +
@@ -1388,6 +1633,7 @@
     const S = statsFor(TOTAL);
     $('m-stats-note').textContent = statsNote(S);
     fill('m-stat-cards', statCards(S));
+    fill('m-sectors', sectorTiles());
     fill('m-patterns', patternTiles(TOTAL, S));
   }
 
@@ -1395,8 +1641,9 @@
     const { prev, next } = detailNav(c);
     const I = companyInfo(c);
     const sw = swapDir ? ' swap-' + swapDir : '';
-    const tabs = [['pos', 'Positie'], ['hist', 'Historie'], ['pat', 'Patronen']];
-    const panel = ui.mTab === 'hist' ? I.histTile : ui.mTab === 'pat' ? '<div class="m-stack">' + I.patterns.join('') + '</div>' : I.rangeTile + I.posTile + I.agendaTile;
+    const tabs = [['pos', 'Positie'], ['cmp', 'Vergelijk'], ['hist', 'Historie'], ['pat', 'Patronen']];
+    const panel = ui.mTab === 'hist' ? I.histTile : ui.mTab === 'pat' ? '<div class="m-stack">' + I.patterns.join('') + '</div>'
+      : ui.mTab === 'cmp' ? I.market.tiles.join('') + I.market.table : I.rangeTile + I.posTile + I.agendaTile;
     return '<div class="md">' +
       '<div class="m-dtop"><button type="button" class="m-back" data-act="back">‹ Terug</button><span class="t">' + esc(c.tk) + '</span>' +
         '<div class="m-nav"><button type="button" data-act="prev" aria-label="Vorige: ' + esc(prev.name) + '">‹</button><button type="button" data-act="next" aria-label="Volgende: ' + esc(next.name) + '">›</button></div></div>' +
@@ -1485,6 +1732,7 @@
       ['Grootste positie', sorted[0] ? sorted[0].tk + ', ' + pctOf(sorted[0].value) : '–'],
     ]);
 
+    const secTile = M.mk.ok ? sectorTiles()[0] : '';
     const tiles = [
       '<section class="tile pad"><h3>Verdeling over posities</h3>' + donut(slices, eur(total), 'accountwaarde', 'Verdeling van je accountwaarde over posities en vrij saldo') + legend + '</section>',
       '<section class="tile pad"><h3>Soort belegging</h3>' + donut(kinds.filter((k) => k.v > 0), pctOf(etf), 'in fondsen', 'Verdeling over fondsen, losse aandelen en vrij saldo') + kindLegend +
@@ -1498,11 +1746,11 @@
     if (mode === 'm') {
       return '<div class="md"><div class="m-dtop"><button type="button" class="m-back" data-act="back">‹ Terug</button><span class="t">Accountwaarde</span><span></span></div>' +
         '<div class="m-hero"><div class="m-swipe">' + head + '</div></div>' +
-        '<div class="m-body"><div class="m-stack">' + tiles.join('') + '</div></div></div>';
+        '<div class="m-body"><div class="m-stack">' + tiles.slice(0, 2).join('') + secTile + tiles.slice(2).join('') + '</div></div></div>';
     }
     return '<div class="band" style="padding-bottom:24px"><div class="d-top"><button type="button" class="btn dark" data-act="back">← Terug</button></div>' +
       '<div class="hero-head"><div>' + head + '</div></div></div>' +
-      '<div class="wrap"><div class="grid wide">' + tiles.slice(0, 2).join('') + tiles[3] + '</div><div style="margin-top:16px">' + tiles[2] + '</div></div>';
+      '<div class="wrap"><div class="grid wide">' + tiles.slice(0, 2).join('') + secTile + '</div><div class="grid wide" style="margin-top:16px">' + tiles[2] + tiles[3] + '</div></div>';
   }
 
   // ---------- Bedrijfspagina (beide weergaven) ----------
@@ -1516,6 +1764,7 @@
     if (!animate && !swapDir) ov.scrollTop = keep;
     $('d-compare').addEventListener('change', (e) => { ui.compare = e.target.checked; renderDetailChart(true); });
     renderDetailChart(animate || !!swapDir);
+    drawSectorChart(inner);
   }
 
   function renderDetailChart(animate) {
@@ -1972,8 +2221,38 @@
         { ticker: 'ASML', exDate: dIn(4), payDate: dIn(16), perShare: 1.6, estEur: 0.24, announced: true }],
     };
 
+    // Markt: sectoren, branches en vergelijkbare bedrijven
+    const META_INFO = {
+      ASML: ['Technology', 'Semiconductor Equipment & Materials', ['AMAT', 'LRCX', 'KLAC', 'TSM']], MSFT: ['Technology', 'Software - Infrastructure', ['ORCL', 'GOOGL', 'CRM', 'PLTR']],
+      GOOGL: ['Communication Services', 'Internet Content & Information', ['META', 'MSFT', 'AMZN', 'NFLX']], TSM: ['Technology', 'Semiconductors', ['NVDA', 'AVGO', 'AMD', 'INTC']],
+      SPCX: ['Industrials', 'Aerospace & Defense', ['LMT', 'RTX', 'NOC', 'GD', 'BA']], AAPL: ['Technology', 'Consumer Electronics', ['MSFT', 'SONY', 'DELL', 'HPQ']],
+      META: ['Communication Services', 'Internet Content & Information', ['GOOGL', 'SNAP', 'PINS', 'RDDT']], LLY: ['Healthcare', 'Drug Manufacturers - General', ['JNJ', 'ABBV', 'MRK', 'NVO', 'AZN']],
+      PLTR: ['Technology', 'Software - Infrastructure', ['SNOW', 'CRWD', 'MSFT', 'ORCL']], KO: ['Consumer Defensive', 'Beverages - Non-Alcoholic', ['PEP', 'KDP', 'MNST']],
+      TTWO: ['Communication Services', 'Electronic Gaming & Multimedia', ['EA', 'RBLX', 'NTES']], AMZN: ['Consumer Cyclical', 'Internet Retail', ['WMT', 'BABA', 'EBAY', 'SHOP']],
+    };
+    const mDays = [];
+    const md = new Date(now); md.setDate(md.getDate() - 1);
+    while (mDays.length < 25) { if (md.getDay() % 6) mDays.unshift(iso(md).slice(0, 10)); md.setDate(md.getDate() - 1); }
+    const profiles = {}, prices = {}, peersMk = {}, symbols = {};
+    const sectorOfSym = {};
+    Object.entries(META_INFO).forEach(([tk, [sec, ind, prs]]) => { symbols[tk] = tk; peersMk[tk] = prs; sectorOfSym[tk] = [sec, ind]; prs.forEach((x) => { if (!sectorOfSym[x]) sectorOfSym[x] = [sec, ind]; }); });
+    Object.entries(sectorOfSym).forEach(([sym, [sec, ind]], i) => {
+      const price = 40 + rnd() * 600, lo = price * (0.55 + rnd() * 0.3), hi = price * (1.02 + rnd() * 0.4);
+      profiles[sym] = { symbol: sym, name: (book.find((b) => b[0] === sym) || [0, sym + ' Corporation'])[1], price: +price.toFixed(2), currency: 'USD',
+        marketCap: Math.round((0.02 + rnd() * 3) * 1e12), beta: +(0.4 + rnd() * 1.6).toFixed(2), range: lo.toFixed(2) + '-' + hi.toFixed(2),
+        change: +(gauss() * 1.4).toFixed(2), sector: sec, industry: ind, exchange: i % 2 ? 'NYSE' : 'NASDAQ', country: 'US', ipoDate: (1980 + Math.floor(rnd() * 40)) + '-06-15' };
+      let v = price;
+      const hist = i % 3 === 2 ? mDays.slice(-1) : mDays;
+      prices[sym] = hist.slice().reverse().map((d) => { const out = [d, +v.toFixed(2)]; v /= 1 + gauss() * 0.015; return out; }).reverse();
+    });
+    const sectorsMk = {}, industriesMk = {};
+    ['Technology', 'Healthcare', 'Industrials', 'Communication Services', 'Consumer Cyclical', 'Consumer Defensive', 'Financial Services', 'Energy', 'Basic Materials', 'Real Estate', 'Utilities']
+      .forEach((sec) => { const drift = gauss() * 0.15; sectorsMk[sec] = { NASDAQ: mDays.map((d) => [d, +(drift + gauss() * 0.8).toFixed(3)]), NYSE: mDays.map((d) => [d, +(drift + gauss() * 0.7).toFixed(3)]) }; });
+    new Set(Object.values(sectorOfSym).map((x) => x[1])).forEach((ind) => { const drift = gauss() * 0.2; industriesMk[ind] = { NASDAQ: mDays.map((d) => [d, +(drift + gauss() * 1.1).toFixed(3)]), NYSE: mDays.map((d) => [d, +(drift + gauss() * 1).toFixed(3)]) }; });
+    const market = { symbols, peers: peersMk, profiles, prices, sectors: sectorsMk, industries: industriesMk, updated: mDays[mDays.length - 1] };
+
     return {
-      ok: true, generated: iso(now), currency: 'EUR', weeks, positionsDate: iso(now), positions, today, events,
+      ok: true, generated: iso(now), currency: 'EUR', weeks, positionsDate: iso(now), positions, today, events, market,
       intraday: { columns: ['time', 'ticker', 'value'], rows: intraday },
       hours: { columns: ['hour', 'ticker', 'open', 'close', 'low', 'high', 'avg'], rows: hours },
       days: { columns: ['date', 'ticker', 'open', 'close', 'low', 'high', 'avg', 'range', 'rangePct'], rows: days },

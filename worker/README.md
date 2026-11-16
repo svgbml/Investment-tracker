@@ -37,6 +37,7 @@ Alle adressen vragen je toegangscode, als `?token=…` of als header `Authorizat
 | Openstaande opname invoeren | `POST /api/pending` met `{"amount": 154.65}` |
 | Openstaande opnames bekijken / wissen | `GET` / `DELETE /api/pending` |
 | Agenda nu bijwerken (dividenden, kwartaalcijfers) | `POST /api/events` |
+| Sector- en vergelijkingsgegevens: taken klaarzetten en afwerken | `POST /api/market?plan=1&steps=3` (zonder `plan` alleen afwerken) |
 | Eenmalig gegevens uit de sheet overnemen | `POST /api/import` met `{"url": "<Apps Script /exec-adres>", "token": "<code van de sheet>"}` |
 
 Voorbeeld in PowerShell:
@@ -56,6 +57,16 @@ Eén keer per dag (05:17 UTC, tweede cron in `wrangler.toml`) haalt de Worker:
 De website rekent daaruit een verwacht volgend dividend (zelfde tussenpoos als je eerdere uitkeringen, bedrag geschaald naar je huidige aantal). Tickers die bij FMP anders heten staan in `SYMBOL_MAP` in `src/index.js` (bijvoorbeeld `FB` → `META`).
 
 Sleutel toevoegen: maak een gratis account bij FMP, kopieer je API-sleutel uit het dashboard en voeg hem in Cloudflare toe als *Secret* met de naam `FMP_KEY` (*Settings → Variables and Secrets*, type Secret, niet onder Build). Bijwerken zonder te wachten: `POST /api/events`. Let op: bij een Worker die vanuit GitHub wordt gebouwd, wordt een nieuw geheim pas actief bij de volgende build (of als je in *Deployments* de versie met het geheim uitrolt).
+
+## Sector en vergelijkbare bedrijven
+
+Na de agenda zet de Worker elke ochtend taken klaar die hij buiten de meettijden (per 10 minuten maximaal 30 verzoeken) afwerkt:
+
+- per aandeel het profiel bij FMP (sector, branche, beurswaarde, beta, jaarbereik, koers) en, één keer per week, tot 5 vergelijkbare bedrijven met hun profiel;
+- de gemiddelde koersverandering per sector en per branche (eerste keer 20 handelsdagen terug, daarna 1 per dag);
+- koershistorie van een jaar voor aandelen waar het gratis abonnement die geeft; voor de rest bouwt de Worker die dag voor dag op uit het profiel.
+
+Gegevens staan in de tabellen `ext_profile`, `ext_peers`, `ext_prices` en `ext_perf` (maakt de Worker zelf aan). Alle FMP-verzoeken samen blijven onder 230 per dag (`fmp_calls` in de tabel `kv`).
 
 ## Grenzen
 

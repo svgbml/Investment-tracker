@@ -31,14 +31,16 @@ const SYMBOL_MAP = { FB: 'META' };
 export default {
   async scheduled(event, env, ctx) {
     if (event.cron === EVENTS_CRON) {
-      ctx.waitUntil(refreshEvents(env).catch(async (e) => {
+      ctx.waitUntil(refreshEvents(env).then(() => planMarket(env)).catch(async (e) => {
         console.error('events', e);
         try { await setKv(env, 'last_error', new Date().toISOString() + ' events: ' + String(e && e.message || e)); } catch (_) {}
       }));
       return;
     }
-    ctx.waitUntil(tick(env, new Date(event.scheduledTime), false)
+    const at = new Date(event.scheduledTime);
+    ctx.waitUntil(tick(env, at, false)
       .then(() => setKv(env, 'last_cron', new Date().toISOString()))
+      .then(() => (isLive(at) ? null : marketStep(env)))
       .catch(async (e) => {
         console.error('tick', e);
         try { await setKv(env, 'last_error', new Date().toISOString() + ' ' + String(e && e.message || e)); } catch (_) {}
@@ -78,8 +80,12 @@ export default {
           return json({ ok: true, pending: await addPending(env, Number(body.amount)) }, 200, cors);
         }
       }
-      if (url.pathname === '/api/probe' && request.method === 'POST') {
-        return json({ ok: true, results: await probeSources(env) }, 200, cors);
+      if (url.pathname === '/api/market' && request.method === 'POST') {
+        const steps = Math.min(Number(url.searchParams.get('steps') || 1), 3);
+        const msgs = [];
+        if (url.searchParams.has('plan')) msgs.push(await planMarket(env));
+        for (let i = 0; i < steps; i++) msgs.push(await marketStep(env));
+        return json({ ok: true, message: msgs.join(' ') }, 200, cors);
       }
       if (url.pathname === '/api/events' && request.method === 'POST') {
         return json({ ok: true, message: await refreshEvents(env) }, 200, cors);
@@ -506,10 +512,14 @@ async function buildData(env) {
   let events = null;
   try { events = JSON.parse((await getKv(env, 'events')) || 'null'); } catch (e) { events = null; }
 
+  let market = null;
+  try { market = await marketData(env); } catch (e) { console.error('market', e); }
+
   return {
     ok: true,
     generated: isoLocal(now),
     events,
+    market,
     currency: 'EUR',
     weeks,
     positionsDate,
@@ -584,6 +594,7 @@ async function refreshEvents(env) {
     }
   }
   out.earnings.sort((a, b) => a.date.localeCompare(b.date));
+  await flushFmp(env);
   await setKv(env, 'events', JSON.stringify(out));
   await setKv(env, 'data_cache', JSON.stringify(await buildData(env)));
   return `Gebeurtenissen bijgewerkt: ${out.earnings.length} cijferdata, ${out.dividends.length} dividenden, ` +
@@ -591,10 +602,12 @@ async function refreshEvents(env) {
 }
 
 async function fmp(env, path) {
+  await countFmp(env);
   const sep = path.includes('?') ? '&' : '?';
   const res = await fetch(FMP_BASE + path + sep + 'apikey=' + encodeURIComponent(env.FMP_KEY));
   if (res.status === 429) throw new Error('FMP-limiet bereikt');
-  if (res.status === 401 || res.status === 403 || res.status === 402) throw new Error('FMP gaf ' + res.status + ' (sleutel of abonnement)');
+  if (res.status === 402) throw new Error('FMP gaf 402 (niet in het gratis abonnement)');
+  if (res.status === 401 || res.status === 403) throw new Error('FMP gaf ' + res.status + ' (sleutel of abonnement)');
   if (!res.ok) throw new Error('FMP gaf ' + res.status);
   const j = await res.json();
   if (j && !Array.isArray(j)) {
@@ -605,35 +618,216 @@ async function fmp(env, path) {
   return j || [];
 }
 
-// Tijdelijk: welke bronnen werken vanaf Cloudflare?
-async function probeSources(env) {
-  const k = encodeURIComponent(env.FMP_KEY || '');
-  const tests = [
-    ['price-change TTWO', FMP_BASE + '/stock-price-change?symbol=TTWO&apikey=' + k],
-    ['price-change LLY', FMP_BASE + '/stock-price-change?symbol=LLY&apikey=' + k],
-    ['price-change XLK', FMP_BASE + '/stock-price-change?symbol=XLK&apikey=' + k],
-    ['ratios-ttm TTWO', FMP_BASE + '/ratios-ttm?symbol=TTWO&apikey=' + k],
-    ['key-metrics-ttm LLY', FMP_BASE + '/key-metrics-ttm?symbol=LLY&apikey=' + k],
-    ['hist sector perf', FMP_BASE + '/historical-sector-performance?sector=Technology&from=2026-08-01&apikey=' + k],
-    ['industry perf', FMP_BASE + '/industry-performance-snapshot?date=2026-11-13&apikey=' + k],
-    ['hist industry perf', FMP_BASE + '/historical-industry-performance?industry=Biotechnology&from=2026-10-01&apikey=' + k],
-    ['sector pe', FMP_BASE + '/sector-pe-snapshot?date=2026-11-13&apikey=' + k],
-    ['industry pe', FMP_BASE + '/industry-pe-snapshot?date=2026-11-13&apikey=' + k],
-    ['profile LLY', FMP_BASE + '/profile?symbol=LLY&apikey=' + k],
-    ['peers LLY', FMP_BASE + '/stock-peers?symbol=LLY&apikey=' + k],
-    ['quote LLY', FMP_BASE + '/quote?symbol=LLY&apikey=' + k],
-    ['profile ASML', FMP_BASE + '/profile?symbol=ASML&apikey=' + k],
-    ['profile SPCX', FMP_BASE + '/profile?symbol=SPCX&apikey=' + k],
-  ];
+
+// ---------- Markt: sector, branche en vergelijkbare bedrijven (FMP) ----------
+// Gratis bij FMP: bedrijfsprofielen (sector, branche, beurswaarde, beta, jaarbereik, koers), vergelijkbare
+// bedrijven, en per dag de gemiddelde koersverandering per sector en branche. Koershistorie alleen voor een
+// beperkte lijst grote namen. De Worker werkt een wachtrij af buiten de meetvensters, binnen een dagbudget.
+const FMP_DAY_BUDGET = 230;
+const MARKET_STEP_CALLS = 30;
+const PEERS_PER_STOCK = 5;
+const PERF_BACKFILL_DAYS = 20;
+
+// Teller van FMP-verzoeken per dag; één keer gelezen en aan het eind weggeschreven (scheelt databasevragen)
+async function countFmp(env) {
+  const day = parts(new Date()).day;
+  if (!env._fmp || env._fmp.day !== day) {
+    let c = {};
+    try { c = JSON.parse((await getKv(env, 'fmp_calls')) || '{}'); } catch (e) { c = {}; }
+    env._fmp = { day, n: c.day === day ? c.n : 0 };
+  }
+  if (env._fmp.n >= FMP_DAY_BUDGET) throw new Error('FMP-limiet bereikt (dagbudget)');
+  env._fmp.n++;
+}
+
+async function flushFmp(env) {
+  if (env._fmp) await setKv(env, 'fmp_calls', JSON.stringify({ day: env._fmp.day, n: env._fmp.n }));
+}
+
+async function ensureMarketTables(env) {
+  if ((await getKv(env, 'market_schema')) === '1') return;
+  await env.DB.batch([
+    env.DB.prepare('CREATE TABLE IF NOT EXISTS ext_profile (symbol TEXT PRIMARY KEY, data TEXT, updated TEXT)'),
+    env.DB.prepare('CREATE TABLE IF NOT EXISTS ext_peers (symbol TEXT PRIMARY KEY, peers TEXT, updated TEXT)'),
+    env.DB.prepare('CREATE TABLE IF NOT EXISTS ext_prices (symbol TEXT NOT NULL, day TEXT NOT NULL, price REAL, PRIMARY KEY (symbol, day))'),
+    env.DB.prepare('CREATE TABLE IF NOT EXISTS ext_perf (day TEXT NOT NULL, kind TEXT NOT NULL, name TEXT NOT NULL, exchange TEXT NOT NULL, change REAL, PRIMARY KEY (day, kind, name, exchange))'),
+  ]);
+  await setKv(env, 'market_schema', '1');
+}
+
+// Laatste afgesloten Amerikaanse handelsdag (feestdagen niet meegerekend)
+function lastUsDay(now) {
+  const p = parts(now);
+  const d = new Date(p.day + 'T12:00:00Z');
+  // Voor 22:30 Amsterdamse tijd is de beurs van vandaag nog niet dicht
+  if (p.hm < '22:30') d.setUTCDate(d.getUTCDate() - 1);
+  while (d.getUTCDay() === 0 || d.getUTCDay() === 6) d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
+function prevWeekdays(day, n) {
   const out = [];
-  for (const [name, u] of tests) {
-    try {
-      const r = await fetch(u, { headers: { 'User-Agent': 'Mozilla/5.0 (investment-tracker)', Accept: 'application/json,text/csv,*/*' } });
-      const t = await r.text();
-      out.push({ name, status: r.status, body: t.slice(0, 700) });
-    } catch (e) { out.push({ name, error: String(e.message || e) }); }
+  const d = new Date(day + 'T12:00:00Z');
+  while (out.length < n) {
+    if (d.getUTCDay() !== 0 && d.getUTCDay() !== 6) out.push(d.toISOString().slice(0, 10));
+    d.setUTCDate(d.getUTCDate() - 1);
   }
   return out;
+}
+
+async function heldStocks(env) {
+  const last = await env.DB.prepare('SELECT MAX(ts) AS ts FROM intraday').first();
+  let results;
+  if (last && last.ts) {
+    ({ results } = await env.DB.prepare('SELECT ticker, name FROM intraday WHERE ts = ? AND ticker != ?').bind(last.ts, TOTAL).all());
+  } else {
+    ({ results } = await env.DB.prepare('SELECT ticker, name FROM positions WHERE date = (SELECT MAX(date) FROM positions)').all());
+  }
+  return results.filter((r) => !ETF_RE.test(r.name || '')).map((r) => ({ ticker: r.ticker, symbol: SYMBOL_MAP[r.ticker] || r.ticker }));
+}
+
+// Zet de taken voor vandaag klaar (1x per dag na de agenda, of handmatig)
+async function planMarket(env) {
+  if (!env.FMP_KEY) return 'Geen FMP_KEY: markt overgeslagen.';
+  await ensureMarketTables(env);
+  const now = new Date();
+  const usDay = lastUsDay(now);
+  const held = await heldStocks(env);
+  const tasks = [];
+  const { results: peerRows } = await env.DB.prepare('SELECT symbol, peers, updated FROM ext_peers').all();
+  const peerMap = new Map(peerRows.map((r) => [r.symbol, r]));
+  const weekAgo = new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10);
+  const symbols = new Set();
+  for (const h of held) {
+    symbols.add(h.symbol);
+    const pr = peerMap.get(h.symbol);
+    if (!pr || pr.updated < weekAgo) tasks.push('peers:' + h.symbol);
+    else JSON.parse(pr.peers || '[]').forEach((x) => symbols.add(x));
+  }
+  const { results: hist } = await env.DB.prepare('SELECT symbol, COUNT(*) AS n FROM ext_prices GROUP BY symbol').all();
+  const histN = new Map(hist.map((r) => [r.symbol, r.n]));
+  const noHist = JSON.parse((await getKv(env, 'eod_unavailable')) || '[]');
+  for (const sym of symbols) {
+    tasks.push('profile:' + sym);
+    if ((histN.get(sym) || 0) < 20 && !noHist.includes(sym)) tasks.push('eod:' + sym);
+  }
+  const { results: have } = await env.DB.prepare("SELECT DISTINCT day FROM ext_perf WHERE kind = 'sector'").all();
+  const haveDays = new Set(have.map((r) => r.day));
+  for (const d of prevWeekdays(usDay, PERF_BACKFILL_DAYS)) {
+    if (!haveDays.has(d)) tasks.push('perf:' + d);
+  }
+  await setKv(env, 'mkt_queue', JSON.stringify(tasks));
+  await setKv(env, 'mkt_planned', usDay);
+  return `Markt: ${tasks.length} taken klaargezet.`;
+}
+
+async function marketStep(env) {
+  if (!env.FMP_KEY) return '';
+  let queue = [];
+  try { queue = JSON.parse((await getKv(env, 'mkt_queue')) || '[]'); } catch (e) { queue = []; }
+  if (!queue.length) return 'Markt: niets te doen.';
+  await ensureMarketTables(env);
+  const usDay = lastUsDay(new Date());
+  let calls = 0, done = 0, stop = false;
+  const writes = [];
+  const errors = [];
+  const noHist = JSON.parse((await getKv(env, 'eod_unavailable')) || '[]');
+  while (queue.length && calls < MARKET_STEP_CALLS && !stop) {
+    const task = queue.shift();
+    const [kind, arg] = [task.slice(0, task.indexOf(':')), task.slice(task.indexOf(':') + 1)];
+    try {
+      if (kind === 'peers') {
+        calls++;
+        const list = await fmp(env, '/stock-peers?symbol=' + encodeURIComponent(arg));
+        // Voorkeur voor Amerikaanse noteringen (zonder beurs-achtervoegsel), grootste eerst
+        const us = list.filter((x) => x.symbol && !x.symbol.includes('.') && x.symbol !== arg);
+        const pick = (us.length >= 3 ? us : list.filter((x) => x.symbol && x.symbol !== arg))
+          .sort((a, b) => num(b.mktCap) - num(a.mktCap)).slice(0, PEERS_PER_STOCK).map((x) => x.symbol);
+        writes.push(env.DB.prepare('INSERT OR REPLACE INTO ext_peers (symbol, peers, updated) VALUES (?,?,?)').bind(arg, JSON.stringify(pick), parts(new Date()).day));
+        pick.forEach((sym) => { if (!queue.includes('profile:' + sym)) queue.push('profile:' + sym); if (!noHist.includes(sym)) queue.push('eod:' + sym); });
+      } else if (kind === 'profile') {
+        calls++;
+        const p = (await fmp(env, '/profile?symbol=' + encodeURIComponent(arg)))[0];
+        if (p) {
+          const keep = {
+            symbol: p.symbol, name: p.companyName, price: numOrNull(p.price), currency: p.currency, marketCap: numOrNull(p.marketCap),
+            beta: numOrNull(p.beta), lastDividend: numOrNull(p.lastDividend), range: p.range || null, change: numOrNull(p.changePercentage),
+            sector: p.sector || null, industry: p.industry || null, exchange: p.exchange || null, country: p.country || null,
+            employees: numOrNull(p.fullTimeEmployees), ipoDate: p.ipoDate || null, isEtf: !!p.isEtf, website: p.website || null,
+          };
+          writes.push(env.DB.prepare('INSERT OR REPLACE INTO ext_profile (symbol, data, updated) VALUES (?,?,?)').bind(arg, JSON.stringify(keep), usDay));
+          if (keep.price != null) writes.push(env.DB.prepare('INSERT OR REPLACE INTO ext_prices (symbol, day, price) VALUES (?,?,?)').bind(arg, usDay, keep.price));
+        }
+      } else if (kind === 'eod') {
+        calls++;
+        const from = new Date(Date.now() - 400 * 864e5).toISOString().slice(0, 10);
+        try {
+          const rows = await fmp(env, '/historical-price-eod/light?symbol=' + encodeURIComponent(arg) + '&from=' + from);
+          const st = env.DB.prepare('INSERT OR REPLACE INTO ext_prices (symbol, day, price) VALUES (?,?,?)');
+          rows.filter((r) => r.date && isFinite(Number(r.price))).forEach((r) => writes.push(st.bind(arg, r.date, Number(r.price))));
+        } catch (e) {
+          if (/402/.test(e.message)) { if (!noHist.includes(arg)) noHist.push(arg); } else throw e;
+        }
+      } else if (kind === 'perf') {
+        calls += 2;
+        const sec = await fmp(env, '/sector-performance-snapshot?date=' + arg);
+        const ind = await fmp(env, '/industry-performance-snapshot?date=' + arg);
+        const st = env.DB.prepare('INSERT OR REPLACE INTO ext_perf (day, kind, name, exchange, change) VALUES (?,?,?,?,?)');
+        sec.forEach((r) => writes.push(st.bind(arg, 'sector', r.sector, r.exchange || '', numOrNull(r.averageChange))));
+        ind.forEach((r) => writes.push(st.bind(arg, 'industry', r.industry, r.exchange || '', numOrNull(r.averageChange))));
+        // Lege dag (feestdag): markeer zodat hij niet opnieuw wordt opgehaald
+        if (!sec.length) writes.push(st.bind(arg, 'sector', '-', '', null));
+      }
+      done++;
+    } catch (e) {
+      errors.push(task + ': ' + e.message);
+      if (/limiet/.test(e.message)) { queue.unshift(task); stop = true; }
+    }
+  }
+  for (let i = 0; i < writes.length; i += 100) await env.DB.batch(writes.slice(i, i + 100));
+  await flushFmp(env);
+  await setKv(env, 'mkt_queue', JSON.stringify(queue));
+  await setKv(env, 'eod_unavailable', JSON.stringify(noHist));
+  if (errors.length) await setKv(env, 'mkt_errors', JSON.stringify(errors.slice(-20)));
+  if (done) await setKv(env, 'data_cache', JSON.stringify(await buildData(env)));
+  return `Markt: ${done} taken gedaan, ${queue.length} over${errors.length ? ', ' + errors.length + ' fouten' : ''}.`;
+}
+
+async function marketData(env) {
+  if ((await getKv(env, 'market_schema')) !== '1') return null;
+  const held = await heldStocks(env);
+  const { results: peerRows } = await env.DB.prepare('SELECT symbol, peers FROM ext_peers').all();
+  const peers = {};
+  const want = new Set();
+  const heldSyms = new Map(held.map((h) => [h.symbol, h.ticker]));
+  peerRows.forEach((r) => {
+    if (!heldSyms.has(r.symbol)) return;
+    const list = JSON.parse(r.peers || '[]');
+    peers[heldSyms.get(r.symbol)] = list;
+    list.forEach((x) => want.add(x));
+  });
+  held.forEach((h) => want.add(h.symbol));
+  const { results: profRows } = await env.DB.prepare('SELECT symbol, data FROM ext_profile').all();
+  const profiles = {};
+  profRows.forEach((r) => { if (want.has(r.symbol)) profiles[r.symbol] = JSON.parse(r.data); });
+  const since = new Date(Date.now() - 380 * 864e5).toISOString().slice(0, 10);
+  const { results: pr } = await env.DB.prepare('SELECT symbol, day, price FROM ext_prices WHERE day >= ? ORDER BY day').bind(since).all();
+  const prices = {};
+  pr.forEach((r) => { if (!want.has(r.symbol)) return; (prices[r.symbol] = prices[r.symbol] || []).push([r.day, r.price]); });
+  const industries = new Set(Object.values(profiles).map((p) => p.industry).filter(Boolean));
+  const { results: perf } = await env.DB.prepare("SELECT day, kind, name, exchange, change FROM ext_perf WHERE name != '-' ORDER BY day").all();
+  const sectors = {}, inds = {};
+  perf.forEach((r) => {
+    if (r.change == null) return;
+    const tgt = r.kind === 'sector' ? sectors : industries.has(r.name) ? inds : null;
+    if (!tgt) return;
+    ((tgt[r.name] = tgt[r.name] || {})[r.exchange] = tgt[r.name][r.exchange] || []).push([r.day, r.change]);
+  });
+  return {
+    symbols: Object.fromEntries(held.map((h) => [h.ticker, h.symbol])),
+    peers, profiles, prices, sectors, industries: inds,
+    updated: await getKv(env, 'mkt_planned'),
+  };
 }
 
 const numOrNull = (x) => (x === null || x === undefined || x === '' || !isFinite(Number(x)) ? null : Number(x));

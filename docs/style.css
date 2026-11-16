@@ -405,7 +405,7 @@ body[data-page="list"] .m-top, body[data-page="stats"] .m-top { background: rgba
 .m-nav button { width: 44px; height: 44px; border: 0; border-radius: 50%; background: rgba(255, 255, 255, .85); font-size: 18px; font-weight: 700; cursor: pointer; }
 .md .m-hero { padding-top: 6px; touch-action: pan-y; }
 .md .check { padding: 4px 16px 0; }
-.m-dtabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; margin: 4px 0 12px; padding: 4px; border-radius: 14px; background: #E9ECF1; }
+.m-dtabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin: 4px 0 12px; padding: 4px; border-radius: 14px; background: #E9ECF1; }
 .m-dtabs button { min-height: 40px; border: 0; border-radius: 10px; background: transparent; font-weight: 600; cursor: pointer; }
 .m-dtabs button[aria-selected="true"] { background: #FFFFFF; box-shadow: 0 1px 2px rgba(20, 24, 31, .12); }
 .md .foot { margin: 16px 2px 0; }
@@ -463,3 +463,39 @@ button.m-stat.clickable:active { background: var(--bg); }
 .ag-t { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ag-s { font-size: 13px; color: var(--ink-2); }
 .ag-amt { flex: none; font-weight: 600; }
+
+/* Sector en vergelijkbare bedrijven */
+.hbars.cmp .r { grid-template-columns: minmax(56px, 150px) minmax(0, 1fr) 72px; cursor: default; font-size: 14px; }
+.hbars.cmp .r:hover { background: transparent; }
+.hbars.cmp .tk { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hbars.cmp.wide .r { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) 56px; }
+.hbars.cmp .r.mine .tk { font-weight: 800; }
+.hbars.cmp .r:not(.mine) .tk { font-weight: 500; }
+.hbars .pos.soft { background: #8FC7AB; }
+.hbars .neg.soft { background: #E3A79C; }
+.sec-cmp { display: flex; flex-direction: column; gap: 12px; }
+.sc-h { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; margin-bottom: 2px; }
+.tbl-wrap { overflow-x: auto; margin: 0 -4px; }
+.tbl { width: 100%; border-collapse: collapse; font-size: 14px; }
+.tbl th { text-align: left; font-weight: 500; font-size: 13px; color: var(--ink-2); padding: 8px; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+.tbl td { padding: 10px 8px; border-top: 1px solid var(--rule); vertical-align: middle; }
+.tbl .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tbl td.num { font-weight: 600; }
+.tbl .co { min-width: 180px; }
+.tbl .co .nm { display: block; font-size: 13px; color: var(--ink-2); max-width: 260px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tbl .co .tag { margin-left: 4px; }
+.tbl tr.me td { background: var(--band); }
+.tbl tr.link { cursor: pointer; }
+.tbl tr.link:hover td { background: var(--bg); }
+.tbl .yrc { min-width: 130px; }
+.tbl .yrc .sub { display: block; font-size: 12px; color: var(--ink-2); margin-top: 4px; }
+.yr { position: relative; display: block; height: 12px; }
+.yr-rail { position: absolute; left: 0; right: 0; top: 5px; height: 2px; border-radius: 1px; background: var(--track); }
+.yr-dot { position: absolute; top: 1px; width: 10px; height: 10px; margin-left: -5px; border-radius: 50%; background: var(--accent); }
+@media (max-width: 700px) {
+  .tbl { font-size: 13px; }
+  .tbl th:nth-child(5), .tbl td:nth-child(5), .tbl th:nth-child(6), .tbl td:nth-child(6) { display: none; }
+  .tbl .co { min-width: 120px; }
+  .tbl .co .nm { max-width: 130px; }
+  .tbl .yrc { min-width: 80px; }
+}
