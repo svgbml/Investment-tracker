@@ -2,16 +2,33 @@
 <html lang="nl">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="robots" content="noindex">
+  <meta name="theme-color" content="#E8EDFA">
   <title>Investeringstracker</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=8">
+  <link rel="stylesheet" href="style.css?v=9">
 </head>
 <body data-page="home">
-  <div id="shell">
+
+  <!-- Meldingen en welkom: verhuizen naar de weergave die actief is -->
+  <div id="notices">
+    <div id="demo-banner" class="banner" hidden>Je bekijkt voorbeeldgegevens. <button id="btn-demo-exit" class="linklike" type="button">Mijn eigen gegevens laden</button></div>
+    <div id="error" class="banner error" role="alert" hidden></div>
+    <section id="welcome" class="welcome" hidden>
+      <h1>Je beleggingen in één oogopslag</h1>
+      <p>Deze site toont je Trading 212-portefeuille, opgehaald door je Cloudflare Worker of door het script in je Google Sheet. Vul de toegangscode in die je daar hebt ingesteld.</p>
+      <div class="welcome-actions">
+        <button id="btn-welcome-settings" class="btn primary" type="button">Toegangscode invullen</button>
+        <button id="btn-demo" class="btn ghost" type="button">Voorbeeldgegevens bekijken</button>
+      </div>
+    </section>
+  </div>
+
+  <!-- ===================== Desktop ===================== -->
+  <div id="shell" hidden>
     <header class="topbar">
       <span class="brand">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l5-5 4 3 8-9" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -23,21 +40,18 @@
         <a href="#bedrijven" data-page="list">Bedrijven</a>
       </nav>
       <div class="top-actions">
-        <span id="updated"></span>
-        <button id="btn-refresh" class="icon-btn" type="button" aria-label="Gegevens vernieuwen">
+        <span class="updated"></span>
+        <button class="icon-btn btn-refresh" type="button" aria-label="Gegevens vernieuwen">
           <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5"/></svg>
         </button>
-        <button id="btn-settings" class="icon-btn" type="button" aria-label="Instellingen">
+        <button class="icon-btn btn-settings" type="button" aria-label="Instellingen">
           <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg>
         </button>
       </div>
     </header>
-
-    <div id="demo-banner" class="banner" hidden>Je bekijkt voorbeeldgegevens. <button id="btn-demo-exit" class="linklike" type="button">Mijn eigen gegevens laden</button></div>
-    <div id="error" class="banner error" role="alert" hidden></div>
+    <div class="notice-slot" id="d-notices"></div>
 
     <main id="app" hidden>
-      <!-- Overzicht -->
       <div id="page-home" class="page">
         <section class="band" aria-labelledby="hero-label">
           <div class="hero-head">
@@ -50,37 +64,28 @@
           </div>
           <div id="hero-chart" class="chart hero-chart" role="img" aria-label="Verloop van de totale waarde"></div>
           <div id="hero-x" class="xlabels"></div>
+          <p id="hero-note" class="chart-note"></p>
         </section>
 
         <div class="wrap">
           <div id="kpis" class="grid stagger"></div>
-
           <div class="section-head">
             <h2 id="movers-title">Grootste veranderingen vandaag</h2>
             <div class="aside"><span id="breadth" class="breadth"></span><a class="link" href="#bedrijven" id="link-all">Alle bedrijven bekijken</a></div>
           </div>
           <div id="movers" class="grid movers stagger"></div>
-
           <div class="section-head"><h2>Weken</h2></div>
           <div id="weeks" class="grid wide stagger"></div>
-
-          <div class="section-head"><h2>Patronen</h2><p class="muted small">Van de hele portefeuille</p></div>
+          <div class="section-head"><h2>Patronen</h2><p class="muted small" id="patterns-note">Van de hele portefeuille</p></div>
           <div id="patterns" class="grid stagger"></div>
-
-          <div class="section-head"><h2>Statistieken</h2></div>
+          <div class="section-head"><h2>Statistieken</h2><p class="muted small" id="stats-note"></p></div>
           <div id="stats" class="grid stats stagger"></div>
         </div>
       </div>
 
-      <!-- Bedrijven -->
       <div id="page-list" class="page" hidden>
         <div class="wrap">
-          <div class="list-head">
-            <div>
-              <h1>Bedrijven</h1>
-              <p id="list-sub" class="muted"></p>
-            </div>
-          </div>
+          <div class="list-head"><div><h1>Bedrijven</h1><p id="list-sub" class="muted"></p></div></div>
           <div class="controls">
             <label class="sr-only" for="list-search">Zoek een bedrijf</label>
             <input id="list-search" class="search" type="search" placeholder="Zoek op naam of ticker" autocomplete="off">
@@ -93,21 +98,76 @@
       </div>
     </main>
 
-    <section id="welcome" class="welcome" hidden>
-      <h1>Je beleggingen in één oogopslag</h1>
-      <p>Deze site toont je Trading 212-portefeuille, opgehaald door het script in je Google Sheet of door je Cloudflare Worker. Vul de toegangscode in die je daar hebt ingesteld.</p>
-      <div class="welcome-actions">
-        <button id="btn-welcome-settings" class="btn primary" type="button">Toegangscode invullen</button>
-        <button id="btn-demo" class="btn ghost" type="button">Voorbeeldgegevens bekijken</button>
-      </div>
-    </section>
-
-    <footer class="foot-page">
-      Gegevens: Trading 212 Public API, via Google Sheets of Cloudflare Worker.
-    </footer>
+    <footer class="foot-page">Gegevens: Trading 212 Public API, via Cloudflare Worker of Google Sheets.</footer>
   </div>
 
-  <!-- Ingezoomde bedrijfspagina -->
+  <!-- ===================== Telefoon ===================== -->
+  <div id="mshell" hidden>
+    <header class="m-top">
+      <h1 id="m-title">Overzicht</h1>
+      <div class="m-top-actions">
+        <span class="updated"></span>
+        <button class="m-icon btn-refresh" type="button" aria-label="Gegevens vernieuwen">
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5"/></svg>
+        </button>
+      </div>
+    </header>
+    <div class="notice-slot" id="m-notices"></div>
+
+    <main id="m-main" hidden>
+      <section id="m-home" class="m-view">
+        <div class="m-hero">
+          <p id="m-hero-label" class="hero-label"></p>
+          <p id="m-hero-value" class="m-value"></p>
+          <p id="m-hero-change"></p>
+          <div id="m-hero-chart" class="chart m-chart" role="img" aria-label="Verloop van de totale waarde"></div>
+          <div id="m-hero-x" class="xlabels"></div>
+          <div id="m-hero-ranges" class="m-seg" role="group" aria-label="Periode van de grafiek"></div>
+          <p id="m-hero-note" class="chart-note"></p>
+        </div>
+        <div class="m-body">
+          <div id="m-kpis" class="m-grid2 stagger"></div>
+          <div class="m-head"><h2 id="m-movers-title">Grootste veranderingen</h2><span id="m-breadth" class="breadth"></span></div>
+          <div id="m-movers" class="m-card m-rows stagger"></div>
+          <div class="m-head"><h2>Weken</h2></div>
+          <div id="m-weeks" class="m-stack stagger"></div>
+        </div>
+      </section>
+
+      <section id="m-list" class="m-view" hidden>
+        <div class="m-list-tools">
+          <label class="sr-only" for="m-search">Zoek een bedrijf</label>
+          <input id="m-search" class="search" type="search" placeholder="Zoek op naam of ticker" autocomplete="off">
+          <div class="m-chips" role="group" aria-label="Sorteren en filteren" id="m-chips"></div>
+        </div>
+        <p id="m-list-sub" class="m-sub"></p>
+        <div id="m-list-rows" class="m-card m-rows stagger"></div>
+      </section>
+
+      <section id="m-stats" class="m-view" hidden>
+        <div class="m-body">
+          <p id="m-stats-note" class="m-sub" style="padding:0"></p>
+          <div id="m-stat-cards" class="m-grid2 stagger"></div>
+          <div class="m-head"><h2>Patronen</h2></div>
+          <div id="m-patterns" class="m-stack stagger"></div>
+        </div>
+      </section>
+    </main>
+
+    <nav class="m-tabs" aria-label="Hoofdmenu">
+      <span class="m-tab-ind" aria-hidden="true"></span>
+      <a href="#overzicht" data-page="home" aria-current="page">
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l5-5 4 3 8-9"/></svg>Overzicht</a>
+      <a href="#bedrijven" data-page="list">
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><rect x="13" y="13" width="7" height="7" rx="2"/></svg>Bedrijven</a>
+      <a href="#statistieken" data-page="stats">
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 20V11M12 20V4M19 20v-6"/></svg>Statistieken</a>
+      <button type="button" class="btn-settings">
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg>Instellingen</button>
+    </nav>
+  </div>
+
+  <!-- Ingezoomde bedrijfspagina (beide weergaven) -->
   <div id="detail" class="detail" role="dialog" aria-modal="true" aria-labelledby="d-title" hidden>
     <div id="detail-inner" class="detail-inner"></div>
   </div>
@@ -124,18 +184,28 @@
         <input id="in-url" name="url" type="url" spellcheck="false" placeholder="https://…/api/data of …/exec">
         <p id="url-hint" class="muted small">Het adres van je Cloudflare Worker (eindigt op /api/data) of van de Apps Script web-app (eindigt op /exec). Laat leeg voor het standaardadres.</p>
       </details>
+      <details class="advanced" id="import-box" hidden>
+        <summary>Geschiedenis overnemen uit de Google Sheet</summary>
+        <p class="muted small">Neemt je weken, dagen, uren en de metingen van de laatste dagen over in de Cloudflare Worker. Eén keer doen is genoeg; zet daarna Live tracking in de sheet uit.</p>
+        <label for="in-sheet-url">Adres van de sheet-web-app</label>
+        <input id="in-sheet-url" type="url" spellcheck="false" placeholder="https://script.google.com/macros/s/…/exec">
+        <label for="in-sheet-token">Toegangscode van de sheet</label>
+        <input id="in-sheet-token" type="password" autocomplete="off" spellcheck="false" placeholder="De code die je in de sheet hebt gemaakt">
+        <div class="dlg-actions" style="margin-top:12px"><button type="button" id="btn-import" class="btn ghost">Geschiedenis overnemen</button></div>
+        <p id="import-status" class="small" role="status"></p>
+      </details>
       <div class="dlg-actions">
         <button value="forget" class="btn ghost danger" type="submit">Code vergeten</button>
         <span class="spacer"></span>
         <button value="cancel" class="btn ghost" type="submit">Annuleren</button>
-        <button value="save" class="btn primary" type="submit">Opslaan en laden</button>
+        <button value="save" id="btn-save" class="btn primary" type="submit">Opslaan en laden</button>
       </div>
     </form>
   </dialog>
 
   <div id="tip" class="tip" role="status" hidden></div>
 
-  <script src="config.js?v=8"></script>
-  <script src="app.js?v=8"></script>
+  <script src="config.js?v=9"></script>
+  <script src="app.js?v=9"></script>
 </body>
 </html>

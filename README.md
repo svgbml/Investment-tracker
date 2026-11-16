@@ -9,6 +9,8 @@ Persoonlijke beleggingstracker voor Trading 212: een Google Sheet die via de Tra
   - **Overzicht**: grafiek van de totale waarde (vandaag, 3 dagen, 30 dagen, alles), kerncijfers, de 5 grootste veranderingen, weekoverzicht, patronen (kalender, per uur, per weekdag, grootte van dagbewegingen) en statistieken.
   - **Bedrijven**: alle posities als tegels met grafiek, zoeken, filteren en sorteren.
   - **Bedrijfspagina**: klik op een tegel en de pagina zoomt erop in. Met grafiek (ook tegen de hele portefeuille), positie, dagbereik, historie en patronen per bedrijf. Het adres `#bedrijf/TICKER` werkt ook als link.
+  - Op een telefoon (smaller dan 700 pixels) toont de site een eigen app-indeling: tabbalk onderin (Overzicht, Bedrijven, Statistieken, Instellingen), lijsten in plaats van tegels, en een bedrijfspagina met tabbladen. Veeg over naam en waarde naar het vorige of volgende bedrijf.
+  - Bij de Cloudflare Worker kun je via Instellingen je geschiedenis uit de Google Sheet overnemen.
   - Probeer het met voorbeeldgegevens via `?demo`.
 - `worker/`: dezelfde tracker als Cloudflare Worker, zonder Google Sheets. Zie [worker/README.md](worker/README.md).
 

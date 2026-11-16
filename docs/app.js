@@ -1,8 +1,10 @@
-/* Investeringstracker – dashboard (ontwerp F4)
+/* Investeringstracker – dashboard
  *
- * Haalt JSON op van de Cloudflare Worker (/api/data) of de Apps Script web-app (/exec)
- * en tekent drie weergaven: Overzicht, Bedrijven en een bedrijfspagina waarop vanuit
- * de aangeklikte tegel wordt ingezoomd. De toegangscode staat alleen in localStorage.
+ * Haalt JSON op van de Cloudflare Worker (/api/data) of de Apps Script web-app (/exec).
+ * Twee weergaven op dezelfde gegevens:
+ *  - desktop (breder dan 700 px): grafiekband, tegels, inzoomen op een bedrijf;
+ *  - telefoon: app-indeling met tabbalk onderin, lijsten in plaats van tegels.
+ * De toegangscode staat alleen in localStorage van deze browser.
  */
 (function () {
   'use strict';
@@ -12,10 +14,16 @@
   const LS_TOKEN = 'tracker.token';
   const LS_URL = 'tracker.url';
   const $ = (id) => document.getElementById(id);
+  const $$ = (sel) => Array.from(document.querySelectorAll(sel));
   const TOTAL = 'TOTAAL';
   const MAX_DAY_MOVE = 0.25;   // grotere dagbeweging = vrijwel zeker een aankoop of verkoop
   const MAX_STEP_MOVE = 0.15;  // idem voor één stap in een vergelijkingsgrafiek
+  const MIN_DAYS_BEST = 3;     // minimaal aantal dagen voor beste/slechtste dag
+  const MIN_DAYS_SD = 5;       // voor beweeglijkheid
+  const MIN_DAYS_CORR = 10;    // voor samenhang met de portefeuille
   const ZOOM_MS = 450;
+  const HOUR = 3600e3;
+  const DAY = 864e5;
 
   const nf = (o) => new Intl.NumberFormat('nl-NL', o);
   const EUR = nf({ style: 'currency', currency: 'EUR' });
@@ -23,6 +31,7 @@
   const P1 = nf({ style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1 });
   const N2 = nf({ minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const N4 = nf({ maximumFractionDigits: 4 });
+  const NI = nf({ maximumFractionDigits: 0 });
   const fDT = new Intl.DateTimeFormat('nl-NL', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
   const fD = new Intl.DateTimeFormat('nl-NL', { weekday: 'short', day: 'numeric', month: 'short' });
   const fDM = new Intl.DateTimeFormat('nl-NL', { day: 'numeric', month: 'short' });
@@ -42,35 +51,45 @@
   const stdev = (a) => { if (a.length < 2) return null; const m = mean(a); return Math.sqrt(sum(a.map((x) => (x - m) ** 2)) / (a.length - 1)); };
   const dayKey = (t) => { const d = new Date(t); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); };
   const dayStart = (t) => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); };
+  const hourStart = (t) => Math.floor(t / HOUR) * HOUR;
+  const days = (n) => n + (n === 1 ? ' dag' : ' dagen');
   const reduceMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const C = { accent: '#2B5BD7', gain: '#0B7A4B', loss: '#B4311F', ink2: '#5B6472', soft: '#8FAEF0', ink: '#14181F' };
   const toneColor = (v) => (isNum(v) && v < 0 ? C.loss : C.gain);
 
+  const MQ = window.matchMedia('(max-width: 700px)');
+  let mode = MQ.matches ? 'm' : 'd';
   let data = null;
   let M = null;
   let demo = false;
   let refreshTimer = null;
   let pushedDetail = false;
+  let firstRender = true;
   const ui = {
     page: 'home', heroRange: '3d',
     listSort: 'move', listFilter: 'all', listSpan: 'today', listQuery: '',
-    detail: null, detailRange: '3d', compare: false, origin: null,
+    detail: null, detailRange: '3d', compare: false, origin: null, mTab: 'pos',
   };
-
   const RANGES = [['today', 'Vandaag'], ['3d', '3 dagen'], ['1m', '30 dagen'], ['all', 'Alles']];
 
   // ---------- Instellingen ----------
   const getToken = () => localStorage.getItem(LS_TOKEN) || '';
   const WEBAPP_RE = /^(https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec|https:\/\/[A-Za-z0-9.-]+\/api\/data)$/;
+  const SHEET_RE = /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/;
   const getUrl = () => {
     const saved = localStorage.getItem(LS_URL) || '';
     if (saved && !WEBAPP_RE.test(saved)) localStorage.removeItem(LS_URL);
     return (WEBAPP_RE.test(saved) ? saved : '') || CFG.apiUrl || '';
   };
+  const isWorker = () => /\/api\/data$/.test(getUrl());
 
-  function openSettings() {
+  function openSettings(showImport) {
     $('in-token').value = getToken();
     $('in-url').value = localStorage.getItem(LS_URL) || '';
+    const box = $('import-box');
+    box.hidden = !isWorker() || !getToken();
+    if (showImport === true && !box.hidden) box.open = true;
+    if (!$('in-sheet-url').value && SHEET_RE.test(CFG.apiUrl || '')) $('in-sheet-url').value = CFG.apiUrl;
     $('dlg-settings').showModal();
   }
 
@@ -98,20 +117,82 @@
     }
   });
 
-  $('btn-settings').addEventListener('click', openSettings);
-  $('btn-welcome-settings').addEventListener('click', openSettings);
-  $('btn-refresh').addEventListener('click', () => load());
+  // Enter in een veld mag nooit "Code vergeten" uitvoeren
+  $('form-settings').addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' || e.target.tagName !== 'INPUT') return;
+    e.preventDefault();
+    if (e.target.closest('#import-box')) $('btn-import').click();
+    else $('form-settings').requestSubmit($('btn-save'));
+  });
+
+  $('btn-import').addEventListener('click', async () => {
+    const st = $('import-status');
+    const btn = $('btn-import');
+    const u = $('in-sheet-url').value.trim();
+    const tk = $('in-sheet-token').value.trim();
+    const say = (txt, cls) => { st.textContent = txt; st.className = 'small ' + (cls || 'muted'); };
+    if (!SHEET_RE.test(u)) { say('Vul het adres van de sheet-web-app in; het eindigt op /exec.', 'loss'); return; }
+    if (!tk) { say('Vul de toegangscode van de sheet in.', 'loss'); return; }
+    say('Bezig met overnemen. Dit kan een halve minuut duren…');
+    btn.disabled = true;
+    try {
+      const res = await fetch(getUrl().replace(/\/api\/data$/, '/api/import'), {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + getToken(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: u, token: tk }),
+      });
+      const j = await res.json().catch(() => null);
+      if (!res.ok || !j || !j.ok) throw new Error((j && j.error) || 'de Worker gaf status ' + res.status);
+      const im = j.imported || {};
+      say('Overgenomen: ' + NI.format(im.weeks || 0) + ' weken, ' + NI.format(im.days || 0) + ' dagregels, ' + NI.format(im.hours || 0) +
+        ' uurregels en ' + NI.format(im.intraday || 0) + ' metingen. De gegevens worden opnieuw geladen.', 'gain');
+      $('in-sheet-token').value = '';
+      load();
+    } catch (err) {
+      say('Overnemen is mislukt: ' + err.message + '.', 'loss');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  $$('.btn-settings').forEach((b) => b.addEventListener('click', () => openSettings(false)));
+  $('btn-welcome-settings').addEventListener('click', () => openSettings(false));
+  $$('.btn-refresh').forEach((b) => b.addEventListener('click', () => load()));
   $('btn-demo').addEventListener('click', () => { demo = true; load(); });
   $('btn-demo-exit').addEventListener('click', () => { demo = false; if (getToken()) load(); else showWelcome(); });
+
+  // ---------- Weergave kiezen ----------
+  function applyMode() {
+    $('shell').hidden = mode !== 'd';
+    $('mshell').hidden = mode !== 'm';
+    $(mode === 'd' ? 'd-notices' : 'm-notices').appendChild($('notices'));
+    document.querySelector('meta[name="theme-color"]').content = mode === 'm' && ui.page !== 'home' ? '#F6F7F9' : '#E8EDFA';
+    setMtop();
+  }
+  function setMtop() {
+    const h = document.querySelector('.m-top');
+    if (h && mode === 'm') document.documentElement.style.setProperty('--mtop', h.offsetHeight + 'px');
+  }
+
+  MQ.addEventListener('change', () => {
+    const nm = MQ.matches ? 'm' : 'd';
+    if (nm === mode) return;
+    if (ui.detail) instantClose();
+    mode = nm;
+    if (mode === 'd' && ui.page === 'stats') ui.page = 'home';
+    applyMode();
+    if (data && M) { renderAll(); showPage(ui.page, false, true); }
+  });
 
   // ---------- Laden ----------
   function showError(msg) { const el = $('error'); el.textContent = msg; el.hidden = !msg; }
 
   function showWelcome() {
     $('app').hidden = true;
+    $('m-main').hidden = true;
     $('demo-banner').hidden = true;
     $('welcome').hidden = false;
-    $('updated').textContent = '';
+    $$('.updated').forEach((e) => { e.textContent = ''; });
   }
 
   async function load() {
@@ -122,7 +203,7 @@
     const url = getUrl();
     if (!token) { showWelcome(); return; }
     if (!url) { showWelcome(); showError('Er is nog geen adres van de web-app ingesteld. Vul het in bij Instellingen of zet het in config.js.'); return; }
-    $('btn-refresh').classList.add('busy');
+    $$('.btn-refresh').forEach((b) => b.classList.add('busy'));
     try {
       const res = await fetch(url + (url.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(token), { cache: 'no-store' });
       const json = await res.json().catch(() => null);
@@ -135,7 +216,7 @@
       showError('De gegevens konden niet worden geladen: ' + err.message + '. Controleer de toegangscode en het adres bij Instellingen.');
       if (!data) showWelcome();
     } finally {
-      $('btn-refresh').classList.remove('busy');
+      $$('.btn-refresh').forEach((b) => b.classList.remove('busy'));
     }
   }
 
@@ -157,7 +238,7 @@
     const ohlc = (r) => (isNum(r[3]) ? { t: parse(r[0]), open: r[2], close: r[3], low: r[4], high: r[5], avg: r[6], v: r[3] } : null);
     m.intra = group(data.intraday && data.intraday.rows, (r) => (isNum(r[2]) ? { t: parse(r[0]), v: r[2] } : null));
     m.hours = group(data.hours && data.hours.rows, ohlc);
-    m.days = group(data.days && data.days.rows, (r) => { const o = ohlc(r); if (o) { o.range = r[7]; o.rangePct = r[8]; } return o; });
+    m.days = group(data.days && data.days.rows, ohlc);
 
     // Ontbreekt de reeks TOTAAL, tel dan de posities per tijdstip op
     ['intra', 'hours', 'days'].forEach((k) => {
@@ -171,8 +252,16 @@
       m[k].set(TOTAL, [...acc.values()].sort((a, b) => a.t - b.t));
     });
 
+    const ti = m.intra.get(TOTAL) || [];
+    const th = m.hours.get(TOTAL) || [];
+    m.lastT = ti.length ? ti[ti.length - 1].t : th.length ? th[th.length - 1].t : null;
+    m.isToday = m.lastT != null && dayKey(m.lastT) === dayKey(Date.now());
+    m.dayWord = m.lastT == null || m.isToday ? 'vandaag' : 'op ' + fD.format(m.lastT);
+    m.intraDays = new Set(ti.map((p) => dayKey(p.t))).size;
+    m.series = new Map();
+    M = m;   // seriesOf() hieronder gebruikt M
+
     const todayMap = new Map((data.today || []).map((r) => [r.ticker, r]));
-    m.total = todayMap.get(TOTAL) || null;
     const posMap = new Map((data.positions || []).map((p) => [p.ticker, p]));
     const tks = new Set([...todayMap.keys(), ...posMap.keys()]);
     tks.delete(TOTAL);
@@ -183,43 +272,118 @@
       const value = isNum(t.current) ? t.current : isNum(p.value) ? p.value : null;
       const cost = isNum(p.cost) ? p.cost : (isNum(p.value) && isNum(p.unrealized) ? p.value - p.unrealized : null);
       const unreal = isNum(cost) && isNum(value) ? value - cost : isNum(p.unrealized) ? p.unrealized : null;
-      return {
+      const c = {
         tk, name: t.name || p.name || tk, value,
         change: t.change, changePct: t.changePct, open: t.open, low: t.low, high: t.high, avg: t.avg,
-        ath: t.allTimeHigh, atl: t.allTimeLow, avgRange: t.avgRange, avgRangePct: t.avgRangePct, histDays: t.days,
+        avgRange: t.avgRange, avgRangePct: t.avgRangePct,
         cost, unreal, qty: isNum(p.quantity) && p.quantity > 0 ? p.quantity : null,
         resultPct: isNum(cost) && cost > 0 && isNum(unreal) ? unreal / cost : isNum(p.resultPct) ? p.resultPct : null,
       };
+      dayChange(c);
+      return c;
     }).filter((c) => isNum(c.value));
 
-    m.totalValue = m.total && isNum(m.total.current) ? m.total.current : sum(m.companies.map((c) => c.value));
+    const T = todayMap.get(TOTAL) || {};
+    m.tot = {
+      tk: TOTAL, value: isNum(T.current) ? T.current : sum(m.companies.map((c) => c.value)),
+      change: T.change, changePct: T.changePct, open: T.open, low: T.low, high: T.high, avg: T.avg,
+      avgRange: T.avgRange, avgRangePct: T.avgRangePct,
+    };
+    dayChange(m.tot);
+    m.totalValue = m.tot.value;
     m.companies.forEach((c) => { c.weight = m.totalValue ? c.value / m.totalValue : null; });
     m.byTk = new Map(m.companies.map((c) => [c.tk, c]));
     m.weeks = (data.weeks || []).filter((w) => isNum(w.accountValue)).map((w) => Object.assign({}, w, { t: parse(w.date) }));
-
-    const ti = m.intra.get(TOTAL) || [];
-    m.lastT = ti.length ? ti[ti.length - 1].t : null;
-    m.isToday = m.lastT != null && dayKey(m.lastT) === dayKey(Date.now());
-    m.dayWord = m.lastT == null ? 'vandaag' : m.isToday ? 'vandaag' : 'op ' + fD.format(m.lastT);
+    const allT = seriesOf(TOTAL).daily;
+    m.since = allT.length ? allT[0].t : m.lastT;
+    m.canImport = !demo && isWorker();
     return m;
   }
 
-  const todayOf = (tk) => (tk === TOTAL ? M.total : M.byTk.get(tk));
+  // Uur- en dagreeksen uit alle bronnen samen: dagtabel, uurtabel en de metingen per 10 minuten
+  function seriesOf(tk) {
+    if (M.series.has(tk)) return M.series.get(tk);
+    const intra = M.intra.get(tk) || [], hrs = M.hours.get(tk) || [], dys = M.days.get(tk) || [];
+    const agg = (vals) => ({ open: vals[0], close: vals[vals.length - 1], low: Math.min(...vals), high: Math.max(...vals) });
+
+    const hourly = new Map();
+    hrs.forEach((h) => hourly.set(hourStart(h.t), { t: hourStart(h.t), v: h.close }));
+    const fromIntra = new Map();
+    intra.forEach((p) => { const k = hourStart(p.t); if (!hourly.has(k) || fromIntra.has(k)) { hourly.set(k, { t: k, v: p.v }); fromIntra.set(k, true); } });
+
+    const daily = new Map();
+    dys.forEach((d) => daily.set(dayKey(d.t), { t: dayStart(d.t), open: d.open, close: d.close, low: d.low, high: d.high }));
+    const byDay = (pts, f) => { const g = new Map(); pts.forEach((p) => { const k = dayKey(p.t); if (daily.has(k)) return; if (!g.has(k)) g.set(k, []); g.get(k).push(f(p)); }); return g; };
+    const iDays = byDay(intra, (p) => p.v);
+    const hDays = byDay(hrs, (h) => h);
+    iDays.forEach((vals, k) => { const o = agg(vals); daily.set(k, Object.assign({ t: dayStart(intra.find((p) => dayKey(p.t) === k).t) }, o)); });
+    hDays.forEach((list, k) => {
+      if (daily.has(k)) return;
+      daily.set(k, { t: dayStart(list[0].t), open: list[0].open, close: list[list.length - 1].close, low: Math.min(...list.map((h) => h.low)), high: Math.max(...list.map((h) => h.high)) });
+    });
+
+    const s = {
+      hourly: [...hourly.values()].sort((a, b) => a.t - b.t),
+      daily: [...daily.values()].filter((d) => isNum(d.close)).sort((a, b) => a.t - b.t),
+    };
+    M.series.set(tk, s);
+    return s;
+  }
+
+  // Wijziging van vandaag: tegen het slot van de vorige handelsdag als dat er is, anders sinds de eerste meting
+  function dayChange(o) {
+    const s = seriesOf(o.tk);
+    const tk0 = M.lastT == null ? null : dayKey(M.lastT);
+    const prev = s.daily.filter((d) => dayKey(d.t) !== tk0 && d.t < (M.lastT || 0)).pop();
+    const todayPts = (M.intra.get(o.tk) || []).filter((p) => dayKey(p.t) === tk0);
+    const allDaily = s.daily;
+    o.ath = allDaily.length ? Math.max(...allDaily.map((d) => d.high)) : o.high;
+    o.atl = allDaily.length ? Math.min(...allDaily.map((d) => d.low)) : o.low;
+    o.histDays = allDaily.length;
+    if (prev && prev.close > 0 && isNum(o.value) && Math.abs(o.value / prev.close - 1) <= MAX_DAY_MOVE) {
+      o.change = o.value - prev.close;
+      o.changePct = o.value / prev.close - 1;
+      o.base = { kind: 'close', t: prev.t };
+    } else {
+      o.base = { kind: 'open', t: todayPts.length ? todayPts[0].t : null };
+    }
+  }
+
+  function baseText(o) {
+    if (!o.base) return '';
+    if (o.base.kind === 'close') return 'sinds het slot van ' + fD.format(o.base.t);
+    if (!o.base.t) return 'sinds de opening';
+    const d = new Date(o.base.t);
+    return d.getHours() * 60 + d.getMinutes() <= 8 * 60 + 30 ? 'sinds de opening om ' + fHM.format(o.base.t) : 'sinds de eerste meting om ' + fHM.format(o.base.t);
+  }
+
+  const itemOf = (tk) => (tk === TOTAL ? M.tot : M.byTk.get(tk));
 
   // Punten voor een grafiek over een periode
   function seriesFor(tk, range) {
     const intra = M.intra.get(tk) || [];
-    if (range === 'today' || range === '3d') {
-      if (range === 'today' && intra.length) { const k = dayKey(intra[intra.length - 1].t); return intra.filter((p) => dayKey(p.t) === k); }
-      return intra;
-    }
-    const base = ((range === '1m' ? M.hours : M.days).get(tk) || []).map((p) => ({ t: p.t, v: p.close }));
-    const lp = intra[intra.length - 1];
-    if (lp && (!base.length || lp.t > base[base.length - 1].t)) {
-      if (range === 'all' && base.length && dayKey(base[base.length - 1].t) === dayKey(lp.t)) base.pop();
-      base.push({ t: lp.t, v: lp.v });
-    }
-    return base;
+    if (range === 'today') { const k = M.lastT == null ? null : dayKey(M.lastT); return intra.filter((p) => dayKey(p.t) === k); }
+    if (range === '3d') { const ks = [...new Set(intra.map((p) => dayKey(p.t)))].slice(-3); return intra.filter((p) => ks.includes(dayKey(p.t))); }
+    const s = seriesOf(tk);
+    // Te weinig punten op deze schaal: val terug op de fijnere metingen
+    if (range === '1m') { const from = (M.lastT || Date.now()) - 30 * DAY; const h = s.hourly.filter((p) => p.t >= from); return h.length >= 3 ? h : intra; }
+    if (s.daily.length >= 3) return s.daily.map((d) => ({ t: d.t, v: d.close }));
+    return s.hourly.length >= 3 ? s.hourly : intra;
+  }
+
+  function coverageNote(range, pts) {
+    if (!pts.length || M.lastT == null) return '';
+    const first = pts[0].t;
+    let short;
+    if (range === 'today') short = first > dayStart(M.lastT) + (8 * 60 + 40) * 60000;
+    else if (range === '3d') short = M.intraDays < 3;
+    else if (range === '1m') short = first > M.lastT - 28 * DAY;
+    else short = first > M.lastT - 60 * DAY;
+    if (!short) return '';
+    const txt = range === 'all'
+      ? 'Gemeten sinds ' + fD.format(first) + '.'
+      : 'Er zijn metingen vanaf ' + fDT.format(first) + ', dus deze periode is nog korter dan gekozen.';
+    return txt + (M.canImport && !M.weeks.length ? ' Je eerdere gegevens uit de Google Sheet kun je overnemen via Instellingen.' : '');
   }
 
   // Reeks als procentuele groei, sprongen door aan- of verkopen overgeslagen
@@ -233,15 +397,21 @@
 
   // ---------- Statistiek ----------
   function dailyReturns(tk) {
-    const out = (M.days.get(tk) || [])
-      .filter((d) => isNum(d.open) && d.open > 0 && isNum(d.close))
-      .map((d) => ({ t: d.t, pct: (d.close - d.open) / d.open, open: d.open, close: d.close }));
-    const td = todayOf(tk);
-    if (td && isNum(td.changePct) && M.lastT != null) {
-      const k = dayKey(M.lastT);
-      if (!out.length || dayKey(out[out.length - 1].t) !== k) out.push({ t: dayStart(M.lastT), pct: td.changePct, today: true });
-    }
-    return out.filter((d) => Math.abs(d.pct) <= MAX_DAY_MOVE);
+    const d = seriesOf(tk).daily;
+    const k0 = M.lastT == null ? null : dayKey(M.lastT);
+    const out = [];
+    d.forEach((x, i) => {
+      let pct = null;
+      const p = d[i - 1];
+      if (p && p.close > 0) { const r = x.close / p.close - 1; if (Math.abs(r) <= MAX_DAY_MOVE) pct = r; }
+      if (pct == null && x.open > 0) { const r = x.close / x.open - 1; if (Math.abs(r) <= MAX_DAY_MOVE) pct = r; }
+      if (pct != null) out.push({ t: x.t, pct, today: dayKey(x.t) === k0 });
+    });
+    // Vandaag gelijk aan de wijziging bovenaan de pagina
+    const it = itemOf(tk);
+    const last = out[out.length - 1];
+    if (it && last && last.today && isNum(it.changePct)) last.pct = it.changePct;
+    return out;
   }
 
   function statsFor(tk) {
@@ -255,13 +425,14 @@
       if (s !== dir) break;
       streak++;
     }
-    const best = r.reduce((b, d) => (!b || d.pct > b.pct ? d : b), null);
-    const worst = r.reduce((b, d) => (!b || d.pct < b.pct ? d : b), null);
+    const enough = r.length >= MIN_DAYS_BEST;
+    const best = enough ? r.reduce((b, d) => (!b || d.pct > b.pct ? d : b), null) : null;
+    const worst = enough ? r.reduce((b, d) => (!b || d.pct < b.pct ? d : b), null) : null;
     let corr = null, beta = null;
     if (tk !== TOTAL) {
       const tm = new Map(dailyReturns(TOTAL).map((d) => [dayKey(d.t), d.pct]));
       const pairs = r.map((d) => [d.pct, tm.get(dayKey(d.t))]).filter((p) => isNum(p[1]));
-      if (pairs.length >= 5) {
+      if (pairs.length >= MIN_DAYS_CORR) {
         const mx = mean(pairs.map((p) => p[0])), my = mean(pairs.map((p) => p[1]));
         let sxy = 0, sxx = 0, syy = 0;
         pairs.forEach(([x, y]) => { sxy += (x - mx) * (y - my); sxx += (x - mx) ** 2; syy += (y - my) ** 2; });
@@ -270,9 +441,11 @@
     }
     return {
       returns: r, n: r.length, up: ps.filter((p) => p > 0).length, down: ps.filter((p) => p < 0).length,
-      streak, dir, best, worst, mean: mean(ps), sd: stdev(ps), corr, beta,
+      streak, dir, best, worst, sd: r.length >= MIN_DAYS_SD ? stdev(ps) : null, corr, beta,
     };
   }
+
+  const tooFew = (n, min) => 'Nog te weinig gegevens: ' + days(n) + ' gemeten, ' + min + ' nodig';
 
   function hourPattern(tk) {
     const by = new Map();
@@ -297,8 +470,8 @@
     });
   }
 
-  function corrText(c) {
-    if (!isNum(c)) return '–';
+  function corrText(c, n) {
+    if (!isNum(c)) return n < MIN_DAYS_CORR ? 'na ' + MIN_DAYS_CORR + ' dagen' : '–';
     const w = c >= 0.7 ? 'sterk' : c >= 0.4 ? 'matig' : c >= 0.1 ? 'zwak' : c > -0.1 ? 'geen' : 'tegengesteld';
     return w + ' (' + N2.format(c) + ')';
   }
@@ -338,8 +511,8 @@
     return lo;
   }
 
-  const xFmt = (range) => (t) => (range === 'today' ? fHM : range === '3d' ? fWH : fDM).format(t);
-  const tFmt = (range) => (t) => (range === 'all' ? fD : fDT).format(t);
+  const xFmt = (range, pts) => { const span = pts && pts.length > 1 ? pts[pts.length - 1].t - pts[0].t : DAY * 9; return (t) => (span < 20 * HOUR ? fHM : span < 6 * DAY ? fWH : fDM).format(t); };
+  const tFmt = (range, pts) => { const daily = pts && pts.length > 1 && (pts[1].t - pts[0].t) >= 20 * HOUR; return (t) => (daily ? fD : fDT).format(t); };
 
   /* Lijngrafiek op een vaste 1000×100-schaal die meerekt met de breedte.
    * sets: [{ pts: [{t, v}], color, area, dash, label, fmt }]; de eerste reeks bepaalt de tijdas. */
@@ -493,32 +666,19 @@
       '<div class="heat-key" aria-hidden="true">gedaald <i class="heat-l3"></i><i class="heat-l2"></i><i class="heat-l1"></i><i class="heat-g1"></i><i class="heat-g2"></i><i class="heat-g3"></i> gestegen</div>';
   }
 
-  function patternTiles(tk, s) {
-    const hp = hourPattern(tk);
-    const wp = weekdayPattern(s.returns);
-    const edges = [-Infinity, -0.03, -0.02, -0.01, -0.005, 0, 0.005, 0.01, 0.02, 0.03, Infinity];
-    const names = ['< −3%', '−3 tot −2%', '−2 tot −1%', '−1 tot −0,5%', '−0,5 tot 0%', '0 tot 0,5%', '0,5 tot 1%', '1 tot 2%', '2 tot 3%', '> 3%'];
-    const hist = names.map((nm, i) => {
-      const c = s.returns.filter((d) => d.pct >= edges[i] && d.pct < edges[i + 1]).length;
-      return { v: c, color: i < 5 ? C.loss : C.gain, tip: nm + ': ' + c + (c === 1 ? ' dag' : ' dagen') };
-    });
-    const hasHours = hp.some((h) => h.n);
-    return [
-      '<section class="tile pad"><h3>Resultaat per dag</h3>' + (s.n ? calendar(s.returns) : '<p class="muted">Nog geen dagen gemeten.</p>') + '</section>',
-      '<section class="tile pad"><h3>Wanneer beweegt het?</h3>' +
-        (hasHours ? bars(hp.map((h) => ({ v: h.v, tip: h.hr + ':00–' + (h.hr + 1) + ':00: ' + (h.n ? spct(h.v) + ' gemiddeld (' + h.n + ' uur)' : 'geen metingen') }))) +
-          barLabels(hp.map((h) => (h.hr % 2 === 0 ? String(h.hr) : ''))) + '<p class="sub" style="margin-top:8px">Gemiddelde verandering per uur, laatste 30 dagen.</p>'
-          : '<p class="muted">Nog geen uurgegevens.</p>') + '</section>',
-      '<section class="tile pad"><h3>Per weekdag</h3>' +
-        (s.n ? bars(wp.map((d) => ({ v: d.v, tip: d.nm + ': ' + (d.n ? spct(d.v) + ' gemiddeld over ' + d.n + (d.n === 1 ? ' dag' : ' dagen') : 'nog geen metingen') }))) +
-          barLabels(wp.map((d) => d.short)) + '<p class="sub" style="margin-top:8px">Gemiddeld resultaat van opening tot slot.</p>' : '<p class="muted">Nog geen dagen gemeten.</p>') + '</section>',
-      '<section class="tile pad"><h3>Hoe groot zijn de dagbewegingen?</h3>' +
-        (s.n ? bars(hist, true) + barLabels(['−3%', '', '', '', '', '0', '', '', '', '+3%']) + '<p class="sub" style="margin-top:8px">Aantal dagen per grootte van de beweging.</p>' : '<p class="muted">Nog geen dagen gemeten.</p>') + '</section>',
-    ];
+  // ---------- Bouwstenen ----------
+  const stag = (html, i) => html.replace(/^<(\w+)/, '<$1 style="--i:' + i + '"');
+  const fill = (id, items) => { $(id).innerHTML = items.map(stag).join(''); };
+
+  // Kerncijfer als tegel (desktop) of kaart (telefoon)
+  function stat(k, v, sub, cls, extra) {
+    const flush = !!extra && extra.indexOf('spark') !== -1;
+    const base = mode === 'm' ? 'm-stat' : 'tile';
+    return '<section class="' + base + (flush ? '' : ' pad') + '"><span class="k">' + esc(k) + '</span>' +
+      '<span class="v ' + (cls || '') + '">' + esc(v) + '</span>' + (sub ? '<span class="sub">' + esc(sub) + '</span>' : '') + (extra || '') + '</section>';
   }
 
-  const stag = (html, i) => html.replace(/^<(\w+)/, '<$1 style="--i:' + i + '"');
-  const fill = (id, tiles) => { $(id).innerHTML = tiles.map(stag).join(''); };
+  const split = (a, b) => '<div class="meter split" aria-hidden="true"><div style="flex:' + a + ';background:' + C.gain + '"></div><div style="flex:' + b + ';background:' + C.loss + '"></div></div>';
 
   function kvList(rows) {
     return '<dl class="kv">' + rows.map(([k, v, c]) => '<div><dt>' + esc(k) + '</dt><dd' + (c ? ' class="' + c + '"' : '') + '>' + esc(v) + '</dd></div>').join('') + '</dl>';
@@ -530,48 +690,135 @@
     if (!isNum(lo) || !isNum(hi)) return '<p class="muted">Nog geen metingen van vandaag.</p>';
     if (!(hi > lo)) { const pad = Math.max(Math.abs(hi) * 0.005, 0.01); lo -= pad; hi += pad; }
     const p = (v) => (((v - lo) / (hi - lo)) * 100).toFixed(2) + '%';
-    return '<div class="range" role="img" aria-label="' + esc('Vandaag tussen ' + eur(c.low) + ' en ' + eur(c.high) + ', nu ' + eur(c.value ?? c.current) + '. Laagste ooit ' + eur(lo) + ', hoogste ooit ' + eur(hi)) + '">' +
+    return '<div class="range" role="img" aria-label="' + esc('Vandaag tussen ' + eur(c.low) + ' en ' + eur(c.high) + ', nu ' + eur(c.value) + '. Laagste gemeten ' + eur(lo) + ', hoogste gemeten ' + eur(hi)) + '">' +
       '<div class="rail"></div><div class="today" style="left:' + p(c.low) + ';width:calc(' + p(c.high) + ' - ' + p(c.low) + ')"></div>' +
       (isNum(c.avg) ? '<div class="avg" style="left:' + p(c.avg) + '"></div>' : '') +
-      '<div class="now" style="left:' + p(c.value ?? c.current) + '"></div></div>' +
-      '<div class="range-labels"><span>Laagste ooit ' + esc(eur(lo)) + '</span><span>Hoogste ooit ' + esc(eur(hi)) + '</span></div>';
+      '<div class="now" style="left:' + p(c.value) + '"></div></div>' +
+      '<div class="range-labels"><span>Laagste gemeten ' + esc(eur(lo)) + '</span><span>Hoogste gemeten ' + esc(eur(hi)) + '</span></div>';
   }
 
-  // ---------- Overzicht ----------
-  function render() {
-    $('welcome').hidden = true;
-    $('app').hidden = false;
-    $('demo-banner').hidden = !demo;
-    M = derive();
-    $('updated').textContent = 'Bijgewerkt ' + fDT.format(data.generated ? new Date(data.generated) : new Date());
-    renderHome();
-    renderList();
-    if (ui.detail) {
-      if (M.byTk.has(ui.detail)) renderDetail(false);
-      else closeDetail();
+  function patternTiles(tk, s) {
+    const hp = hourPattern(tk);
+    const wp = weekdayPattern(s.returns);
+    const edges = [-Infinity, -0.03, -0.02, -0.01, -0.005, 0, 0.005, 0.01, 0.02, 0.03, Infinity];
+    const names = ['< −3%', '−3 tot −2%', '−2 tot −1%', '−1 tot −0,5%', '−0,5 tot 0%', '0 tot 0,5%', '0,5 tot 1%', '1 tot 2%', '2 tot 3%', '> 3%'];
+    const hist = names.map((nm, i) => {
+      const c = s.returns.filter((d) => d.pct >= edges[i] && d.pct < edges[i + 1]).length;
+      return { v: c, color: i < 5 ? C.loss : C.gain, tip: nm + ': ' + days(c) };
+    });
+    const hoursN = sum(hp.map((h) => h.n));
+    const note = (t) => '<p class="sub" style="margin-top:8px">' + esc(t) + '</p>';
+    const few = (min) => '<p class="muted">' + esc(tooFew(s.n, min)) + '.</p>';
+    return [
+      '<section class="tile pad"><h3>Resultaat per dag</h3>' + (s.n ? calendar(s.returns) : '<p class="muted">Nog geen dagen gemeten.</p>') + '</section>',
+      '<section class="tile pad"><h3>Wanneer beweegt het?</h3>' +
+        (hoursN >= 3 ? bars(hp.map((h) => ({ v: h.v, tip: h.hr + ':00–' + (h.hr + 1) + ':00: ' + (h.n ? spct(h.v) + ' gemiddeld (' + h.n + ' uur)' : 'geen metingen') }))) +
+          barLabels(hp.map((h) => (h.hr % 2 === 0 ? String(h.hr) : ''))) + note('Gemiddelde verandering per uur van de dag, op basis van ' + hoursN + ' afgeronde uren.')
+          : '<p class="muted">Nog te weinig afgeronde uren gemeten.</p>') + '</section>',
+      '<section class="tile pad"><h3>Per weekdag</h3>' +
+        (s.n >= MIN_DAYS_SD ? bars(wp.map((d) => ({ v: d.v, tip: d.nm + ': ' + (d.n ? spct(d.v) + ' gemiddeld over ' + days(d.n) : 'nog geen metingen') }))) +
+          barLabels(wp.map((d) => d.short)) + note('Gemiddeld dagresultaat per weekdag.') : few(MIN_DAYS_SD)) + '</section>',
+      '<section class="tile pad"><h3>Hoe groot zijn de dagbewegingen?</h3>' +
+        (s.n >= MIN_DAYS_SD ? bars(hist, true) + barLabels(['−3%', '', '', '', '', '0', '', '', '', '+3%']) + note('Aantal dagen per grootte van de beweging.') : few(MIN_DAYS_SD)) + '</section>',
+    ];
+  }
+
+  // Kerncijfers van de portefeuille (kaarten), gedeeld door desktop en telefoon
+  function kpiCards() {
+    const W = M.weeks, last = W[W.length - 1];
+    const wk = (f) => W.filter((w) => isNum(w[f])).map((w) => ({ t: w.t, v: w[f] }));
+    const unreal = sum(M.companies.map((c) => (isNum(c.unreal) ? c.unreal : 0)));
+    const none = M.canImport ? 'Nog geen weekmeting' : 'De eerste weekmeting volgt zaterdag';
+    return [
+      stat('Accountwaarde', last ? eur(last.accountValue) : '–', last ? (isNum(last.cash) ? 'incl. ' + eur(last.cash) + ' vrij saldo, ' : '') + 'stand ' + fDM.format(last.t) : none, '', spark(wk('accountValue'), C.accent)),
+      stat('Netto gestort', last ? eur(last.netDeposits) : '–', last ? (isNum(last.newDeposits) && last.newDeposits ? seur(last.newDeposits) + ' in de laatste week' : 'geen storting in de laatste week') : none, '', spark(wk('netDeposits'), C.ink2)),
+      stat('Totaal resultaat', last ? seur(last.totalResult) : '–', last ? spct(last.totalResultPct) + ' op je inleg' : none, last ? tone(last.totalResult) : '', spark(wk('totalResult'), toneColor(last && last.totalResult))),
+      stat('Ongerealiseerd', seur(unreal), 'open posities, nu', tone(unreal), spark(wk('unrealized'), toneColor(unreal))),
+    ];
+  }
+
+  function statCards(S) {
+    const W = M.weeks, last = W[W.length - 1];
+    const wr = W.filter((w) => isNum(w.weekResultPct));
+    let idx = 1;
+    const chain = wr.map((w) => { idx *= 1 + w.weekResultPct; return { t: w.t, v: idx - 1 }; });
+    const twr = wr.length ? idx - 1 : null;
+    const posW = wr.filter((w) => w.weekResultPct > 0).length;
+    const T = M.tot;
+    const dd = isNum(T.ath) && T.ath > 0 ? (T.value - T.ath) / T.ath : null;
+    const top3 = M.companies.slice().sort((a, b) => b.value - a.value).slice(0, 3);
+    const top3w = sum(top3.map((c) => c.weight || 0));
+    const noWeeks = M.canImport ? 'Neem je weken over via Instellingen' : 'Na de tweede weekmeting';
+    return [
+      stat('Rendement zonder stortingen', twr == null ? '–' : spct1(twr), wr.length ? 'tijdgewogen, over ' + wr.length + (wr.length === 1 ? ' week' : ' weken') : noWeeks, tone(twr), chain.length > 1 ? spark([{ t: 0, v: 0 }].concat(chain), toneColor(twr)) : ''),
+      stat('Weken met winst', wr.length ? posW + ' van ' + wr.length : '–', wr.length ? P1.format(posW / wr.length) + ' van de weken' : noWeeks, '', wr.length ? split(posW, wr.length - posW) : ''),
+      stat('Dagen gestegen', S.n ? S.up + ' van ' + S.n : '–', S.n ? streakText(S) : 'Nog geen dagen gemeten', '', S.n ? split(S.up, S.down) : ''),
+      stat('Beste dag', S.best ? spct(S.best.pct) : '–', S.best ? fD.format(S.best.t) + '. Slechtste: ' + spct(S.worst.pct) + ' op ' + fD.format(S.worst.t) : tooFew(S.n, MIN_DAYS_BEST), tone(S.best && S.best.pct)),
+      stat('Beweeglijkheid', isNum(S.sd) ? '± ' + P1.format(S.sd) + ' per dag' : '–', isNum(S.sd) ? 'gemiddelde afwijking van het dagresultaat' : tooFew(S.n, MIN_DAYS_SD)),
+      stat('Tot hoogste gemeten', dd == null ? '–' : dd >= -0.0005 ? 'Op het hoogste punt' : spct1(dd), isNum(T.ath) ? 'hoogste ' + eur(T.ath) + ' sinds ' + fDM.format(M.since) : '', dd != null && dd < -0.0005 ? 'loss' : ''),
+      stat('Grootste 3 posities', top3.length ? P1.format(top3w) : '–', top3.map((c) => c.tk).join(', ') + ' samen', '', '<div class="meter" aria-hidden="true"><div style="width:' + (top3w * 100).toFixed(1) + '%"></div></div>'),
+      stat('Vrij saldo', last && isNum(last.cash) ? eur(last.cash) : '–', last && isNum(last.cash) && last.accountValue ? P1.format(last.cash / last.accountValue) + ' van je accountwaarde' : noWeeks),
+    ];
+  }
+
+  function statsNote(S) {
+    return S.n ? 'Op basis van ' + days(S.n) + ' sinds ' + fD.format(S.returns[0].t) + '.' : '';
+  }
+
+  function weekCards() {
+    const W = M.weeks;
+    if (!W.length) {
+      return ['<p class="empty">Nog geen weekmetingen. ' + (M.canImport
+        ? '<button type="button" class="linklike" data-act="import">Neem je weken over uit de Google Sheet</button>, of wacht op de eerste meting zaterdag.'
+        : 'De eerste volgt zaterdag rond 09:00.') + '</p>'];
     }
-    if (firstRender) { firstRender = false; route(true); }
+    const wr = W.filter((w) => isNum(w.weekResult));
+    const best = wr.reduce((b, w) => (!b || w.weekResult > b.weekResult ? w : b), null);
+    const worst = wr.reduce((b, w) => (!b || w.weekResult < b.weekResult ? w : b), null);
+    const sorted = M.companies.slice().sort((a, b) => b.value - a.value);
+    const shades = ['#1E3A8A', '#2B5BD7', '#5B86E5', '#8FAEF0', '#BFD0F7'];
+    const topN = sorted.slice(0, 5), rest = sorted.slice(5);
+    const restVal = sum(rest.map((c) => c.value));
+    const pctOf = (v) => (M.totalValue ? P1.format(v / M.totalValue) : '–');
+    return [
+      '<section class="tile pad"><h3>Accountwaarde en inleg</h3><div class="chart" data-chart="weeks" style="height:150px"></div>' +
+        '<div class="xlabels" data-x="weeks"></div><div class="legend" style="margin-top:8px"><span><i style="background:' + C.accent + '"></i>Accountwaarde</span><span><i class="dash"></i>Netto gestort</span></div></section>',
+      '<section class="tile pad"><h3>Resultaat per week</h3>' +
+        (wr.length ? bars(wr.map((w) => ({ v: w.weekResult, tip: 'Week tot ' + fDM.format(w.t) + ': ' + seur(w.weekResult) + ' (' + spct(w.weekResultPct) + ')' }))) +
+          '<div class="bar-labels"><span style="text-align:left">' + esc(fDM.format(wr[0].t)) + '</span><span style="text-align:right">' + esc(fDM.format(wr[wr.length - 1].t)) + '</span></div>' +
+          '<p class="sub" style="margin-top:8px">Zonder stortingen. Beste week ' + esc(seur(best.weekResult)) + ', slechtste ' + esc(seur(worst.weekResult)) + '.</p>'
+          : '<p class="muted">Na de tweede weekmeting zie je hier het resultaat per week.</p>') + '</section>',
+      '<section class="tile pad"><h3>Verdeling</h3><div class="stack" role="img" aria-label="Verdeling van de portefeuille">' +
+        topN.map((c, i) => '<div style="flex:' + c.value + ';background:' + shades[i] + '" data-tip="' + esc(c.tk + ': ' + pctOf(c.value)) + '"></div>').join('') +
+        (rest.length ? '<div style="flex:' + restVal + ';background:#CDD3DD" data-tip="' + esc('Overig: ' + pctOf(restVal)) + '"></div>' : '') + '</div>' +
+        '<div class="legend-list">' + topN.map((c, i) =>
+          '<button type="button" data-ticker="' + esc(c.tk) + '"><i style="background:' + shades[i] + '"></i><span class="nm">' + esc(c.tk) + ' <span class="muted">' + esc(c.name) + '</span></span><b>' + esc(pctOf(c.value)) + '</b></button>').join('') +
+        (rest.length ? '<button type="button" data-goto="bedrijven"><i style="background:#CDD3DD"></i><span class="nm">Overig (' + rest.length + ')</span><b>' + esc(pctOf(restVal)) + '</b></button>' : '') + '</div></section>',
+    ];
   }
-  let firstRender = true;
 
-  function renderHeroChart(animate) {
-    const r = ui.heroRange;
-    segButtons($('hero-ranges'), RANGES, r, (k) => { ui.heroRange = k; renderHeroChart(true); });
-    const pts = seriesFor(TOTAL, r);
+  function drawWeekChart(root) {
+    const host = root.querySelector('[data-chart="weeks"]');
+    if (!host) return;
+    const W = M.weeks;
+    lineChart(host, [
+      { pts: W.map((w) => ({ t: w.t, v: w.accountValue })), color: C.accent, area: true, label: 'Accountwaarde' },
+      { pts: W.filter((w) => isNum(w.netDeposits)).map((w) => ({ t: w.t, v: w.netDeposits })), color: C.ink2, dash: true, width: 2, label: 'Netto gestort' },
+    ], { top: 0.08, bottom: 0.08, xl: root.querySelector('[data-x="weeks"]'), xcount: 2, xfmt: (t) => fDM.format(t), tfmt: (t) => 'Week tot ' + fDM.format(t), empty: 'Na de tweede weekmeting zie je hier het verloop.' });
+  }
+
+  function heroMarkers(pts, range) {
     const markers = [];
     if (pts.length > 2) {
       let mi = 0;
       pts.forEach((p, i) => { if (p.v > pts[mi].v) mi = i; });
       markers.push({ i: mi, label: 'hoogste ' + eur(pts[mi].v) });
-      if (r === 'all' || r === '1m') {
-        M.weeks.filter((w) => isNum(w.newDeposits) && w.newDeposits > 0 && w.t >= pts[0].t && w.t <= pts[pts.length - 1].t + 864e5)
+      if (range === 'all' || range === '1m') {
+        M.weeks.filter((w) => isNum(w.newDeposits) && w.newDeposits > 0 && w.t >= pts[0].t && w.t <= pts[pts.length - 1].t + DAY)
           .slice(-3).forEach((w) => { const i = nearestIdx(pts, w.t); if (i !== mi) markers.push({ i, label: 'storting ' + eur(w.newDeposits) }); });
       }
     }
-    lineChart($('hero-chart'), [{ pts, color: C.accent, area: true, width: 3 }], {
-      animate, markers, xl: $('hero-x'), xfmt: xFmt(r), tfmt: tFmt(r),
-      empty: 'Nog geen metingen voor deze periode. De tracker meet op werkdagen tussen 08:00 en 22:30.',
-    });
+    return markers;
   }
 
   function segButtons(host, opts, current, onPick) {
@@ -579,39 +826,98 @@
     host.onclick = (e) => { const b = e.target.closest('button[data-k]'); if (b) onPick(b.dataset.k); };
   }
 
+  function drawHero(p, animate) {
+    const r = ui.heroRange;
+    const pts = seriesFor(TOTAL, r);
+    segButtons($(p + 'hero-ranges'), RANGES, r, (k) => { ui.heroRange = k; drawHero(p, true); });
+    lineChart($(p + 'hero-chart'), [{ pts, color: C.accent, area: true, width: 3 }], {
+      animate, markers: heroMarkers(pts, r), xl: $(p + 'hero-x'), xfmt: xFmt(r, pts), tfmt: tFmt(r, pts),
+      empty: 'Nog te weinig metingen voor deze periode. De tracker meet op werkdagen tussen 08:00 en 22:30.',
+    });
+    $(p + 'hero-note').textContent = coverageNote(r, pts);
+  }
+
+  function changeLine(o) {
+    if (!isNum(o.change)) return 'Nog geen metingen van vandaag';
+    return seur(o.change) + ' (' + spct(o.changePct) + ') ' + M.dayWord;
+  }
+
+  // Kerncijfers van één bedrijf
+  function companyInfo(c) {
+    const S = statsFor(c.tk);
+    const dAll = seriesFor(c.tk, 'all');
+    const tMap = new Map(seriesFor(TOTAL, 'all').map((p) => [dayKey(p.t), p.v]));
+    const weightHist = dAll.map((p) => { const t = tMap.get(dayKey(p.t)); return t ? { t: p.t, v: p.v / t } : null; }).filter(Boolean);
+    const monthAgo = weightHist.filter((p) => p.t <= (M.lastT || Date.now()) - 30 * DAY).pop();
+    let runMax = -Infinity;
+    const ddHist = dAll.map((p) => { runMax = Math.max(runMax, p.v); return { t: p.t, v: p.v / runMax - 1 }; });
+    const dd = isNum(c.ath) && c.ath > 0 ? (c.value - c.ath) / c.ath : null;
+    const price = c.qty ? c.value / c.qty : null;
+    const avgBuy = c.qty && isNum(c.cost) ? c.cost / c.qty : null;
+    const todayRangePct = isNum(c.high) && isNum(c.low) && c.avg ? (c.high - c.low) / c.avg : null;
+    let rangeNote = '';
+    if (isNum(todayRangePct) && isNum(c.avgRangePct) && c.avgRangePct > 0 && c.histDays > 2) {
+      const ratio = todayRangePct / c.avgRangePct;
+      rangeNote = M.dayWord.charAt(0).toUpperCase() + M.dayWord.slice(1) + ' ' + P1.format(todayRangePct) + ' tussen laag en hoog, ' +
+        (ratio > 1.3 ? 'drukker dan' : ratio < 0.7 ? 'rustiger dan' : 'ongeveer zoals') + ' gemiddeld (' + P1.format(c.avgRangePct) + ').';
+    }
+    const T = M.tot;
+    const contrib = isNum(c.change) && isNum(T.change) ? seur(c.change) + ' van ' + seur(T.change) : '–';
+    const kpis = [
+      stat(M.isToday ? 'Vandaag' : 'Laatste handelsdag', seur(c.change), spct(c.changePct) + ' ' + baseText(c), tone(c.change), spark(seriesFor(c.tk, 'today'), toneColor(c.change))),
+      stat('Sinds aankoop', spct1(c.resultPct), isNum(c.unreal) ? seur(c.unreal) + ' op ' + eur(c.cost) + ' inleg' : 'geen aankoopgegevens', tone(c.resultPct), spark(dAll, toneColor(c.resultPct))),
+      stat('Deel van portefeuille', isNum(c.weight) ? P1.format(c.weight) : '–', monthAgo ? 'was ' + P1.format(monthAgo.v) + ' op ' + fDM.format(monthAgo.t) : 'van ' + eur(M.totalValue), '', spark(weightHist, C.accent)),
+      stat('Tot hoogste gemeten', dd == null ? '–' : dd >= -0.0005 ? 'Op het hoogste punt' : spct1(dd), isNum(c.ath) ? 'hoogste ' + eur(c.ath) + ' sinds ' + fDM.format(M.since) : '', dd != null && dd < -0.0005 ? 'loss' : '', spark(ddHist, C.loss)),
+    ];
+    const rangeTile = '<section class="tile pad"><h3>Dagbereik binnen de historie</h3>' + rangeStrip(c) +
+      '<p class="sub" style="margin-top:10px">Balk: laag tot hoog ' + esc(M.dayWord) + '. Streep: gemiddelde. Punt: nu. ' + esc(rangeNote) + '</p>' +
+      '<div style="margin-top:12px">' + kvList([
+        ['Opening', eur(c.open)],
+        ['Laagste en hoogste', isNum(c.low) ? eur(c.low) + ' – ' + eur(c.high) : '–'],
+        ['Gemiddelde', eur(c.avg)],
+        ['Boven laagste gemeten', isNum(c.atl) && c.atl > 0 ? spct1((c.value - c.atl) / c.atl) : '–'],
+      ]) + '</div></section>';
+    const posTile = '<section class="tile pad"><h3>Positie</h3>' + kvList([
+      ['Waarde nu', eur(c.value)],
+      ['Aantal', c.qty ? N4.format(c.qty) : '–'],
+      ['Koers in euro', eur(price)],
+      ['Gemiddelde aankoopprijs', eur(avgBuy)],
+      ['Ingelegd', eur(c.cost)],
+      ['Ongerealiseerd', isNum(c.unreal) ? seur(c.unreal) + ' (' + spct1(c.resultPct) + ')' : '–', tone(c.unreal)],
+      ['Bijdrage aan dagresultaat', contrib, tone(c.change)],
+    ]) + '</section>';
+    const histTile = '<section class="tile pad"><h3>Historie</h3>' + kvList([
+      ['Gemeten dagen', S.n ? S.n + ' sinds ' + fDM.format(S.returns[0].t) : '–'],
+      ['Gestegen en gedaald', S.n ? S.up + ' en ' + days(S.down) : '–'],
+      ['Huidige reeks', streakText(S)],
+      ['Beste dag', S.best ? spct(S.best.pct) + ', ' + fD.format(S.best.t) : 'na ' + MIN_DAYS_BEST + ' dagen', S.best ? 'gain' : ''],
+      ['Slechtste dag', S.worst ? spct(S.worst.pct) + ', ' + fD.format(S.worst.t) : 'na ' + MIN_DAYS_BEST + ' dagen', S.worst ? 'loss' : ''],
+      ['Gemiddeld dagbereik', isNum(c.avgRange) && c.histDays > 1 ? eur(c.avgRange) + ' (' + P1.format(c.avgRangePct || 0) + ')' : 'na 2 dagen'],
+      ['Beweeglijkheid', isNum(S.sd) ? '± ' + P1.format(S.sd) + ' per dag' : 'na ' + MIN_DAYS_SD + ' dagen'],
+      ['Beweegt mee met portefeuille', corrText(S.corr, S.n)],
+      ['Gevoeligheid', isNum(S.beta) ? N2.format(S.beta) + '× de portefeuille' : 'na ' + MIN_DAYS_CORR + ' dagen'],
+    ]) + '</section>';
+    return { S, kpis, rangeTile, posTile, histTile, patterns: patternTiles(c.tk, S) };
+  }
+
+  const FOOT = 'Dagresultaten zijn de verandering ten opzichte van het slot van de vorige handelsdag (of de eerste meting als die er niet is). Dagen die meer dan 25% bewegen, tellen niet mee: dat is bijna altijd een aankoop of verkoop. ' +
+    '“Hoogste” en “laagste” zijn gemeten sinds de tracker meet. Koers en aankoopprijs zijn in euro en volgen uit waarde, inleg en aantal. “Beweegt mee” is de correlatie van de dagresultaten met die van je hele portefeuille; “gevoeligheid” geeft aan hoeveel sterker of zwakker het bedrijf meestal beweegt.';
+
+  // ---------- Desktop ----------
   function renderHome() {
-    const tot = M.total;
+    const T = M.tot;
     $('hero-label').textContent = 'Waarde beleggingen, ' + (M.lastT ? fDT.format(M.lastT) : 'laatste meting');
     $('hero-value').textContent = eur(M.totalValue);
     const ch = $('hero-change');
-    if (tot && isNum(tot.change)) {
-      ch.textContent = seur(tot.change) + ' (' + spct(tot.changePct) + ') ' + M.dayWord;
-      ch.className = 'hero-change ' + tone(tot.change);
-    } else {
-      ch.textContent = 'Nog geen metingen van vandaag';
-      ch.className = 'hero-change muted';
-    }
-    renderHeroChart(false);
+    ch.textContent = changeLine(T) + (isNum(T.change) ? ', ' + baseText(T) : '');
+    ch.className = 'hero-change ' + (isNum(T.change) ? tone(T.change) : 'muted');
+    drawHero('', false);
 
-    // Kerncijfers
-    const W = M.weeks, last = W[W.length - 1];
-    const wk = (f) => W.filter((w) => isNum(w[f])).map((w) => ({ t: w.t, v: w[f] }));
-    const unreal = sum(M.companies.map((c) => (isNum(c.unreal) ? c.unreal : 0)));
-    const none = 'De eerste weekmeting volgt zaterdag';
-    fill('kpis', [
-      tileStat('Accountwaarde', last ? eur(last.accountValue) : '–', last ? (isNum(last.cash) ? 'incl. ' + eur(last.cash) + ' vrij saldo, ' : '') + 'stand ' + fDM.format(last.t) : none, '', spark(wk('accountValue'), C.accent)),
-      tileStat('Netto gestort', last ? eur(last.netDeposits) : '–', last ? (isNum(last.newDeposits) && last.newDeposits ? seur(last.newDeposits) + ' in de laatste week' : 'geen storting in de laatste week') : none, '', spark(wk('netDeposits'), C.ink2)),
-      tileStat('Totaal resultaat', last ? seur(last.totalResult) : '–', last ? spct(last.totalResultPct) + ' op je inleg' : none, last ? tone(last.totalResult) : '', spark(wk('totalResult'), toneColor(last && last.totalResult))),
-      tileStat('Ongerealiseerd', seur(unreal), 'open posities, nu', tone(unreal), spark(wk('unrealized'), toneColor(unreal))),
-    ]);
+    fill('kpis', kpiCards());
 
-    // Grootste veranderingen
     const withChange = M.companies.filter((c) => isNum(c.change));
     const up = withChange.filter((c) => c.change > 0).length, down = withChange.filter((c) => c.change < 0).length;
-    $('breadth').innerHTML = withChange.length
-      ? '<span class="meter split" aria-hidden="true"><div style="flex:' + up + ';background:' + C.gain + '"></div><div style="flex:' + down + ';background:' + C.loss + '"></div></span>' +
-        esc(up + ' gestegen, ' + down + ' gedaald')
-      : '';
+    $('breadth').innerHTML = withChange.length ? split(up, down) + esc(up + ' gestegen, ' + down + ' gedaald') : '';
     $('link-all').textContent = 'Alle ' + M.companies.length + ' bedrijven bekijken';
     $('movers-title').textContent = 'Grootste veranderingen ' + M.dayWord;
     const top = withChange.slice().sort((a, b) => Math.abs(b.change) - Math.abs(a.change)).slice(0, 5);
@@ -624,108 +930,47 @@
         spark(seriesFor(c.tk, 'today'), toneColor(c.change), 'spark tall') + '</button>')
       : ['<p class="empty">Nog geen metingen van vandaag.</p>']);
 
-    renderWeeks();
+    fill('weeks', weekCards());
+    drawWeekChart($('weeks'));
     const S = statsFor(TOTAL);
     fill('patterns', patternTiles(TOTAL, S));
-    renderStats(S);
+    $('stats-note').textContent = statsNote(S);
+    fill('stats', statCards(S));
   }
 
-  function tileStat(k, v, sub, cls, extra) {
-    const flush = !!extra && extra.indexOf('spark') !== -1;
-    return '<section class="tile' + (flush ? '' : ' pad') + '"><span class="k">' + esc(k) + '</span>' +
-      '<span class="v ' + (cls || '') + '">' + esc(v) + '</span>' + (sub ? '<span class="sub">' + esc(sub) + '</span>' : '') + (extra || '') + '</section>';
-  }
-
-  function renderWeeks() {
-    const W = M.weeks;
-    if (!W.length) {
-      fill('weeks', ['<p class="empty">Nog geen weekmetingen. De eerste volgt zaterdag rond 09:00.</p>']);
-      return;
-    }
-    const wr = W.filter((w) => isNum(w.weekResult));
-    const best = wr.reduce((b, w) => (!b || w.weekResult > b.weekResult ? w : b), null);
-    const worst = wr.reduce((b, w) => (!b || w.weekResult < b.weekResult ? w : b), null);
-    const sorted = M.companies.slice().sort((a, b) => b.value - a.value);
-    const shades = ['#1E3A8A', '#2B5BD7', '#5B86E5', '#8FAEF0', '#BFD0F7'];
-    const topN = sorted.slice(0, 5);
-    const rest = sorted.slice(5);
-    const restVal = sum(rest.map((c) => c.value));
-    const pctOf = (v) => (M.totalValue ? P1.format(v / M.totalValue) : '–');
-
-    fill('weeks', [
-      '<section class="tile pad"><h3>Accountwaarde en inleg</h3><div class="chart" id="wk-chart" style="height:150px"></div>' +
-        '<div class="xlabels" id="wk-x"></div><div class="legend" style="margin-top:8px"><span><i style="background:' + C.accent + '"></i>Accountwaarde</span><span><i class="dash"></i>Netto gestort</span></div></section>',
-      '<section class="tile pad"><h3>Resultaat per week</h3>' +
-        (wr.length ? bars(wr.map((w) => ({ v: w.weekResult, tip: 'Week tot ' + fDM.format(w.t) + ': ' + seur(w.weekResult) + ' (' + spct(w.weekResultPct) + ')' }))) +
-          '<div class="bar-labels"><span style="text-align:left">' + esc(fDM.format(wr[0].t)) + '</span><span style="text-align:right">' + esc(fDM.format(wr[wr.length - 1].t)) + '</span></div>' +
-          '<p class="sub" style="margin-top:8px">Zonder stortingen. Beste week ' + esc(seur(best.weekResult)) + ', slechtste ' + esc(seur(worst.weekResult)) + '.</p>'
-          : '<p class="muted">Na de tweede weekmeting zie je hier het resultaat per week.</p>') + '</section>',
-      '<section class="tile pad"><h3>Verdeling</h3><div class="stack" role="img" aria-label="Verdeling van de portefeuille">' +
-        topN.map((c, i) => '<div style="flex:' + c.value + ';background:' + shades[i] + '" data-tip="' + esc(c.tk + ': ' + pctOf(c.value)) + '"></div>').join('') +
-        (rest.length ? '<div style="flex:' + restVal + ';background:#CDD3DD" data-tip="' + esc('Overig: ' + pctOf(restVal)) + '"></div>' : '') + '</div>' +
-        '<div class="legend-list">' + topN.map((c, i) =>
-          '<button type="button" data-ticker="' + esc(c.tk) + '"><i style="background:' + shades[i] + '"></i><span class="nm">' + esc(c.tk) + ' <span class="muted">' + esc(c.name) + '</span></span><b>' + esc(pctOf(c.value)) + '</b></button>').join('') +
-        (rest.length ? '<button type="button" data-goto="bedrijven"><i style="background:#CDD3DD"></i><span class="nm">Overig (' + rest.length + ')</span><b>' + esc(pctOf(restVal)) + '</b></button>' : '') + '</div></section>',
-    ]);
-    lineChart($('wk-chart'), [
-      { pts: W.map((w) => ({ t: w.t, v: w.accountValue })), color: C.accent, area: true, label: 'Accountwaarde' },
-      { pts: W.filter((w) => isNum(w.netDeposits)).map((w) => ({ t: w.t, v: w.netDeposits })), color: C.ink2, dash: true, width: 2, label: 'Netto gestort' },
-    ], { top: 0.08, bottom: 0.08, xl: $('wk-x'), xcount: 2, xfmt: (t) => fDM.format(t), tfmt: (t) => 'Week tot ' + fDM.format(t), empty: 'Na de tweede weekmeting zie je hier het verloop.' });
-  }
-
-  function renderStats(S) {
-    const W = M.weeks, last = W[W.length - 1];
-    const wr = W.filter((w) => isNum(w.weekResultPct));
-    let idx = 1;
-    const chain = wr.map((w) => { idx *= 1 + w.weekResultPct; return { t: w.t, v: idx - 1 }; });
-    const twr = wr.length ? idx - 1 : null;
-    const posW = wr.filter((w) => w.weekResultPct > 0).length;
-    const tot = M.total || {};
-    const dd = isNum(tot.allTimeHigh) && tot.allTimeHigh > 0 ? (M.totalValue - tot.allTimeHigh) / tot.allTimeHigh : null;
-    const sorted = M.companies.slice().sort((a, b) => b.value - a.value);
-    const top3 = sorted.slice(0, 3);
-    const top3w = sum(top3.map((c) => c.weight || 0));
-    const split = (a, b) => '<div class="meter split" aria-hidden="true"><div style="flex:' + a + ';background:' + C.gain + '"></div><div style="flex:' + b + ';background:' + C.loss + '"></div></div>';
-
-    fill('stats', [
-      tileStat('Rendement zonder stortingen', twr == null ? '–' : spct1(twr), wr.length ? 'tijdgewogen, over ' + wr.length + (wr.length === 1 ? ' week' : ' weken') : 'na de tweede weekmeting', tone(twr), chain.length > 1 ? spark([{ t: 0, v: 0 }].concat(chain), toneColor(twr)) : ''),
-      tileStat('Weken met winst', wr.length ? posW + ' van ' + wr.length : '–', wr.length ? P1.format(posW / wr.length) + ' van de weken' : 'nog geen weken', '', wr.length ? split(posW, wr.length - posW) : ''),
-      tileStat('Dagen gestegen', S.n ? S.up + ' van ' + S.n : '–', streakText(S), '', S.n ? split(S.up, S.down) : ''),
-      tileStat('Beste dag', S.best ? spct(S.best.pct) : '–', S.best ? fD.format(S.best.t) + (S.worst ? '. Slechtste: ' + spct(S.worst.pct) + ' op ' + fD.format(S.worst.t) : '') : 'nog geen dagen', tone(S.best && S.best.pct)),
-      tileStat('Beweeglijkheid', isNum(S.sd) ? '± ' + P1.format(S.sd) + ' per dag' : '–', isNum(tot.avgRange) ? 'Gemiddeld dagbereik ' + eur(tot.avgRange) + ' (' + P1.format(tot.avgRangePct || 0) + ')' : 'standaardafwijking van de dagresultaten'),
-      tileStat('Tot hoogste ooit', dd == null ? '–' : dd >= -0.0005 ? 'Op het hoogste punt' : spct1(dd), isNum(tot.allTimeHigh) ? 'Hoogste ooit ' + eur(tot.allTimeHigh) : '', dd != null && dd < -0.0005 ? 'loss' : ''),
-      tileStat('Grootste 3 posities', top3.length ? P1.format(top3w) : '–', top3.map((c) => c.tk).join(', ') + ' samen', '', '<div class="meter" aria-hidden="true"><div style="width:' + (top3w * 100).toFixed(1) + '%"></div></div>'),
-      tileStat('Vrij saldo', last && isNum(last.cash) ? eur(last.cash) : '–', last && isNum(last.cash) && last.accountValue ? P1.format(last.cash / last.accountValue) + ' van je accountwaarde' : 'uit de laatste weekmeting'),
-    ]);
-  }
-
-  // ---------- Bedrijven ----------
   const SORTS = [['move', 'Verandering'], ['value', 'Waarde'], ['result', 'Sinds aankoop'], ['name', 'Naam']];
   const FILTERS = [['all', 'Alle'], ['up', 'Gestegen'], ['down', 'Gedaald']];
   const SPANS = [['today', 'Vandaag'], ['1m', '30 dagen'], ['all', 'Alles']];
 
   function sortedCompanies() {
-    const a = M.companies.slice();
     const by = {
       move: (x, y) => Math.abs(y.change || 0) - Math.abs(x.change || 0),
       value: (x, y) => y.value - x.value,
       result: (x, y) => (y.resultPct ?? -9) - (x.resultPct ?? -9),
       name: (x, y) => x.tk.localeCompare(y.tk),
     }[ui.listSort];
-    return a.sort(by);
+    return M.companies.slice().sort(by);
+  }
+
+  function filteredCompanies() {
+    const q = ui.listQuery.trim().toLowerCase();
+    return sortedCompanies().filter((c) =>
+      (ui.listFilter === 'all' || (ui.listFilter === 'up' ? c.change > 0 : c.change < 0)) &&
+      (!q || c.tk.toLowerCase().includes(q) || c.name.toLowerCase().includes(q)));
+  }
+
+  function listSummary() {
+    const all = M.companies;
+    const up = all.filter((c) => c.change > 0).length, down = all.filter((c) => c.change < 0).length;
+    return all.length + ' posities, samen ' + eur(M.totalValue) + '. ' + up + ' gestegen en ' + down + ' gedaald ' + M.dayWord + '.';
   }
 
   function renderList() {
-    const all = M.companies;
-    const up = all.filter((c) => c.change > 0).length, down = all.filter((c) => c.change < 0).length;
-    $('list-sub').textContent = all.length + ' posities, samen ' + eur(M.totalValue) + '. ' + up + ' gestegen en ' + down + ' gedaald ' + M.dayWord + '.';
+    $('list-sub').textContent = listSummary();
     segButtons($('list-filter'), FILTERS, ui.listFilter, (k) => { ui.listFilter = k; renderList(); });
     segButtons($('list-sort'), SORTS, ui.listSort, (k) => { ui.listSort = k; renderList(); });
     segButtons($('list-span'), SPANS, ui.listSpan, (k) => { ui.listSpan = k; renderList(); });
-    const q = ui.listQuery.trim().toLowerCase();
-    const items = sortedCompanies().filter((c) =>
-      (ui.listFilter === 'all' || (ui.listFilter === 'up' ? c.change > 0 : c.change < 0)) &&
-      (!q || c.tk.toLowerCase().includes(q) || c.name.toLowerCase().includes(q)));
+    const items = filteredCompanies();
     fill('list-grid', items.length ? items.map((c) => {
       const pts = seriesFor(c.tk, ui.listSpan);
       const delta = ui.listSpan === 'today' ? c.change : pts.length > 1 ? pts[pts.length - 1].v - pts[0].v : c.change;
@@ -735,102 +980,145 @@
         '<span class="row" style="margin-top:8px"><span class="v" style="font-size:22px">' + esc(eur(c.value)) + '</span><span class="sub">' + esc(isNum(c.weight) ? P1.format(c.weight) + ' van totaal' : '') + '</span></span>' +
         '<span class="sub">Sinds aankoop <b class="' + tone(c.resultPct) + '">' + esc(spct1(c.resultPct)) + '</b></span>' +
         spark(pts, toneColor(delta)) + '</button>';
-    }) : ['<p class="empty">Geen bedrijven gevonden' + (q ? ' voor “' + esc(ui.listQuery) + '”' : '') + '.</p>']);
+    }) : ['<p class="empty">Geen bedrijven gevonden' + (ui.listQuery ? ' voor “' + esc(ui.listQuery) + '”' : '') + '.</p>']);
   }
 
   $('list-search').addEventListener('input', (e) => { ui.listQuery = e.target.value; if (M) renderList(); });
 
-  // ---------- Bedrijfspagina ----------
-  function renderDetail(animate, swapDir) {
-    const c = M.byTk.get(ui.detail);
-    if (!c) return;
+  function detailNav(c) {
     const order = sortedCompanies();
     const i = order.findIndex((x) => x.tk === c.tk);
-    const prev = order[(i - 1 + order.length) % order.length], next = order[(i + 1) % order.length];
-    const S = statsFor(c.tk);
-    const tot = M.total || {};
+    return { prev: order[(i - 1 + order.length) % order.length], next: order[(i + 1) % order.length] };
+  }
 
-    // Weging door de tijd en afstand tot de top, uit de dagreeksen
-    const dAll = seriesFor(c.tk, 'all');
-    const tMap = new Map(seriesFor(TOTAL, 'all').map((p) => [dayKey(p.t), p.v]));
-    const weightHist = dAll.map((p) => { const t = tMap.get(dayKey(p.t)); return t ? { t: p.t, v: p.v / t } : null; }).filter(Boolean);
-    const monthAgo = weightHist.filter((p) => p.t <= Date.now() - 30 * 864e5).pop();
-    let runMax = -Infinity;
-    const ddHist = dAll.map((p) => { runMax = Math.max(runMax, p.v); return { t: p.t, v: p.v / runMax - 1 }; });
-    const dd = isNum(c.ath) && c.ath > 0 ? (c.value - c.ath) / c.ath : null;
-    const price = c.qty ? c.value / c.qty : null;
-    const avgBuy = c.qty && isNum(c.cost) ? c.cost / c.qty : null;
-    const todayRangePct = isNum(c.high) && isNum(c.low) && c.avg ? (c.high - c.low) / c.avg : null;
-    let rangeNote = '';
-    if (isNum(todayRangePct) && isNum(c.avgRangePct) && c.avgRangePct > 0) {
-      const ratio = todayRangePct / c.avgRangePct;
-      rangeNote = 'Vandaag ' + P1.format(todayRangePct) + ' tussen laag en hoog, ' +
-        (ratio > 1.3 ? 'drukker dan' : ratio < 0.7 ? 'rustiger dan' : 'ongeveer zoals') + ' gemiddeld (' + P1.format(c.avgRangePct) + ').';
-    }
-    const contrib = isNum(c.change) && isNum(tot.change) ? seur(c.change) + ' van ' + seur(tot.change) : '–';
-
-    const kpis = [
-      tileStat(M.isToday ? 'Vandaag' : 'Laatste handelsdag', seur(c.change), spct(c.changePct) + ' sinds opening', tone(c.change), spark(seriesFor(c.tk, 'today'), toneColor(c.change))),
-      tileStat('Sinds aankoop', spct1(c.resultPct), isNum(c.unreal) ? seur(c.unreal) + ' op ' + eur(c.cost) + ' inleg' : 'geen aankoopgegevens', tone(c.resultPct), spark(dAll, toneColor(c.resultPct))),
-      tileStat('Deel van portefeuille', isNum(c.weight) ? P1.format(c.weight) : '–', monthAgo ? 'was ' + P1.format(monthAgo.v) + ' op ' + fDM.format(monthAgo.t) : 'van ' + eur(M.totalValue), '', spark(weightHist, C.accent)),
-      tileStat('Tot hoogste ooit', dd == null ? '–' : dd >= -0.0005 ? 'Op het hoogste punt' : spct1(dd), isNum(c.ath) ? 'hoogste ooit ' + eur(c.ath) + (dd < -0.0005 ? ', nog ' + eur(c.ath - c.value) : '') : '', dd != null && dd < -0.0005 ? 'loss' : '', spark(ddHist, C.loss)),
-    ];
-
-    const html =
-      '<div class="band">' +
+  function renderDetailDesktop(c, swapDir) {
+    const { prev, next } = detailNav(c);
+    const I = companyInfo(c);
+    const sw = swapDir ? ' swap-' + swapDir : '';
+    return '<div class="band">' +
         '<div class="d-top"><button type="button" class="btn dark" data-act="back">← Terug</button>' +
           '<div class="d-nav"><button type="button" class="btn line" data-act="prev" aria-label="Vorige: ' + esc(prev.name) + '">← ' + esc(prev.tk) + '</button>' +
           '<button type="button" class="btn line" data-act="next" aria-label="Volgende: ' + esc(next.name) + '">' + esc(next.tk) + ' →</button></div></div>' +
-        '<div class="hero-head ' + (swapDir ? 'swap-' + swapDir : '') + '"><div><p class="hero-label">' + esc(c.name) + '</p>' +
+        '<div class="hero-head' + sw + '"><div><p class="hero-label">' + esc(c.name) + '</p>' +
           '<h2 id="d-title" class="hero-value">' + esc(c.tk) + ' ' + esc(eur(c.value)) + '</h2>' +
-          '<p class="hero-change ' + tone(c.change) + '">' + esc(seur(c.change) + ' (' + spct(c.changePct) + ') ' + M.dayWord) + '</p></div>' +
+          '<p class="hero-change ' + tone(c.change) + '">' + esc(changeLine(c) + ', ' + baseText(c)) + '</p></div>' +
           '<div class="hero-ctrl"><div id="d-ranges" class="seg" role="group" aria-label="Periode van de grafiek"></div>' +
           '<label class="check"><input type="checkbox" id="d-compare"' + (ui.compare ? ' checked' : '') + '> Vergelijk met portefeuille</label></div></div>' +
         '<div id="d-chart" class="chart hero-chart" role="img" aria-label="' + esc('Verloop van ' + c.name) + '"></div>' +
-        '<div id="d-legend"></div><div id="d-x" class="xlabels"></div>' +
+        '<div id="d-legend"></div><div id="d-x" class="xlabels"></div><p id="d-note" class="chart-note"></p>' +
       '</div>' +
-      '<div class="wrap ' + (swapDir ? 'swap-' + swapDir : '') + '">' +
-        '<div class="grid">' + kpis.join('') + '</div>' +
-        '<div class="grid wide" style="margin-top:16px">' +
-          '<section class="tile pad"><h3>Dagbereik binnen de historie</h3>' + rangeStrip(c) +
-            '<p class="sub" style="margin-top:10px">Balk: laag tot hoog ' + esc(M.dayWord) + '. Streep: gemiddelde. Punt: nu. ' + esc(rangeNote) + '</p>' +
-            '<div style="margin-top:12px">' + kvList([
-              ['Opening', eur(c.open)],
-              ['Laagste en hoogste', isNum(c.low) ? eur(c.low) + ' – ' + eur(c.high) : '–'],
-              ['Gemiddelde', eur(c.avg)],
-              ['Vanaf laagste ooit', isNum(c.atl) && c.atl > 0 ? spct1((c.value - c.atl) / c.atl) : '–', 'gain'],
-            ]) + '</div></section>' +
-          '<section class="tile pad"><h3>Positie</h3>' + kvList([
-            ['Waarde nu', eur(c.value)],
-            ['Aantal', c.qty ? N4.format(c.qty) : '–'],
-            ['Koers in euro', eur(price)],
-            ['Gemiddelde aankoopprijs', eur(avgBuy)],
-            ['Ingelegd', eur(c.cost)],
-            ['Ongerealiseerd', isNum(c.unreal) ? seur(c.unreal) + ' (' + spct1(c.resultPct) + ')' : '–', tone(c.unreal)],
-            ['Bijdrage aan dagresultaat', contrib, tone(c.change)],
-          ]) + '</section>' +
-          '<section class="tile pad"><h3>Historie</h3>' + kvList([
-            ['Gemeten dagen', S.n ? S.n + (S.returns[0] ? ' sinds ' + fDM.format(S.returns[0].t) : '') : '–'],
-            ['Gestegen en gedaald', S.n ? S.up + ' en ' + S.down + ' dagen' : '–'],
-            ['Huidige reeks', streakText(S)],
-            ['Beste dag', S.best ? spct(S.best.pct) + ', ' + fD.format(S.best.t) : '–', 'gain'],
-            ['Slechtste dag', S.worst ? spct(S.worst.pct) + ', ' + fD.format(S.worst.t) : '–', 'loss'],
-            ['Gemiddeld dagbereik', isNum(c.avgRange) ? eur(c.avgRange) + ' (' + P1.format(c.avgRangePct || 0) + ')' : '–'],
-            ['Beweeglijkheid', isNum(S.sd) ? '± ' + P1.format(S.sd) + ' per dag' : '–'],
-            ['Beweegt mee met portefeuille', corrText(S.corr)],
-            ['Gevoeligheid', isNum(S.beta) ? N2.format(S.beta) + '× de portefeuille' : '–'],
-          ]) + '</section>' +
-        '</div>' +
+      '<div class="wrap' + sw + '">' +
+        '<div class="grid">' + I.kpis.join('') + '</div>' +
+        '<div class="grid wide" style="margin-top:16px">' + I.rangeTile + I.posTile + I.histTile + '</div>' +
         '<div class="section-head"><h2>Patronen</h2></div>' +
-        '<div class="grid">' + patternTiles(c.tk, S).join('') + '</div>' +
-        '<p class="foot">Dagresultaten zijn de verandering tussen de eerste en de laatste meting van een dag. Dagen die meer dan 25% bewegen, tellen niet mee: dat is bijna altijd een aankoop of verkoop. ' +
-          'Koers en aankoopprijs zijn in euro en volgen uit waarde, inleg en aantal. “Beweegt mee” is de correlatie van de dagresultaten met die van je hele portefeuille; “gevoeligheid” geeft aan hoeveel sterker of zwakker het bedrijf meestal beweegt.</p>' +
+        '<div class="grid">' + I.patterns.join('') + '</div>' +
+        '<p class="foot">' + esc(FOOT) + '</p>' +
       '</div>';
+  }
 
+  // ---------- Telefoon ----------
+  function mRow(c, pts, right) {
+    return '<button type="button" class="m-row" data-ticker="' + esc(c.tk) + '" aria-label="' + esc(c.name + ', ' + eur(c.value) + ', ' + spct(c.changePct) + ' ' + M.dayWord + '. Openen') + '">' +
+      '<span class="l"><span class="tk">' + esc(c.tk) + '</span><span class="nm">' + esc(c.name) + '</span></span>' +
+      spark(pts, toneColor(right.tone), 'mspark') +
+      '<span class="rt"><b>' + esc(right.top) + '</b><span class="chip-chg ' + tone(right.tone) + '">' + esc(right.bottom) + '</span></span></button>';
+  }
+
+  function renderMHome() {
+    const T = M.tot;
+    $('m-hero-label').textContent = 'Waarde beleggingen, ' + (M.lastT ? fDT.format(M.lastT) : 'laatste meting');
+    $('m-hero-value').textContent = eur(M.totalValue);
+    $('m-hero-change').innerHTML = isNum(T.change)
+      ? '<span class="pill-chg ' + tone(T.change) + '">' + esc(changeLine(T)) + '</span><span class="base" style="padding:6px 0 0">' + esc(baseText(T)) + '</span>'
+      : '<span class="pill-chg">Nog geen metingen van vandaag</span>';
+    drawHero('m-', false);
+
+    fill('m-kpis', kpiCards());
+    const withChange = M.companies.filter((c) => isNum(c.change));
+    const up = withChange.filter((c) => c.change > 0).length, down = withChange.filter((c) => c.change < 0).length;
+    $('m-breadth').innerHTML = withChange.length ? split(up, down) + esc(up + ' omhoog, ' + down + ' omlaag') : '';
+    $('m-movers-title').textContent = 'Grootste veranderingen';
+    const top = withChange.slice().sort((a, b) => Math.abs(b.change) - Math.abs(a.change)).slice(0, 5);
+    fill('m-movers', (top.length ? top.map((c) => mRow(c, seriesFor(c.tk, 'today'), { top: seur(c.change), bottom: spct(c.changePct), tone: c.change }))
+      : ['<p class="m-sub" style="padding:16px">Nog geen metingen van vandaag.</p>'])
+      .concat(['<a class="m-more" href="#bedrijven">Alle ' + M.companies.length + ' bedrijven</a>']));
+    fill('m-weeks', weekCards());
+    drawWeekChart($('m-weeks'));
+  }
+
+  const M_CHIPS = [['sort', 'move', 'Verandering'], ['sort', 'value', 'Waarde'], ['sort', 'result', 'Sinds aankoop'], ['sort', 'name', 'Naam'], ['sep'],
+    ['filter', 'up', 'Gestegen'], ['filter', 'down', 'Gedaald'], ['sep'], ['span', 'today', 'Vandaag'], ['span', '1m', '30 dagen'], ['span', 'all', 'Alles']];
+
+  function renderMList() {
+    $('m-list-sub').textContent = listSummary();
+    const chips = $('m-chips');
+    chips.innerHTML = M_CHIPS.map((ch) => {
+      if (ch[0] === 'sep') return '<span class="sep" aria-hidden="true"></span>';
+      const on = ch[0] === 'sort' ? ui.listSort === ch[1] : ch[0] === 'filter' ? ui.listFilter === ch[1] : ui.listSpan === ch[1];
+      const lbl = ch[0] === 'span' ? 'Grafiek ' + ch[2].toLowerCase() : ch[2];
+      return '<button type="button" data-g="' + ch[0] + '" data-k="' + ch[1] + '" aria-pressed="' + on + '">' + esc(lbl) + '</button>';
+    }).join('');
+    chips.onclick = (e) => {
+      const b = e.target.closest('button[data-g]');
+      if (!b) return;
+      const g = b.dataset.g, k = b.dataset.k;
+      if (g === 'sort') ui.listSort = k;
+      else if (g === 'filter') ui.listFilter = ui.listFilter === k ? 'all' : k;
+      else ui.listSpan = k;
+      renderMList();
+    };
+    const items = filteredCompanies();
+    fill('m-list-rows', items.length ? items.map((c) => {
+      const pts = seriesFor(c.tk, ui.listSpan);
+      const delta = ui.listSpan === 'today' ? c.change : pts.length > 1 ? pts[pts.length - 1].v - pts[0].v : c.change;
+      const bottom = ui.listSort === 'result' ? spct1(c.resultPct) : spct(c.changePct);
+      return mRow(c, pts, { top: eur(c.value), bottom, tone: ui.listSort === 'result' ? c.resultPct : delta });
+    }) : ['<p class="m-sub" style="padding:16px">Geen bedrijven gevonden' + (ui.listQuery ? ' voor “' + esc(ui.listQuery) + '”' : '') + '.</p>']);
+  }
+
+  $('m-search').addEventListener('input', (e) => { ui.listQuery = e.target.value; if (M) renderMList(); });
+
+  function renderMStats() {
+    const S = statsFor(TOTAL);
+    $('m-stats-note').textContent = statsNote(S);
+    fill('m-stat-cards', statCards(S));
+    fill('m-patterns', patternTiles(TOTAL, S));
+  }
+
+  function renderDetailMobile(c, swapDir) {
+    const { prev, next } = detailNav(c);
+    const I = companyInfo(c);
+    const sw = swapDir ? ' swap-' + swapDir : '';
+    const tabs = [['pos', 'Positie'], ['hist', 'Historie'], ['pat', 'Patronen']];
+    const panel = ui.mTab === 'hist' ? I.histTile : ui.mTab === 'pat' ? '<div class="m-stack">' + I.patterns.join('') + '</div>' : I.rangeTile + I.posTile;
+    return '<div class="md">' +
+      '<div class="m-dtop"><button type="button" class="m-back" data-act="back">‹ Terug</button><span class="t">' + esc(c.tk) + '</span>' +
+        '<div class="m-nav"><button type="button" data-act="prev" aria-label="Vorige: ' + esc(prev.name) + '">‹</button><button type="button" data-act="next" aria-label="Volgende: ' + esc(next.name) + '">›</button></div></div>' +
+      '<div class="m-hero">' +
+        '<div class="m-swipe' + sw + '"><p class="hero-label">' + esc(c.name) + '</p><h2 id="d-title" class="m-value">' + esc(eur(c.value)) + '</h2>' +
+          '<p><span class="pill-chg ' + tone(c.change) + '">' + esc(changeLine(c)) + '</span></p><span class="base">' + esc(baseText(c)) + '</span></div>' +
+        '<div id="d-chart" class="chart m-chart" role="img" aria-label="' + esc('Verloop van ' + c.name) + '"></div><div id="d-x" class="xlabels"></div>' +
+        '<div id="d-ranges" class="m-seg" role="group" aria-label="Periode van de grafiek"></div>' +
+        '<label class="check"><input type="checkbox" id="d-compare"' + (ui.compare ? ' checked' : '') + '> Vergelijk met portefeuille</label>' +
+        '<div id="d-legend"></div><p id="d-note" class="chart-note"></p>' +
+      '</div>' +
+      '<div class="m-body' + sw + '">' +
+        '<div class="m-grid2">' + I.kpis.join('') + '</div>' +
+        '<div class="m-dtabs" role="tablist" aria-label="Onderdelen" style="margin-top:16px">' + tabs.map(([k, l]) =>
+          '<button type="button" role="tab" data-tab="' + k + '" aria-selected="' + (ui.mTab === k) + '">' + l + '</button>').join('') + '</div>' +
+        '<div class="m-stack" role="tabpanel">' + panel + '</div>' +
+        '<p class="foot">' + esc(FOOT) + '</p>' +
+      '</div></div>';
+  }
+
+  // ---------- Bedrijfspagina (beide weergaven) ----------
+  function renderDetail(animate, swapDir) {
+    const c = M.byTk.get(ui.detail);
+    if (!c) return;
     const inner = $('detail-inner');
-    const keepScroll = !animate && !swapDir ? $('detail').scrollTop : 0;
-    inner.innerHTML = html;
-    if (!animate && !swapDir) $('detail').scrollTop = keepScroll;
+    const keep = !animate && !swapDir ? ov.scrollTop : 0;
+    inner.innerHTML = mode === 'm' ? renderDetailMobile(c, swapDir) : renderDetailDesktop(c, swapDir);
+    if (!animate && !swapDir) ov.scrollTop = keep;
     $('d-compare').addEventListener('change', (e) => { ui.compare = e.target.checked; renderDetailChart(true); });
     renderDetailChart(animate || !!swapDir);
   }
@@ -847,46 +1135,61 @@
       const keys = new Set(pts.map((p) => p.t));
       const port = indexed(seriesFor(TOTAL, r).filter((p) => keys.has(p.t)));
       lineChart($('d-chart'), [
-        { pts: mine, color: C.accent, area: false, width: 3, label: c.tk, fmt: spct },
+        { pts: mine, color: C.accent, width: 3, label: c.tk, fmt: spct },
         { pts: port, color: C.ink2, dash: true, width: 2, label: 'Portefeuille', fmt: spct },
-      ], { animate, zero: true, xl: $('d-x'), xfmt: xFmt(r), tfmt: tFmt(r) });
+      ], { animate, zero: true, xl: $('d-x'), xfmt: xFmt(r, pts), tfmt: tFmt(r, pts) });
       const a = mine.length ? mine[mine.length - 1].v : null, b = port.length ? port[port.length - 1].v : null;
-      legend.innerHTML = '<div class="hero-head" style="padding-top:4px"><div class="legend"><span><i style="background:' + C.accent + '"></i>' + esc(c.tk) + ' ' + esc(spct(a)) + '</span><span><i class="dash"></i>Portefeuille ' + esc(spct(b)) + '</span></div></div>';
+      legend.innerHTML = '<div class="legend chart-legend"><span><i style="background:' + C.accent + '"></i>' + esc(c.tk) + ' ' + esc(spct(a)) + '</span><span><i class="dash"></i>Portefeuille ' + esc(spct(b)) + '</span></div>';
     } else {
-      let mi = 0;
-      pts.forEach((p, i) => { if (p.v > pts[mi].v) mi = i; });
       lineChart($('d-chart'), [{ pts, color: C.accent, area: true, width: 3 }], {
-        animate, markers: pts.length > 2 ? [{ i: mi, label: 'hoogste ' + eur(pts[mi].v) }] : [],
-        xl: $('d-x'), xfmt: xFmt(r), tfmt: tFmt(r),
+        animate, markers: heroMarkers(pts, 'detail'), xl: $('d-x'), xfmt: xFmt(r, pts), tfmt: tFmt(r, pts),
       });
       legend.innerHTML = '';
     }
+    $('d-note').textContent = coverageNote(r, pts);
   }
 
   $('detail').addEventListener('click', (e) => {
+    const tab = e.target.closest('[data-tab]');
+    if (tab) { ui.mTab = tab.dataset.tab; renderDetail(false); return; }
     const b = e.target.closest('[data-act]');
     if (!b) return;
     const act = b.dataset.act;
     if (act === 'back') closeDetail();
-    else {
-      const order = sortedCompanies();
-      const i = order.findIndex((x) => x.tk === ui.detail);
-      const n = order[(i + (act === 'next' ? 1 : -1) + order.length) % order.length];
-      switchDetail(n.tk, act === 'next' ? 'r' : 'l');
-    }
+    else if (act === 'prev' || act === 'next') stepDetail(act === 'next' ? 1 : -1);
+  });
+
+  function stepDetail(d) {
+    const order = sortedCompanies();
+    const i = order.findIndex((x) => x.tk === ui.detail);
+    const n = order[(i + d + order.length) % order.length];
+    switchDetail(n.tk, d > 0 ? 'r' : 'l');
+  }
+
+  // Vegen over naam en waarde op de telefoon: vorige of volgende bedrijf
+  let swipe = null;
+  $('detail').addEventListener('pointerdown', (e) => {
+    if (mode !== 'm' || !e.target.closest('.m-swipe')) return;
+    swipe = { x: e.clientX, y: e.clientY };
+  });
+  $('detail').addEventListener('pointerup', (e) => {
+    if (!swipe) return;
+    const dx = e.clientX - swipe.x, dy = e.clientY - swipe.y;
+    swipe = null;
+    if (Math.abs(dx) > 60 && Math.abs(dy) < 50) stepDetail(dx < 0 ? 1 : -1);
   });
 
   // ---------- Inzoomen ----------
   const ov = $('detail');
-  const shell = $('shell');
+  const shellEl = () => $(mode === 'm' ? 'mshell' : 'shell');
   const inView = (r) => r.width > 0 && r.bottom > 0 && r.top < window.innerHeight;
   const setRect = (r) => Object.assign(ov.style, { left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px' });
   const setFull = () => Object.assign(ov.style, { left: '0px', top: '0px', width: '100%', height: '100%' });
   let zoomTimer = null;
 
-  function setOrigin(r) {
-    const s = shell.getBoundingClientRect();
-    shell.style.transformOrigin = (r.left + r.width / 2 - s.left) + 'px ' + (r.top + r.height / 2 - s.top) + 'px';
+  function setOrigin(sh, r) {
+    const s = sh.getBoundingClientRect();
+    sh.style.transformOrigin = (r.left + r.width / 2 - s.left) + 'px ' + (r.top + r.height / 2 - s.top) + 'px';
   }
 
   function ghostOf(el, r) {
@@ -894,9 +1197,11 @@
     g.removeAttribute('data-ticker');
     g.removeAttribute('aria-label');
     g.setAttribute('aria-hidden', 'true');
-    g.classList.add('ghost');
+    g.classList.add('tile', 'ghost');
     g.style.width = r.width + 'px';
     g.style.height = r.height + 'px';
+    g.style.padding = getComputedStyle(el).padding;
+    g.style.borderRadius = getComputedStyle(el).borderRadius;
     return g;
   }
 
@@ -904,9 +1209,11 @@
     if (!M || !M.byTk.has(tk)) return;
     clearTimeout(zoomTimer);
     hideTip();
+    const sh = shellEl();
     ui.detail = tk;
     ui.detailRange = '3d';
     ui.compare = false;
+    ui.mTab = 'pos';
     ui.origin = tk;
     if (push) { history.pushState({ detail: tk }, '', '#bedrijf/' + encodeURIComponent(tk)); pushedDetail = true; }
     renderDetail(true);
@@ -915,31 +1222,31 @@
     ov.hidden = false;
     ov.scrollTop = 0;
     document.documentElement.classList.add('locked');
-    shell.inert = true;
+    sh.inert = true;
 
     const r = originEl && originEl.getBoundingClientRect();
     if (reduceMotion() || !r || !inView(r)) {
       setFull();
       ov.classList.add('open');
       if (!reduceMotion()) ov.classList.add('pop');
-      shell.classList.add('zoomed');
+      sh.classList.add('zoomed');
       focusDetail();
       return;
     }
     setRect(r);
     const g = ghostOf(originEl, r);
     ov.appendChild(g);
-    setOrigin(r);
+    setOrigin(sh, r);
     void ov.offsetWidth;
     ov.classList.add('anim');
-    shell.classList.add('zoom-anim');
+    sh.classList.add('zoom-anim');
     requestAnimationFrame(() => {
       setFull();
       ov.classList.add('open');
-      shell.classList.add('zoomed');
+      sh.classList.add('zoomed');
       g.style.opacity = '0';
     });
-    zoomTimer = setTimeout(() => { g.remove(); shell.classList.remove('zoom-anim'); focusDetail(); }, ZOOM_MS + 20);
+    zoomTimer = setTimeout(() => { g.remove(); sh.classList.remove('zoom-anim'); focusDetail(); }, ZOOM_MS + 20);
   }
 
   function focusDetail() {
@@ -954,14 +1261,30 @@
     history.replaceState({ detail: tk }, '', '#bedrijf/' + encodeURIComponent(tk));
     ov.scrollTo({ top: 0, behavior: reduceMotion() ? 'auto' : 'smooth' });
     renderDetail(false, reduceMotion() ? null : dir);
-    focusDetail();
   }
 
   function closeDetail() {
     if (!ui.detail) return;
     if (pushedDetail) { history.back(); return; }   // de hashchange sluit daarna de pagina
-    history.replaceState(null, '', '#' + (ui.page === 'list' ? 'bedrijven' : 'overzicht'));
+    history.replaceState(null, '', '#' + pageHash(ui.page));
     finishDetail();
+  }
+
+  function cleanupDetail(sh) {
+    ov.hidden = true;
+    ov.classList.remove('anim', 'open', 'pop', 'fade-out');
+    ov.removeAttribute('style');
+    ov.querySelectorAll('.ghost').forEach((g) => g.remove());
+    [$('shell'), $('mshell')].forEach((s) => { s.classList.remove('zoom-anim', 'zoomed'); s.style.transformOrigin = ''; s.inert = false; });
+    document.documentElement.classList.remove('locked');
+    void sh;
+  }
+
+  function instantClose() {
+    clearTimeout(zoomTimer);
+    ui.detail = null;
+    pushedDetail = false;
+    cleanupDetail();
   }
 
   function finishDetail() {
@@ -971,41 +1294,33 @@
     pushedDetail = false;
     clearTimeout(zoomTimer);
     hideTip();
-    shell.inert = false;
-    const sel = '#page-' + ui.page + ' [data-ticker="' + (window.CSS && CSS.escape ? CSS.escape(tk) : tk) + '"]';
-    const el = document.querySelector(sel);
-
-    const done = () => {
-      ov.hidden = true;
-      ov.classList.remove('anim', 'open', 'pop', 'fade-out');
-      ov.removeAttribute('style');
-      ov.querySelectorAll('.ghost').forEach((g) => g.remove());
-      shell.classList.remove('zoom-anim', 'zoomed');
-      shell.style.transformOrigin = '';
-      document.documentElement.classList.remove('locked');
-      if (el) el.focus({ preventScroll: true });
-    };
+    const sh = shellEl();
+    sh.inert = false;
+    const page = $(pageId(ui.page));
+    const el = page && page.querySelector('[data-ticker="' + (window.CSS && CSS.escape ? CSS.escape(tk) : tk) + '"]');
+    const done = () => { cleanupDetail(sh); if (el) el.focus({ preventScroll: true }); };
 
     if (reduceMotion()) { done(); return; }
     if (!el) {
-      shell.classList.add('zoom-anim');
-      shell.classList.remove('zoomed');
+      sh.classList.add('zoom-anim');
+      sh.classList.remove('zoomed');
       ov.classList.add('fade-out');
       zoomTimer = setTimeout(done, 220);
       return;
     }
     // Pagina eerst zonder zoom meten, zo nodig de tegel in beeld schuiven
-    shell.classList.remove('zoom-anim', 'zoomed');
+    sh.classList.remove('zoom-anim', 'zoomed');
     let r = el.getBoundingClientRect();
-    if (!inView(r) || r.top < 0 || r.bottom > window.innerHeight) {
+    const bottomBar = mode === 'm' ? 80 : 0;
+    if (!inView(r) || r.top < 0 || r.bottom > window.innerHeight - bottomBar) {
       window.scrollBy(0, r.top - (window.innerHeight - r.height) / 2);
       r = el.getBoundingClientRect();
     }
-    setOrigin(r);
-    shell.classList.add('zoomed');
-    void shell.offsetWidth;
-    shell.classList.add('zoom-anim');
-    shell.classList.remove('zoomed');
+    setOrigin(sh, r);
+    sh.classList.add('zoomed');
+    void sh.offsetWidth;
+    sh.classList.add('zoom-anim');
+    sh.classList.remove('zoomed');
 
     const g = ghostOf(el, r);
     g.style.opacity = '0';
@@ -1023,8 +1338,12 @@
     if (e.key === 'Escape' && ui.detail && !$('dlg-settings').open) { e.preventDefault(); closeDetail(); }
   });
 
-  // Klik op een tegel of legenda-regel met een ticker: inzoomen
-  document.getElementById('app').addEventListener('click', (e) => {
+  // Klik op een tegel, rij of legenda-regel met een ticker: inzoomen
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest || ov.contains(e.target)) return;
+    const imp = e.target.closest('[data-act="import"]');
+    if (imp) { openSettings(true); return; }
+    if (!e.target.closest('#app, #m-main')) return;
     const go = e.target.closest('[data-goto]');
     if (go) { location.hash = go.dataset.goto; return; }
     const el = e.target.closest('[data-ticker]');
@@ -1032,26 +1351,34 @@
   });
 
   // ---------- Pagina's en adresbalk ----------
-  const ORDER = { home: 0, list: 1 };
+  const ORDER = { home: 0, list: 1, stats: 2 };
+  const TITLES = { home: 'Overzicht', list: 'Bedrijven', stats: 'Statistieken' };
+  const pageId = (p) => (mode === 'm' ? 'm-' + p : 'page-' + p);
+  const pageHash = (p) => (p === 'list' ? 'bedrijven' : p === 'stats' ? 'statistieken' : 'overzicht');
 
-  function placePill() {
+  function placeIndicators() {
     const a = document.querySelector('.pillnav a[aria-current="page"]');
     const pill = document.querySelector('.pill');
-    if (!a || !pill) return;
-    pill.style.width = a.offsetWidth + 'px';
-    pill.style.transform = 'translateX(' + a.offsetLeft + 'px)';
+    if (a && pill && mode === 'd') { pill.style.width = a.offsetWidth + 'px'; pill.style.transform = 'translateX(' + a.offsetLeft + 'px)'; }
+    const t = document.querySelector('.m-tabs a[aria-current="page"]');
+    const ind = document.querySelector('.m-tab-ind');
+    if (t && ind && mode === 'm') { const w = t.offsetWidth * 0.5; ind.style.width = w + 'px'; ind.style.transform = 'translateX(' + (t.offsetLeft + (t.offsetWidth - w) / 2) + 'px)'; }
   }
 
-  function showPage(p, animate) {
+  function showPage(p, animate, force) {
+    if (mode === 'd' && p === 'stats') p = 'home';
     const prev = ui.page;
     ui.page = p;
     document.body.dataset.page = p;
-    document.querySelectorAll('.pillnav a').forEach((a) => {
+    $$('.pillnav a, .m-tabs a').forEach((a) => {
       if (a.dataset.page === p) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
     });
-    placePill();
-    Object.keys(ORDER).forEach((k) => { $('page-' + k).hidden = k !== p; });
-    const el = $('page-' + p);
+    $('m-title').textContent = TITLES[p];
+    document.querySelector('meta[name="theme-color"]').content = mode === 'm' && p !== 'home' ? '#F6F7F9' : '#E8EDFA';
+    placeIndicators();
+    const ids = mode === 'm' ? ['home', 'list', 'stats'] : ['home', 'list'];
+    ids.forEach((k) => { $(pageId(k)).hidden = k !== p; });
+    const el = $(pageId(p));
     if (animate && !reduceMotion()) {
       el.classList.remove('in-r', 'in-l', 'enter');
       void el.offsetWidth;
@@ -1059,19 +1386,19 @@
       el.classList.add('enter');
       setTimeout(() => el.classList.remove('in-r', 'in-l', 'enter'), 1400);
     }
-    if (prev !== p) window.scrollTo(0, 0);
+    if (prev !== p || force) window.scrollTo(0, 0);
   }
 
   function parseHash() {
     const h = decodeURIComponent(location.hash.replace(/^#/, ''));
     if (h.indexOf('bedrijf/') === 0) return { tk: h.slice(8) };
-    return { page: h === 'bedrijven' ? 'list' : 'home' };
+    return { page: h === 'bedrijven' ? 'list' : h === 'statistieken' ? 'stats' : 'home' };
   }
 
   function route(first) {
     const r = parseHash();
     if (r.tk) {
-      if (first || !$('page-' + ui.page)) showPage('list', first);
+      if (first) showPage('list', true, true);
       if (!M) return;
       if (!ui.detail) openDetail(r.tk, null, false);
       else if (ui.detail !== r.tk) switchDetail(r.tk, 'r');
@@ -1082,8 +1409,30 @@
   }
 
   window.addEventListener('hashchange', () => route(false));
-  window.addEventListener('resize', placePill);
-  if (document.fonts && document.fonts.ready) document.fonts.ready.then(placePill);
+  window.addEventListener('resize', () => { placeIndicators(); setMtop(); });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { placeIndicators(); setMtop(); });
+
+  // ---------- Tekenen ----------
+  function renderAll() {
+    if (mode === 'm') { renderMHome(); renderMList(); renderMStats(); }
+    else { renderHome(); renderList(); }
+  }
+
+  function render() {
+    $('welcome').hidden = true;
+    $('app').hidden = false;
+    $('m-main').hidden = false;
+    $('demo-banner').hidden = !demo;
+    M = derive();
+    const upd = M.lastT ? 'Bijgewerkt ' + fDT.format(data.generated ? new Date(data.generated) : new Date()) : '';
+    $$('.updated').forEach((e) => { e.textContent = mode === 'm' ? upd.replace('Bijgewerkt ', '') : upd; });
+    renderAll();
+    if (ui.detail) {
+      if (M.byTk.has(ui.detail)) renderDetail(false);
+      else closeDetail();
+    }
+    if (firstRender) { firstRender = false; route(true); }
+  }
 
   // ---------- Voorbeeldgegevens ----------
   function makeDemoData() {
@@ -1218,9 +1567,10 @@
     };
   }
 
-  // ---------- Start ----------
 
+  // ---------- Start ----------
   if (new URLSearchParams(location.search).has('demo')) demo = true;
-  placePill();
+  applyMode();
+  placeIndicators();
   load();
 })();
