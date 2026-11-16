@@ -3833,7 +3833,7 @@
       if (!root || root.hidden || !root.offsetParent) return;
       const tiles = [...root.querySelectorAll('.tile.pad, .m-stack > .tile')].filter((t) => !t.closest(FOLD_SKIP) && !t.classList.contains('fold-anim'));
       // Eerst alles op natuurlijke hoogte meten
-      tiles.forEach((t) => { t.classList.remove('folded'); t.style.minHeight = ''; t.style.maxHeight = ''; });
+      tiles.forEach((t) => { t.classList.remove('folded', 'fit'); t.style.minHeight = ''; t.style.maxHeight = ''; t.querySelectorAll('.fit-chart').forEach((c) => c.classList.remove('fit-chart')); });
       const info = tiles.map((t, i) => {
         const h3 = t.querySelector('h3');
         return { t, key: rid + ':' + (h3 ? h3.textContent : i), full: t.scrollHeight, row: (t.parentElement.id || '') + ':' + t.offsetTop };
@@ -3850,6 +3850,7 @@
           t.classList.add('fold');
           t.dataset.fold = x.key;
           const open = unfolded.has(x.key);
+          fitChart(t, H);
           t.classList.toggle('folded', !open);
           if (t.tagName === 'BUTTON') return; // een klikbare tegel opent zijn eigen pagina met alles
           let b = t.querySelector(':scope > .fold-btn');
@@ -3859,6 +3860,27 @@
         });
       });
     });
+  }
+  // Ingeklapt moet een grafiek met zijn labels helemaal zichtbaar zijn: maak hem zo nodig lager (de y-as wordt dan samengedrukt)
+  const CHART_SEL = '.bars, .chart, svg.dual, .donut, .fin-bars';
+  function fitChart(t, H) {
+    const ch = t.querySelector(CHART_SEL);
+    if (!ch) return;
+    const tr = t.getBoundingClientRect(), cr = ch.getBoundingClientRect();
+    if (cr.top - tr.top > H - 120 || cr.height < 40) return;
+    let end = ch, sib = ch.nextElementSibling;
+    while (sib && sib.matches('.bar-labels, .xlabels, .legend, .heat-key, .srri-l')) { end = sib; sib = sib.nextElementSibling; }
+    if (end === ch && ch.parentElement !== t) { // labels kunnen naast de omhullende staan
+      let w = ch.parentElement.nextElementSibling;
+      while (w && w.matches('.bar-labels, .xlabels, .legend')) { end = w; w = w.nextElementSibling; }
+    }
+    const bottom = end.getBoundingClientRect().bottom - tr.top;
+    const limit = H - 44;
+    t.classList.add('fit');
+    if (bottom <= limit) return;
+    const nh = Math.max(48, cr.height - (bottom - limit));
+    ch.style.setProperty('--fit-h', Math.floor(nh) + 'px');
+    ch.classList.add('fit-chart');
   }
   function toggleFold(t) {
     const key = t.dataset.fold;

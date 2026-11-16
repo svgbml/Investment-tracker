@@ -805,3 +805,9 @@ button.alt:hover { outline: 2px solid var(--accent); }
 .why-d[open]::details-content { block-size: auto; }
 .why-in { padding: 0 4px 16px 4px; }
 @media (prefers-reduced-motion: reduce) { .why-d::details-content, .why-d summary::after { transition: none; } }
+/* Ingeklapte tegels: grafiek past helemaal */
+.bars, .chart, svg.dual, .donut, .fin-bars { transition: height .38s cubic-bezier(.2, .7, .2, 1), width .38s cubic-bezier(.2, .7, .2, 1); }
+.tile.folded .fit-chart { height: var(--fit-h) !important; }
+.tile.folded .donut.fit-chart { width: var(--fit-h); }
+.tile.fold.fit::after { height: 44px; background-position: center bottom 4px, 0 0; background-size: 18px, auto; }
+@media (prefers-reduced-motion: reduce) { .bars, .chart, svg.dual, .donut, .fin-bars { transition: none; } }
