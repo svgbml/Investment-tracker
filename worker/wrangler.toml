@@ -11,6 +11,9 @@ binding = "DB"
 database_name = "investment-tracker"
 database_id = "fa2a3bfc-427c-4ee5-98a8-7f1737575f09"
 
+[observability]
+enabled = true
+
 [vars]
 T212_BASE = "https://live.trading212.com"
 ALLOWED_ORIGIN = "https://svgbml.github.io"

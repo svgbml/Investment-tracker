@@ -22,7 +22,12 @@ const TOTAL = 'TOTAAL';
 
 export default {
   async scheduled(event, env, ctx) {
-    ctx.waitUntil(tick(env, new Date(event.scheduledTime), false).catch((e) => console.error('tick', e)));
+    ctx.waitUntil(tick(env, new Date(event.scheduledTime), false)
+      .then(() => setKv(env, 'last_cron', new Date().toISOString()))
+      .catch(async (e) => {
+        console.error('tick', e);
+        try { await setKv(env, 'last_error', new Date().toISOString() + ' ' + String(e && e.message || e)); } catch (_) {}
+      }));
   },
 
   async fetch(request, env) {
