@@ -130,7 +130,9 @@ main, .welcome, .foot { max-width: 1180px; margin: 0 auto; padding: 0 1.5rem; }
 .pos-name b { font-weight: 600; }
 .pos-name span { font-size: 0.8125rem; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-.strip { position: relative; height: 22px; }
+.strip-cell { display: block; min-width: 0; }
+.strip { display: block; position: relative; height: 22px; }
+.strip > span { display: block; }
 .strip .hist { position: absolute; top: 9px; height: 4px; border-radius: 2px; background: var(--track); left: 0; right: 0; }
 .strip .band { position: absolute; top: 7px; height: 8px; border-radius: 4px; background: var(--accent-soft); min-width: 2px; }
 .strip .avg { position: absolute; top: 4px; width: 2px; height: 14px; background: var(--ink); transform: translateX(-1px); }
