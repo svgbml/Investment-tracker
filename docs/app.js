@@ -201,8 +201,10 @@
       btn.querySelector('.pos-name b').textContent = r.ticker === 'TOTAAL' ? 'Totaal' : r.ticker;
       btn.querySelector('.pos-name span').textContent = r.ticker === 'TOTAAL' ? 'alle posities samen' : (r.name || '');
       const labels = btn.querySelectorAll('.strip-labels span');
-      labels[0].textContent = eur.format(r.low);
-      labels[1].textContent = eur.format(r.high);
+      labels[0].textContent = 'Vandaag ' + eur.format(r.low) + ' – ' + eur.format(r.high);
+      labels[1].textContent = isNum(r.allTimeLow) && isNum(r.allTimeHigh) && r.days > 0
+        ? 'Historie ' + eur.format(r.allTimeLow) + ' – ' + eur.format(r.allTimeHigh)
+        : 'Nog geen historie';
       btn.querySelector('.num').textContent = eur.format(r.current);
       const d = btn.querySelector('.delta');
       d.innerHTML = '<span></span><small></small>';
