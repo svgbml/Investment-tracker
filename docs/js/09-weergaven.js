@@ -712,6 +712,98 @@ function whyListTile() {
     '<p class="sub" style="margin-top:10px">Gesorteerd op aandeel in je risico. Rood: redenen voor meer risico, groen: voor minder. Alternatieven zijn vergelijkbare bedrijven met een lagere beta (FMP) en soorten fondsen; minder risico betekent meestal ook minder verwacht rendement. Geen beleggingsadvies.</p></section>';
 }
 
+// ---------- Risico: bedrijven die de spreiding verbreden en waar analisten en nieuws positief over zijn ----------
+// Analisten en nieuws haalt de Worker alleen op voor posities en de volglijst; daarom komen de kandidaten van de volglijst.
+function newsBullOf(sym) {
+  const r = (data.research || {})[sym];
+  if (!r) return null;
+  if (r.sent && isNum(r.sent.bull)) return { bull: r.sent.bull, n: null };
+  const L = r.news || [];
+  if (!L.length) return null;
+  const t = { pos: 0, neg: 0, neu: 0 };
+  L.forEach((n) => { t[newsTone(n)]++; });
+  return { bull: (t.pos + t.neu / 2 + 1) / (L.length + 2), n: L.length };
+}
+function diversifyIdeas() {
+  const R = riskModel();
+  const total = M.totalValue || 0;
+  // Gewicht per sector (fondsen apart: die zijn al breed gespreid)
+  const secW = new Map();
+  M.companies.forEach((c) => { const s = M.mk.ok ? M.mk.sectorOf(c) : 'Onbekend'; if (s === FUNDS) return; secW.set(s, (secW.get(s) || 0) + (total ? c.value / total : 0)); });
+  // Dagrendementen van je portefeuille met de huidige verdeling (uit het risicomodel)
+  const pmap = new Map();
+  for (let i = 1; i < R.simIdx.length; i++) pmap.set(R.days[i], (1 + R.simIdx[i].v) / (1 + R.simIdx[i - 1].v) - 1);
+  const corrWith = (sym) => {
+    if (pmap.size < 60 || !M.mk.ok) return null;
+    const s = dailyEur({ tk: sym, name: '' }, R.fx);
+    if (!s || s.pts.length < 60) return null;
+    const pairs = [];
+    for (let i = 1; i < s.pts.length; i++) { const d = s.pts[i].day, q = pmap.get(d); if (!isNum(q)) continue; const r = s.pts[i].v / s.pts[i - 1].v - 1; if (Math.abs(r) < 0.5) pairs.push([r, q]); }
+    if (pairs.length < 40) return null;
+    const mx = mean(pairs.map((p) => p[0])), my = mean(pairs.map((p) => p[1]));
+    let sxy = 0, sxx = 0, syy = 0;
+    pairs.forEach(([p, q]) => { sxy += (p - mx) * (q - my); sxx += (p - mx) ** 2; syy += (q - my) ** 2; });
+    return sxx > 0 && syy > 0 ? sxy / Math.sqrt(sxx * syy) : null;
+  };
+  const held = new Set(M.companies.map((c) => c.tk));
+  const pos = [], near = [];
+  watchSyms().filter((s) => !held.has(s)).forEach((sym) => {
+    const p = M.mk.ok ? M.mk.prof(sym) : null;
+    const sector = p && p.sector ? p.sector : null;
+    const sw = sector ? secW.get(sector) || 0 : null;
+    const cor = corrWith(sym);
+    const newSector = isNum(sw) && sw < 0.1;
+    const lowCorr = isNum(cor) && cor < 0.6;
+    const rc = recOf(sym);
+    const r = (data.research || {})[sym];
+    const price = p && isNum(p.price) ? p.price : null;
+    const up = r && r.target && isNum(r.target.mean) && price ? r.target.mean / price - 1 : null;
+    const nb = newsBullOf(sym);
+    const anaOk = rc && rc.buy >= 0.55 && (!isNum(up) || up > 0);
+    const newsOk = nb && nb.bull >= 0.55;
+    const o = { sym, name: (p && p.name) || sym, sector, sw, cor, rc, up, nb, newSector, lowCorr };
+    o.score = (newSector ? 1 - sw * 5 : 0) + (isNum(cor) ? (1 - cor) : 0) + (rc ? rc.buy : 0) + (nb ? nb.bull : 0);
+    if ((newSector || lowCorr) && anaOk && newsOk) pos.push(o); else if (newSector || lowCorr) near.push(o);
+  });
+  pos.sort((a, b) => b.score - a.score);
+  // Nog niet gevolgde bedrijven uit sectoren die je (bijna) niet hebt: eerst volgen, dan kunnen analisten en nieuws meetellen
+  const gaps = [];
+  if (M.mk.ok) {
+    // Eén voorbeeld per sector, en niet voor sectoren die al op je volglijst staan
+    const seen = new Set(watchSyms().map((s) => { const p = M.mk.prof(s); return p && p.sector; }).filter(Boolean));
+    watchSuggestions().forEach((c) => {
+      const p = M.mk.prof(c.sym);
+      if (!p || !p.sector || (secW.get(p.sector) || 0) >= 0.05 || seen.has(p.sector)) return;
+      seen.add(p.sector); gaps.push({ sym: c.sym, name: p.name || c.name || c.sym, sector: p.sector, sw: secW.get(p.sector) || 0 });
+    });
+  }
+  return { pos: pos.slice(0, 6), near: near.slice(0, 3), gaps: gaps.slice(0, 4), watchN: watchSyms().filter((s) => !held.has(s)).length };
+}
+function diversifyTile() {
+  if (!M) return '';
+  const D = diversifyIdeas();
+  const why = (o) => {
+    const bits = [];
+    if (o.sector) bits.push(sectorNl(o.sector) + (isNum(o.sw) ? (o.sw < 0.005 ? ': heb je nog niet' : ': nu ' + P1.format(o.sw) + ' van je beleggingen') : ''));
+    if (isNum(o.cor)) bits.push('samenhang met je portefeuille ' + N2.format(o.cor) + (o.cor < 0.3 ? ' (laag)' : o.cor < 0.6 ? ' (gemiddeld)' : ' (hoog)'));
+    return bits.join(' · ');
+  };
+  const view = (o) => (o.rc ? P1.format(o.rc.buy) + ' van ' + o.rc.tot + ' analisten zegt kopen' : 'geen analisten bekend') + (isNum(o.up) ? ', koersdoel ' + spct1(o.up) : '') +
+    ' · nieuws ' + (o.nb ? P1.format(o.nb.bull) + ' positief' : 'onbekend');
+  const item = (o) => '<button type="button" class="alt" data-ticker="' + esc('~' + o.sym) + '"><b>' + esc(o.sym) + ' <span class="muted small">' + esc(o.name) + '</span></b>' +
+    '<span class="small">' + esc(why(o)) + '</span><span class="small muted">' + esc(view(o)) + '</span></button>';
+  const gap = (g) => '<div class="alt"><b>' + esc(g.sym) + ' <span class="muted small">' + esc(g.name) + '</span></b><span class="small">' + esc(sectorNl(g.sector) + (g.sw < 0.005 ? ': heb je nog niet' : ': nu ' + P1.format(g.sw) + ' van je beleggingen')) + '</span>' +
+    '<button type="button" class="btn ghost" data-xa="watch-add" data-k="' + esc(g.sym) + '">Volgen</button></div>';
+  return '<section class="tile pad watch-sugg span-2"><h3>Bedrijven die je spreiding verbreden</h3>' +
+    '<p class="small muted" style="margin-top:4px">Van je volglijst: een sector die je weinig hebt of een koers die anders beweegt dan je portefeuille, en analisten en nieuws zijn positief.</p>' +
+    (D.pos.length ? '<div class="alt-list">' + D.pos.map(item).join('') + '</div>'
+      : '<p class="muted" style="margin-top:10px">' + esc(D.watchN ? 'Op je volglijst staat nu geen bedrijf dat de spreiding verbreedt én waar analisten en nieuws allebei positief over zijn.' : 'Je volglijst is leeg. Analisten en nieuws worden alleen opgehaald voor je posities en je volglijst.') + '</p>' +
+        (D.near.length ? '<p class="small" style="margin-top:12px"><b>Verbreden wel, maar analisten of nieuws zijn niet duidelijk positief</b></p><div class="alt-list">' + D.near.map(item).join('') + '</div>' : '')) +
+    (D.gaps.length ? '<p class="small" style="margin-top:12px"><b>Sectoren die je weinig of niet hebt: volg er een</b></p><p class="small watch-status" role="status" aria-live="polite"></p><div class="alt-list">' + D.gaps.map(gap).join('') + '</div>' +
+      '<p class="small muted" style="margin-top:6px">Na het volgen haalt de Worker bij de volgende ronde analisten en nieuws op; dan kan het bedrijf hierboven verschijnen.</p>' : '') +
+    '<p class="sub" style="margin-top:10px">Samenhang: hoe gelijk de dagkoersen van het laatste jaar bewogen met je huidige verdeling (1 is gelijk, 0 is los van elkaar). Nieuws is geschat uit de koppen. Analisten zitten er vaak naast; dit is geen beleggingsadvies.</p></section>';
+}
+
 function renderRiskView() {
   const R = riskModel();
   const total = M.totalValue || 0;
@@ -751,7 +843,8 @@ function renderRiskView() {
   const t = riskTiles(true);
   const head = pseudoHead('Risico-indicatie', R.cls ? R.cls + ' van 7' : 'Nog geen indicatie', R.cls ? RISK_WORDS[R.cls] + ', beweeglijkheid ongeveer ' + P1.format(R.vol) + ' per jaar' : 'Er zijn nog te weinig gegevens.');
   const why = whyListTile();
-  return pseudoPage('Risico', head, [[sugg, year], [why], [t[0], t[1], t[2]], [per]], [sugg, why, year, t[0], t[1], t[2], per]);
+  const div = diversifyTile();
+  return pseudoPage('Risico', head, [[sugg, year], [div], [why], [t[0], t[1], t[2]], [per]], [sugg, div, why, year, t[0], t[1], t[2], per]);
 }
 
 function plTile() {

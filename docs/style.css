@@ -1384,3 +1384,18 @@ body.welcoming #mshell { padding-bottom: 0; }
 .mood-dot.on { z-index: 3; }
 
 .news-more { display: flex; justify-content: center; margin-top: 12px; }
+
+
+/* Paginawissel van of naar Overzicht: de balk hoort bij de pagina en schuift mee (zie showPage) */
+@supports (view-transition-name: none) {
+  html[data-bar="move"] .topbar { view-transition-name: none; }
+}
+
+
+/* Koppen en zoekveld dicht bij elkaar, ook op een breed scherm */
+.section-head > h2 + p { flex: 1 1 auto; }
+.watch-add .ws-wrap { flex: 0 1 380px; }
+
+/* Het streepje onder het menu schuift via placeIndicators (Web Animations), niet via een CSS-overgang */
+.pill, :root[data-theme="dark"] .pill { transition: none; }
+.watch-add .ws-wrap .search { flex: 1 1 auto; max-width: none; }

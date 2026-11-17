@@ -186,18 +186,31 @@ const pageHash = (p) => (p === 'list' ? 'bedrijven' : p === 'stats' ? 'analyse' 
 
 // Balk op de computer (menu plus knoppen, één rij): op Overzicht tussen de grote grafiek en de tegels
 // (blijft bij scrollen bovenaan staan), op de andere pagina's bovenaan
+// Geeft true terug als de balk verplaatst is
 function placeDeskNav() {
   const bar = /** @type {HTMLElement|null} */ (document.querySelector('#shell .topbar'));
-  if (!bar || mode !== 'd') return;
+  if (!bar || mode !== 'd') return false;
   const band = document.querySelector('#page-home > .band');
-  if (ui.page === 'home' && band) { if (band.nextElementSibling !== bar) band.after(bar); }
-  else { const shell = $('shell'); if (shell && shell.firstElementChild !== bar) shell.prepend(bar); }
+  if (ui.page === 'home' && band) { if (band.nextElementSibling !== bar) { band.after(bar); return true; } }
+  else { const shell = $('shell'); if (shell && shell.firstElementChild !== bar) { shell.prepend(bar); return true; } }
+  return false;
 }
+let pillLast = null;
 function placeIndicators() {
+  const pill = /** @type {HTMLElement|null} */ (document.querySelector('.pill'));
   placeDeskNav();
   const a = /** @type {HTMLElement|null} */ (document.querySelector('.pillnav a[aria-current="page"]'));
-  const pill = /** @type {HTMLElement|null} */ (document.querySelector('.pill'));
-  if (a && pill && mode === 'd') { const w = Math.round(a.offsetWidth * 0.5); pill.style.width = w + 'px'; pill.style.transform = 'translateX(' + (a.offsetLeft + (a.offsetWidth - w) / 2) + 'px)'; }
+  if (a && pill && mode === 'd' && a.offsetWidth) {
+    const w = Math.round(a.offsetWidth * 0.5);
+    const t = 'translateX(' + (a.offsetLeft + (a.offsetWidth - w) / 2) + 'px)';
+    pill.style.width = w + 'px'; pill.style.transform = t;
+    // Zelf laten schuiven (geen CSS-overgang): die start niet als de balk net verplaatst is (van of naar Overzicht)
+    if (pillLast && pillLast.t !== t && !reduceMotion() && pill.animate) {
+      pill.getAnimations().forEach((x) => x.cancel());
+      pill.animate([{ transform: pillLast.t, width: pillLast.w }, { transform: t, width: w + 'px' }], { duration: 350, easing: 'cubic-bezier(.2, .7, .2, 1)' });
+    }
+    pillLast = { t, w: w + 'px' };
+  }
   const t = document.querySelector('.m-tabs a[aria-current="page"]');
   const ind = document.querySelector('.m-tab-ind');
   if (t && ind && mode === 'm') { const w = t.offsetWidth * 0.5; ind.style.width = w + 'px'; ind.style.transform = 'translateX(' + (t.offsetLeft + (t.offsetWidth - w) / 2) + 'px)'; }
@@ -230,17 +243,19 @@ function showPage(p, animate, force) {
   if (move && prev !== p && document.startViewTransition && !ui.detail) {
     const root = document.documentElement;
     root.dataset.nav = dir;
+    // Van of naar Overzicht verhuist de balk (onder de grafiek of bovenaan): dan schuift hij mee met zijn pagina
+    if (mode === 'd' && (prev === 'home' || p === 'home')) root.dataset.bar = 'move'; else delete root.dataset.bar;
     let vt;
     try { vt = document.startViewTransition(() => { swap(); el.classList.add('enter'); }); } catch (e) { vt = null; }
     if (vt) {
-      const clean = () => { if (showPage.vt === vt) delete root.dataset.nav; };
+      const clean = () => { if (showPage.vt === vt) { delete root.dataset.nav; delete root.dataset.bar; } };
       showPage.vt = vt;
       vt.finished.then(clean, clean);
       if (vt.ready) vt.ready.catch(() => {}); // een snel volgende wissel breekt deze af; dat is geen fout
       showPage.timer = setTimeout(() => el.classList.remove('enter'), 1400);
       return;
     }
-    delete root.dataset.nav;
+    delete root.dataset.nav; delete root.dataset.bar;
   }
   swap();
   if (move) {

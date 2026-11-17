@@ -3,10 +3,10 @@
  * Eerst het netwerk (zodat updates direct binnenkomen), bij geen verbinding de bewaarde versie.
  * Gegevens van de Worker gaan hier niet doorheen; de laatste stand bewaart de site zelf in de browser.
  */
-const CACHE = 'tracker-v55';
-const FILES = ['./', './index.html', './style.css?v=55', './config.js?v=55', './manifest.webmanifest',
-  './js/00-kern.js?v=55', './js/01-basis.js?v=55', './js/02-instellingen.js?v=55', './js/03-model.js?v=55', './js/04-grafieken.js?v=55', './js/05-portefeuille.js?v=55', './js/06-plannen.js?v=55', './js/07-onderzoek.js?v=55', './js/08-risico.js?v=55', './js/09-weergaven.js?v=55', './js/10-navigatie.js?v=55', './js/11-uitbreidingen.js?v=55', './js/12-nieuws.js?v=55', './js/13-app.js?v=55', './js/14-demo.js?v=55', './js/16-analyse.js?v=55', './js/17-markt.js?v=55', './js/18-gemak.js?v=55', './js/20-handel.js?v=55', './js/19-start.js?v=55',
-  './js/nieuws-preact.js?v=55', './js/plannen-preact.js?v=55', './vendor/preact-htm.js', './fonts/figtree-latin.woff2', './fonts/figtree-latin-ext.woff2',
+const CACHE = 'tracker-v56';
+const FILES = ['./', './index.html', './style.css?v=56', './config.js?v=56', './manifest.webmanifest',
+  './js/00-kern.js?v=56', './js/01-basis.js?v=56', './js/02-instellingen.js?v=56', './js/03-model.js?v=56', './js/04-grafieken.js?v=56', './js/05-portefeuille.js?v=56', './js/06-plannen.js?v=56', './js/07-onderzoek.js?v=56', './js/08-risico.js?v=56', './js/09-weergaven.js?v=56', './js/10-navigatie.js?v=56', './js/11-uitbreidingen.js?v=56', './js/12-nieuws.js?v=56', './js/13-app.js?v=56', './js/14-demo.js?v=56', './js/16-analyse.js?v=56', './js/17-markt.js?v=56', './js/18-gemak.js?v=56', './js/20-handel.js?v=56', './js/19-start.js?v=56',
+  './js/nieuws-preact.js?v=56', './js/plannen-preact.js?v=56', './vendor/preact-htm.js', './fonts/figtree-latin.woff2', './fonts/figtree-latin-ext.woff2',
   './icon-192.png', './icon-512.png', './icon-maskable-512.png', './icon-monochrome-512.png', './apple-touch-icon.png', './favicon.png'];
 
 // Een nieuwe versie wacht tot de gebruiker op de site "Nu bijwerken" kiest (of alle vensters sluit)

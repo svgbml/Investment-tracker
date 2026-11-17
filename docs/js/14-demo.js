@@ -251,7 +251,8 @@ function makeDemoData() {
     // Zelfde koers als de positie zelf, zodat koersdoel en koers bij elkaar passen
     const pr = (posExtra[tk] && posExtra[tk].price) || (profiles[tk] && profiles[tk].price) || (100 + rnd() * 300);
     research[tk].target = { mean: +(pr * (0.95 + rnd() * 0.3)).toFixed(2), median: +(pr * 1.05).toFixed(2), high: +(pr * 1.45).toFixed(2), low: +(pr * 0.7).toFixed(2), updated: dIn(-5) };
-    const bull = +(0.3 + rnd() * 0.5).toFixed(2);
+    // LMT (volglijst, defensie) positief, zodat de risicopagina een bedrijf toont dat de spreiding verbreedt
+    const bull = tk === 'LMT' ? 0.68 : +(0.3 + rnd() * 0.5).toFixed(2);
     research[tk].sent = { bull, bear: +(1 - bull).toFixed(2), score: +(0.4 + rnd() * 0.5).toFixed(2), sector: 0.55, articles: Math.round(10 + rnd() * 80), buzz: 1 };
     // Koersdoel-geschiedenis per week, voor de betrouwbaarheid van analisten
     const ph = prices[tk] || [];
