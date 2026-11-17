@@ -136,7 +136,7 @@ function PlanPage({ stamp }) {
   const [version, setVersion] = useState(0);
   const host = useRef(null);
   // Grafieken in de HTML-tegels opnieuw tekenen na elke weergave
-  useEffect(() => { const root = host.current && host.current.parentElement; if (root) { drawWhatIf(root); drawWeekShare(root); } });
+  useEffect(() => { const root = host.current && host.current.parentElement; if (root) { drawWhatIf(root); drawWeekShare(root); drawPlanExtra(root); } });
   return html`<div style="display:contents" ref=${host} data-preact="plan">
     <${Section} title="Inleg en doelen" sub="Streefverdeling, wat je met nieuwe inleg koopt en waar je naartoe groeit">
       <${TargetTile} bump=${() => setVersion((n) => n + 1)} /><${InlegTile} version=${version + ':' + stamp} /><${ForecastTile} />${leg(goalsTile())}${leg(depositTile())}${leg(milestoneTile())}
@@ -146,6 +146,7 @@ function PlanPage({ stamp }) {
     <${Section} title="Kosten en aankopen" sub="Wisselkosten, fondskosten en je aankoopdagboek">${leg(costTile())}${leg(terTile())}${leg(journalTile())}<//>
     <${Section} title="Spreiding en rekeningen" sub="Overlap met je fondsen en je andere rekeningen">${leg(overlapTile())}${leg(exposureTile())}${leg(accountsTile())}<//>
     <${Section} title="Delen en exporteren">${leg(weekShareTile())}${leg(exportTile())}<//>
+    ${planExtraSections().map((x) => html`<${Section} key=${x.title} title=${x.title} sub=${x.sub}>${x.tiles.map(leg)}<//>`)}
   </div>`;
 }
 

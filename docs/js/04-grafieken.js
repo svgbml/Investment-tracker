@@ -63,6 +63,23 @@ function thinSets(host, sets, o) {
 
 function lineChart(host, sets, o) {
   o = o || {};
+  // Inzoomen: de volledige reeks blijft bewaard, getekend wordt alleen het gekozen stuk
+  if (o.zoom !== false) {
+    host._lc = { sets, o };
+    // Andere reeks (andere periode of nieuwe gegevens): niet ingezoomd beginnen
+    const key = sets[0] && sets[0].pts.length ? sets[0].pts[0].t + ':' + sets.length : '';
+    if (host._zoomFor !== key) host._zoom = null;
+    host._zoomFor = key;
+    const z = host._zoom;
+    if (z && sets[0] && sets[0].pts.length) {
+      const full = sets[0].pts;
+      const cut = sets.map((s) => Object.assign({}, s, { pts: s.pts.filter((p) => p.t >= z[0] && p.t <= z[1]) }));
+      if (cut[0].pts.length >= 3) {
+        sets = cut;
+        o = Object.assign({}, o, { markers: (o.markers || []).map((mk) => (mk.i != null ? { t: full[mk.i] && full[mk.i].t, label: mk.label } : mk)).filter((mk) => mk.t >= z[0] && mk.t <= z[1]) });
+      } else host._zoom = null;
+    }
+  }
   ({ sets, o } = thinSets(host, sets, o));
   host.innerHTML = '';
   const main = (sets[0] && sets[0].pts) || [];
@@ -117,6 +134,10 @@ function lineChart(host, sets, o) {
     cur.className = 'cursor';
     cur.hidden = true;
     lay.appendChild(cur);
+    const curH = document.createElement('div');
+    curH.className = 'cursor-h';
+    curH.hidden = true;
+    lay.appendChild(curH);
     const dots = sets.map((s) => { const d = document.createElement('div'); d.className = 'cursor-dot'; d.style.background = s.color; d.hidden = true; lay.appendChild(d); return d; });
     const move = (e) => {
       const r = lay.getBoundingClientRect();
@@ -132,12 +153,14 @@ function lineChart(host, sets, o) {
         if (yTop == null) yTop = Y(v);
         html += '<br>' + (sets.length > 1 ? esc(s.label) + ': ' : '') + esc((s.fmt || o.fmt || eur)(v));
       });
+      if (yTop != null) { curH.hidden = false; curH.style.top = yTop + '%'; } else curH.hidden = true;
       showTip(html, r.left + (x / 100) * r.width, r.top + ((yTop || 0) / 100) * r.height);
     };
     lay.addEventListener('pointermove', move);
     lay.addEventListener('pointerdown', move);
-    lay.addEventListener('pointerleave', () => { cur.hidden = true; dots.forEach((d) => { d.hidden = true; }); hideTip(); });
+    lay.addEventListener('pointerleave', () => { cur.hidden = true; curH.hidden = true; dots.forEach((d) => { d.hidden = true; }); hideTip(); });
     host.appendChild(lay);
+    if (o.zoom !== false && host._lc) chartZoom(host, lay, main);
   }
 
   if (o.xl && o.xfmt) {
@@ -145,6 +168,38 @@ function lineChart(host, sets, o) {
     const labs = [];
     for (let j = 0; j < k; j++) labs.push('<span>' + esc(o.xfmt(main[Math.round((j * (n - 1)) / (k - 1))].t)) + '</span>');
     o.xl.innerHTML = labs.join('');
+  }
+}
+
+// Knijpen (twee vingers), Ctrl + scrollen of knijpen op het touchpad om in te zoomen; dubbelklik of de knop om terug te gaan
+function chartZoom(host, lay, main) {
+  const redraw = () => { hideTip(); lineChart(host, host._lc.sets, host._lc.o); };
+  const zoomTo = (cx, f) => {
+    const full = host._lc.sets[0].pts;
+    if (!full || full.length < 4) return;
+    const r = lay.getBoundingClientRect();
+    const frac = Math.max(0, Math.min(1, (cx - r.left) / (r.width || 1)));
+    const t0 = main[0].t, t1 = main[main.length - 1].t, c = t0 + frac * (t1 - t0);
+    const a = c - (c - t0) * f, b = c + (t1 - c) * f;
+    const fa = full[0].t, fb = full[full.length - 1].t;
+    host._zoom = b - a >= (fb - fa) * 0.98 ? null : [Math.max(fa, a), Math.min(fb, b)];
+    redraw();
+  };
+  lay.addEventListener('wheel', (e) => { if (!e.ctrlKey) return; e.preventDefault(); zoomTo(e.clientX, e.deltaY < 0 ? 0.75 : 1.33); }, { passive: false });
+  lay.addEventListener('dblclick', () => { if (host._zoom) { host._zoom = null; redraw(); } });
+  const ptrs = new Map();
+  let d0 = 0, scale = 1, mid = 0;
+  const spread = () => { const v = [...ptrs.values()]; return [Math.abs(v[0] - v[1]), (v[0] + v[1]) / 2]; };
+  lay.addEventListener('pointerdown', (e) => { if (e.pointerType !== 'touch') return; ptrs.set(e.pointerId, e.clientX); if (ptrs.size === 2) { [d0, mid] = spread(); scale = 1; } });
+  lay.addEventListener('pointermove', (e) => { if (!ptrs.has(e.pointerId)) return; ptrs.set(e.pointerId, e.clientX); if (ptrs.size === 2 && d0 > 20) { const [d, m] = spread(); scale = d0 / Math.max(10, d); mid = m; } });
+  const up = (e) => { if (!ptrs.has(e.pointerId)) return; ptrs.delete(e.pointerId); if (d0 && Math.abs(scale - 1) > 0.15) { const s = scale; d0 = 0; scale = 1; zoomTo(mid, Math.max(0.2, Math.min(5, s))); } else if (ptrs.size < 2) d0 = 0; };
+  lay.addEventListener('pointerup', up);
+  lay.addEventListener('pointercancel', up);
+  if (host._zoom) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'zoom-reset'; b.textContent = 'Zoom terug';
+    b.addEventListener('click', (e) => { e.stopPropagation(); host._zoom = null; redraw(); });
+    host.appendChild(b);
   }
 }
 

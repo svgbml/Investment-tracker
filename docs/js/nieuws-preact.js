@@ -83,14 +83,14 @@ function AnalystTable({ rows }) {
 
 function NewsPage({ stamp }) {
   // stamp verandert bij nieuwe gegevens, zodat de lijsten opnieuw worden opgebouwd
-  const items = useMemo(() => newsItems(), [stamp]);
+  const items = useMemo(() => newsItems(), [stamp, muteKey()]);
   const rows = useMemo(() => analystRows(), [stamp]);
   return html`
     <div class="grid wide"><${NewsList} items=${items} /><${Legacy} markup=${suggestTile()} /></div>
     <div class="section-head"><h2>Analisten</h2><p class="muted small">Aanbevelingen, koersdoelen en hoe betrouwbaar ze zijn</p></div>
     <div class="grid wide"><${AnalystTable} rows=${rows} /><${Legacy} markup=${reliabilityTile()} /></div>
     <div class="section-head"><h2>Insiders</h2><p class="muted small">Kopen en verkopen bestuurders zelf?</p></div>
-    <div class="grid wide"><${Legacy} markup=${insiderTile()} /></div>`;
+    <div class="grid wide"><${Legacy} markup=${insiderTile()} /><${Legacy} markup=${newsToolsTile()} /></div>`;
 }
 
 let stampN = 0, lastData = null;

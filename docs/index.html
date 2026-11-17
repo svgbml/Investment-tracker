@@ -13,11 +13,11 @@
   <meta name="apple-mobile-web-app-title" content="Beleggen">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>Investeringstracker</title>
-  <script>try{var t=localStorage.getItem('tracker.theme')||'auto';document.documentElement.dataset.theme=(t==='dark'||(t==='auto'&&matchMedia('(prefers-color-scheme: dark)').matches))?'dark':'light';var m=localStorage.getItem('tracker.motion')||'auto';document.documentElement.dataset.motion=(m==='off'||(m==='auto'&&matchMedia('(prefers-reduced-motion: reduce)').matches))?'off':'on';if(localStorage.getItem('tracker.lang')==='en')document.documentElement.lang='en';}catch(e){}</script>
+  <script>try{var t=localStorage.getItem('tracker.theme')||'auto';document.documentElement.dataset.theme=(t==='dark'||(t==='auto'&&matchMedia('(prefers-color-scheme: dark)').matches))?'dark':'light';var m=localStorage.getItem('tracker.motion')||'auto';document.documentElement.dataset.motion=(m==='off'||(m==='auto'&&matchMedia('(prefers-reduced-motion: reduce)').matches))?'off':'on';var l=localStorage.getItem('tracker.lang');if(l==='en'||l==='de'||l==='fr')document.documentElement.lang=l;['compact','big','cb'].forEach(function(k){if(localStorage.getItem('tracker.'+k)==='1')document.documentElement.setAttribute('data-'+k,'1');});}catch(e){}</script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=40">
+  <link rel="stylesheet" href="style.css?v=41">
 </head>
 <body data-page="home">
 
@@ -68,6 +68,7 @@
         <a href="#overzicht" data-page="home" aria-current="page">Overzicht</a>
         <a href="#bedrijven" data-page="list">Bedrijven</a>
         <a href="#nieuws" data-page="news">Nieuws</a>
+        <a href="#analyse" data-page="stats">Analyse</a>
         <a href="#plannen" data-page="plan">Plannen</a>
       </nav>
       <div class="top-actions">
@@ -149,6 +150,13 @@
         <div class="wrap">
           <div class="list-head"><div><h1>Nieuws</h1><p class="muted">Nieuws over je beleggingen en de markt, analisten en insiderhandel</p></div></div>
           <div id="news-body"></div>
+        </div>
+      </div>
+
+      <div id="page-stats" class="page" hidden>
+        <div class="wrap">
+          <div class="list-head"><div><h1>Analyse</h1><p class="muted">Je echte rendement, risico, de markt en onderzoek</p></div><button type="button" class="btn ghost" data-cmdk>Snel zoeken <kbd>Ctrl K</kbd></button></div>
+          <div id="analyse-body"></div>
         </div>
       </div>
 
@@ -237,6 +245,7 @@
           <div class="m-head"><h2>Patronen</h2></div>
           <div id="m-patterns" class="m-stack stagger"></div>
         </div>
+        <div class="m-body" style="padding-top:0"><div id="m-analyse-body"></div></div>
       </section>
     </main>
 
@@ -248,8 +257,8 @@
         <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><rect x="13" y="13" width="7" height="7" rx="2"/></svg>Bedrijven</a>
       <a href="#nieuws" data-page="news">
         <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h8M8 17h5"/></svg>Nieuws</a>
-      <a href="#statistieken" data-page="stats">
-        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 20V11M12 20V4M19 20v-6"/></svg>Statistieken</a>
+      <a href="#analyse" data-page="stats">
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 20V11M12 20V4M19 20v-6"/></svg>Analyse</a>
       <a href="#plannen" data-page="plan">
         <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="0.8" fill="currentColor"/></svg>Plannen</a>
       <button type="button" class="btn-settings">
@@ -305,8 +314,10 @@
         <div class="seg light" role="group" aria-label="Taal / Language">
           <button type="button" data-lang-pick="nl" aria-pressed="true">Nederlands</button>
           <button type="button" data-lang-pick="en" aria-pressed="false">English</button>
+          <button type="button" data-lang-pick="de" aria-pressed="false">Deutsch</button>
+          <button type="button" data-lang-pick="fr" aria-pressed="false">Français</button>
         </div>
-        <p class="muted small" style="margin-top:6px">In het Engels zijn menu's, koppen, knoppen en labels vertaald; langere uitleg blijft voorlopig Nederlands.</p>
+        <p class="muted small" style="margin-top:6px">In het Engels, Duits en Frans zijn menu's, koppen, knoppen en labels vertaald; langere uitleg blijft voorlopig Nederlands.</p>
       </div>
       <div class="install-box" id="install-box">
         <h3>Als app op je telefoon of computer</h3>
@@ -361,24 +372,27 @@
   <div id="tip" class="tip" role="status" hidden></div>
   <div id="print-area" aria-hidden="true"></div>
 
-  <script src="config.js?v=40"></script>
+  <script src="config.js?v=41"></script>
   <!-- De site: gewone scripts op volgorde (één gedeeld bereik), daarna de Preact-componenten als module -->
-  <script src="js/00-kern.js?v=40"></script>
-  <script src="js/01-basis.js?v=40"></script>
-  <script src="js/02-instellingen.js?v=40"></script>
-  <script src="js/03-model.js?v=40"></script>
-  <script src="js/04-grafieken.js?v=40"></script>
-  <script src="js/05-portefeuille.js?v=40"></script>
-  <script src="js/06-plannen.js?v=40"></script>
-  <script src="js/07-onderzoek.js?v=40"></script>
-  <script src="js/08-risico.js?v=40"></script>
-  <script src="js/09-weergaven.js?v=40"></script>
-  <script src="js/10-navigatie.js?v=40"></script>
-  <script src="js/11-uitbreidingen.js?v=40"></script>
-  <script src="js/12-nieuws.js?v=40"></script>
-  <script src="js/13-app.js?v=40"></script>
-  <script src="js/15-start.js?v=40"></script>
-  <script type="module" src="js/nieuws-preact.js?v=40"></script>
-  <script type="module" src="js/plannen-preact.js?v=40"></script>
+  <script src="js/00-kern.js?v=41"></script>
+  <script src="js/01-basis.js?v=41"></script>
+  <script src="js/02-instellingen.js?v=41"></script>
+  <script src="js/03-model.js?v=41"></script>
+  <script src="js/04-grafieken.js?v=41"></script>
+  <script src="js/05-portefeuille.js?v=41"></script>
+  <script src="js/06-plannen.js?v=41"></script>
+  <script src="js/07-onderzoek.js?v=41"></script>
+  <script src="js/08-risico.js?v=41"></script>
+  <script src="js/09-weergaven.js?v=41"></script>
+  <script src="js/10-navigatie.js?v=41"></script>
+  <script src="js/11-uitbreidingen.js?v=41"></script>
+  <script src="js/12-nieuws.js?v=41"></script>
+  <script src="js/13-app.js?v=41"></script>
+  <script src="js/16-analyse.js?v=41"></script>
+  <script src="js/17-markt.js?v=41"></script>
+  <script src="js/18-gemak.js?v=41"></script>
+  <script src="js/19-start.js?v=41"></script>
+  <script type="module" src="js/nieuws-preact.js?v=41"></script>
+  <script type="module" src="js/plannen-preact.js?v=41"></script>
 </body>
 </html>

@@ -78,7 +78,7 @@ function newsItems() {
   const held = new Set(M.companies.map((c) => c.tk)), watch = new Set(watchSyms()), out = [], seen = new Set();
   Object.entries(data.research || {}).forEach(([tk, r]) => (r.news || []).forEach((n) => { const kind = held.has(tk) ? 'mine' : watch.has(tk) ? 'watch' : null; if (kind) out.push(Object.assign({ tk, kind }, n)); }));
   ((data.marketNews && data.marketNews.items) || []).forEach((n) => out.push(Object.assign({ tk: null, kind: 'market' }, n)));
-  return out.filter((n) => { const k = (n.url && n.url !== '#' ? n.url : n.headline) + '|' + n.tk; if (seen.has(k)) return false; seen.add(k); return true; }).sort((a, b) => b.t - a.t);
+  return out.filter((n) => { const k = (n.url && n.url !== '#' ? n.url : n.headline) + '|' + n.tk; if (seen.has(k) || newsMuted(n)) return false; seen.add(k); return true; }).sort((a, b) => b.t - a.t);
 }
 // Toon van een artikel, geschat uit woorden in kop en samenvatting (Engels en Nederlands); geen oordeel van de bron
 const NEWS_POS = /\b(beat|beats|surge|surges|soar|soars|jump|jumps|rall(y|ies)|gain|gains|rise|rises|record|upgrade[sd]?|outperform|strong|growth|profit|tops|raises?|boost|bullish|buy rating|approv(al|ed)|wins?|expands?|stijg\w*|winst|record|sterk\w*|groei\w*|verhoog\w*|opwaarder\w*|positief|herstel\w*)\b/gi;
@@ -152,7 +152,7 @@ function renderNews() {
   if (off) { host.innerHTML = '<div class="grid wide">' + offTile('Nieuws en analisten', 'Zet Finnhub aan (gratis sleutel) bij Koppelingen voor nieuws per aandeel, marktnieuws, analisten en insiderhandel.') + '</div>'; return; }
   host.innerHTML = '<div class="grid wide">' + newsListTile() + suggestTile() + '</div>' +
     '<div class="section-head"><h2>Analisten</h2><p class="muted small">Aanbevelingen, koersdoelen en hoe betrouwbaar ze zijn</p></div><div class="grid wide">' + analystTableTile() + reliabilityTile() + '</div>' +
-    '<div class="section-head"><h2>Insiders</h2><p class="muted small">Kopen en verkopen bestuurders zelf?</p></div><div class="grid wide">' + insiderTile() + '</div>';
+    '<div class="section-head"><h2>Insiders</h2><p class="muted small">Kopen en verkopen bestuurders zelf?</p></div><div class="grid wide">' + insiderTile() + newsToolsTile() + '</div>';
 }
 
 // ---------- Volglijst: suggesties om te volgen ----------

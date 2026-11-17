@@ -182,6 +182,11 @@ function seriesFor(tk, range) {
   const s = seriesOf(tk);
   // Te weinig punten op deze schaal: val terug op de fijnere metingen
   if (range === '1m') { const from = (M.lastT || Date.now()) - 30 * DAY; const h = s.hourly.filter((p) => p.t >= from); return h.length >= 3 ? h : intra; }
+  if (range === 'ytd' || range === '1y') {
+    const from = range === 'ytd' ? new Date(new Date(M.lastT || Date.now()).getFullYear(), 0, 1).getTime() : (M.lastT || Date.now()) - 365 * DAY;
+    const d = s.daily.filter((x) => x.t >= from).map((x) => ({ t: x.t, v: x.close }));
+    if (d.length >= 3) return d;
+  }
   if (s.daily.length >= 3) return s.daily.map((d) => ({ t: d.t, v: d.close }));
   return s.hourly.length >= 3 ? s.hourly : intra;
 }

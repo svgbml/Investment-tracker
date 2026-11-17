@@ -1414,8 +1414,8 @@ async function extraData(env) {
   // Deponeringen, 13F, economische agenda, pies en kwartaalcijferdata
   out.ext2 = {};
   try {
-    const { results: e2 } = await env.DB.prepare("SELECT key, value FROM kv WHERE key IN ('filings', 'f13', 'econ', 'pies', 'earn_hist')").all();
-    e2.forEach((r) => { try { out.ext2[r.key === 'earn_hist' ? 'earnHist' : r.key] = JSON.parse(r.value); } catch (e) { /* overslaan */ } });
+    const { results: e2 } = await env.DB.prepare("SELECT key, value FROM kv WHERE key IN ('filings', 'f13', 'econ', 'pies', 'earn_hist', 'interest_csv')").all();
+    e2.forEach((r) => { try { out.ext2[r.key === 'earn_hist' ? 'earnHist' : r.key === 'interest_csv' ? 'interest' : r.key] = JSON.parse(r.value); } catch (e) { /* overslaan */ } });
   } catch (e) { /* leeg */ }
   const { results: ext } = await env.DB.prepare("SELECT key, value FROM kv WHERE key LIKE 'rs\\_%' ESCAPE '\\' OR key LIKE 'fin\\_%' ESCAPE '\\' OR key IN ('fx', 'hicp', 'idx', 'market_news')").all();
   ext.forEach((r) => {
@@ -2673,11 +2673,23 @@ async function importCsv(env, body) {
   });
   divCsv.sort((a, b) => a.date.localeCompare(b.date));
   await setKv(env, 'div_csv', JSON.stringify(divCsv));
+  // Rente over je vrije saldo (alleen in de CSV, niet in de API)
+  let interest = [];
+  try { interest = JSON.parse((await getKv(env, 'interest_csv')) || '[]'); } catch (e) { interest = []; }
+  const ikey = (d) => d.date + '|' + Number(d.amount).toFixed(2);
+  const iknown = new Set(interest.map(ikey));
+  let newInt = 0;
+  (Array.isArray(body && body.interest) ? body.interest : []).slice(0, 5000).forEach((d) => {
+    const x = { date: str(d.date, 10), amount: n(d.amount) };
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(x.date) || x.amount == null || iknown.has(ikey(x))) return;
+    iknown.add(ikey(x)); interest.push(x); newInt++;
+  });
+  if (newInt) { interest.sort((a, b) => a.date.localeCompare(b.date)); await setKv(env, 'interest_csv', JSON.stringify(interest)); }
   let ev = null;
   try { ev = JSON.parse((await getKv(env, 'events')) || 'null'); } catch (e) { ev = null; }
   if (ev) { ev.received = mergeCsvDividends(ev.received || [], divCsv); await setKv(env, 'events', JSON.stringify(ev)); }
   await saveDataCache(env, await buildData(env));
-  return { orders: fresh.length, skipped: orders.length - fresh.length, dividends: newDiv };
+  return { orders: fresh.length, skipped: orders.length - fresh.length, dividends: newDiv, interest: newInt };
 }
 
 // Voeg dividenden uit de CSV toe aan die van de API (zelfde aandeel, datum binnen 3 dagen en bedrag binnen 2 cent = dezelfde)
@@ -2749,7 +2761,7 @@ const BACKUP_TABLES = {
   orders: ['id', 'ts', 'ticker', 'name', 'side', 'qty', 'price', 'currency', 'fx_rate', 'net', 'realised', 'fee_fx', 'fee_other', 'kind'],
   kv: ['key', 'value'],
 };
-const BACKUP_KV = /^(settings|events|div_csv|pos_extra|peil_\d{4}|etf_(SP500|NDX))$/;
+const BACKUP_KV = /^(settings|events|div_csv|interest_csv|pos_extra|peil_\d{4}|etf_(SP500|NDX))$/;
 const BACKUP_PAGE = 2000;
 async function backupPart(env, table, offset) {
   if (table === 'orders') await ensureOrdersTable(env);

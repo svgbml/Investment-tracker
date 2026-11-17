@@ -965,3 +965,107 @@ details.acct summary { display: grid; grid-template-columns: auto minmax(0, 1fr)
 .linklike.danger { color: var(--loss); }
 :root[data-theme="dark"] .palert-add select { background: #10141A; border-color: #3A4250; }
 :root[data-theme="dark"] .ws-results { box-shadow: 0 12px 28px rgba(0, 0, 0, .5); }
+
+/* ---------- Analyse, markt en gemak (v41) ---------- */
+.plan-grid > .full { grid-column: 1 / -1; }
+.seg.wrap { flex-wrap: wrap; height: auto; }
+.chart-hover { touch-action: pan-y; }
+.cursor-h { position: absolute; left: 0; right: 0; height: 1px; background: rgba(20, 24, 31, .25); pointer-events: none; }
+:root[data-theme="dark"] .cursor-h { background: rgba(230, 233, 239, .25); }
+.zoom-reset { position: absolute; top: 6px; right: 6px; z-index: 2; font: 600 12px/1 inherit; padding: 6px 10px; border-radius: 999px; border: 1px solid var(--rule); background: var(--surface); color: var(--ink); cursor: pointer; }
+/* Begrippen */
+.term { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: help; text-decoration: underline dotted; text-underline-offset: 3px; text-decoration-color: var(--ink-2); }
+.term-pop { position: fixed; z-index: 90; background: var(--surface); color: var(--ink); border: 1px solid var(--rule); border-radius: 14px; padding: 14px; box-shadow: 0 10px 30px rgba(0, 0, 0, .18); font-size: 14px; }
+.term-pop p { margin: 6px 0 10px; color: var(--ink-2); line-height: 1.45; }
+.gloss { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap: 12px 24px; margin: 0; }
+.gloss dt { font-weight: 600; } .gloss dd { margin: 2px 0 0; color: var(--ink-2); font-size: 14px; line-height: 1.45; }
+/* Kalender van een jaar */
+.yheat-wrap { overflow-x: auto; padding-bottom: 4px; }
+.yheat-m { display: grid; grid-template-columns: repeat(53, 14px); gap: 3px; min-width: max-content; font-size: 11px; color: var(--ink-2); height: 16px; }
+.yheat { display: grid; grid-auto-flow: column; grid-template-rows: repeat(5, 14px); grid-auto-columns: 14px; gap: 3px; min-width: max-content; }
+.yheat span { border-radius: 3px; background: var(--empty); }
+.yheat span.off { visibility: hidden; }
+.ymonths { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 4px; margin-top: 10px; text-align: center; font-size: 13px; }
+.ymonths div { display: flex; flex-direction: column; }
+@media (max-width: 700px) { .ymonths { grid-template-columns: repeat(6, minmax(0, 1fr)); row-gap: 8px; } }
+/* Marktoverzicht */
+.mk-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr)); gap: 12px; }
+.mk-c { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 14px; background: var(--bg); }
+.mk-c b { font-size: 20px; }
+/* Screener en invoer */
+.scr-f { display: flex; flex-wrap: wrap; gap: 10px 14px; margin-bottom: 8px; }
+.scr-f label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--ink-2); }
+.scr-f input, .scr-f select, .wm-l input, .wm-l textarea, .pc-own input { font: inherit; font-size: 14px; padding: 7px 9px; border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); color: var(--ink); }
+.scr-f input { width: 120px; }
+.wm-l { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--ink-2); margin-bottom: 8px; }
+.pc-pick { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 10px; }
+.pc-pick > div { display: flex; flex-direction: column; gap: 6px; }
+.pc-own { display: flex; gap: 6px; flex-wrap: wrap; }
+.bench-own { display: flex; gap: 8px; margin-top: 10px; }
+.bench-own input { max-width: 220px; }
+.conc-list { margin: 4px 0 0; padding-left: 18px; }
+/* Jaar in beeld */
+.wr-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr)); gap: 10px; }
+.wr-c { display: flex; flex-direction: column; gap: 2px; padding: 12px; border-radius: 14px; background: linear-gradient(135deg, rgba(43, 91, 215, .10), rgba(43, 91, 215, .02)); }
+.wr-c b { font-size: 22px; }
+.goal-probs { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.goal-probs > div { display: grid; grid-template-columns: minmax(0, 1fr) 90px 44px; gap: 8px; align-items: center; font-size: 14px; }
+/* Volglijst en nieuws */
+.watch-tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.watch-tags button, .src-chips .chip { font: inherit; font-size: 13px; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--rule); background: var(--surface); color: var(--ink); cursor: pointer; }
+.watch-tags button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.src-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.src-chips .chip.off { text-decoration: line-through; opacity: .55; }
+.wbadges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+/* Virtuele lijst */
+.vlist { position: relative; height: 420px; overflow-y: auto; border-top: 1px solid var(--rule); contain: strict; }
+.vrows { position: absolute; left: 0; right: 0; top: 0; }
+.vrow { height: 52px; box-sizing: border-box; }
+/* Dialogen: snel zoeken, pagina aanpassen, sneltoetsen */
+.overlay-dlg { position: fixed; inset: 0; z-index: 80; background: rgba(10, 12, 16, .45); display: flex; align-items: flex-start; justify-content: center; padding: 10vh 16px 16px; }
+.dlg-card { width: min(560px, 100%); max-height: 80vh; overflow: auto; background: var(--surface); color: var(--ink); border-radius: 18px; padding: 18px; box-shadow: 0 20px 50px rgba(0, 0, 0, .3); }
+.dlg-card .dlg-actions { display: flex; gap: 8px; justify-content: flex-end; align-items: center; margin-top: 12px; }
+.cmdk .search { width: 100%; }
+.cmd-list { list-style: none; margin: 10px 0; padding: 0; }
+.cmd-list li { display: flex; justify-content: space-between; gap: 12px; padding: 9px 10px; border-radius: 10px; cursor: pointer; }
+.cmd-list li[aria-selected="true"], .cmd-list li:hover { background: var(--bg); }
+.dash-list { list-style: none; padding: 0; margin: 10px 0; }
+.dash-list li { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--rule); }
+.icon-sm { font: inherit; width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--rule); background: var(--surface); color: var(--ink); cursor: pointer; margin-left: 4px; }
+.dash-foot { display: flex; justify-content: center; margin: 24px 0 8px; }
+kbd { font: 600 12px/1 ui-monospace, monospace; padding: 3px 6px; border: 1px solid var(--rule); border-bottom-width: 2px; border-radius: 6px; background: var(--bg); color: var(--ink); }
+.conc-note { margin-top: 8px; }
+/* Omlaag trekken om te vernieuwen */
+.ptr { position: fixed; top: 64px; left: 50%; z-index: 60; width: 40px; height: 40px; margin-top: -40px; border-radius: 50%; background: var(--surface); box-shadow: 0 4px 14px rgba(0, 0, 0, .18); display: grid; place-items: center; opacity: 0; transform: translate(-50%, 0); pointer-events: none; color: var(--accent); font-weight: 700; }
+.ptr span { transition: transform .2s var(--ease); }
+.ptr.ready span { transform: rotate(180deg); }
+.ptr.spin span { animation: ptrspin .8s linear infinite; }
+@keyframes ptrspin { to { transform: rotate(360deg); } }
+/* Rondleiding */
+.tour { position: fixed; inset: 0; z-index: 85; }
+.tour-ring { position: fixed; border-radius: 14px; box-shadow: 0 0 0 9999px rgba(10, 12, 16, .5); border: 2px solid var(--accent); pointer-events: none; transition: all .25s var(--ease); }
+.tour-card { position: fixed; width: min(340px, calc(100vw - 24px)); background: var(--surface); color: var(--ink); border-radius: 16px; padding: 16px; box-shadow: 0 16px 40px rgba(0, 0, 0, .3); }
+.tour-card p { margin: 0 0 6px; line-height: 1.5; }
+.tour-card .dlg-actions { display: flex; gap: 8px; align-items: center; justify-content: flex-end; }
+.tour-card .dlg-actions .small { margin-right: auto; }
+/* Weergave: compact, grotere tekst, kleurenblindvriendelijk */
+:root[data-compact="1"] .tile.pad { padding: 14px; }
+:root[data-compact="1"] .grid, :root[data-compact="1"] .plan-grid { gap: 10px; }
+:root[data-compact="1"] .section-head { margin-top: 20px; }
+:root[data-big="1"] body { zoom: 1.12; }
+:root[data-cb="1"] { --gain: #1F6FD1; --loss: #D9822B; }
+:root[data-cb="1"][data-theme="dark"] { --gain: #6AA8F5; --loss: #F2A45A; }
+:root[data-cb="1"] .heat-g1 { background: #D3E4F8 !important; } :root[data-cb="1"] .heat-g2 { background: #7EB0EA !important; } :root[data-cb="1"] .heat-g3 { background: #1F6FD1 !important; }
+:root[data-cb="1"] .heat-l1 { background: #F8E1C9 !important; } :root[data-cb="1"] .heat-l2 { background: #EDB27A !important; } :root[data-cb="1"] .heat-l3 { background: #D9822B !important; }
+:root[data-cb="1"] .chip-chg.gain { background: #D3E4F8; color: #154F96; } :root[data-cb="1"] .chip-chg.loss { background: #F8E1C9; color: #8A4A0E; }
+.disp-opts .check { display: flex; margin-top: 6px; }
+:root[lang="de"] .m-tabs a, :root[lang="fr"] .m-tabs a, :root[lang="de"] .m-tabs .btn-settings, :root[lang="fr"] .m-tabs .btn-settings { font-size: 10px; letter-spacing: -.1px; }
+.seg.wrap { border-radius: 16px; }
+/* Kopbalk met vijf menu-items op middelgrote schermen: knoppen nooit buiten beeld */
+@media (max-width: 1280px) and (min-width: 761px) {
+  .topbar { grid-template-columns: auto 1fr auto; padding-left: 20px; padding-right: 20px; }
+  .pillnav { justify-self: center; }
+  .pillnav a { min-width: 0; padding: 11px 16px; }
+}
+@media (max-width: 1120px) and (min-width: 761px) { .topbar .updated { display: none; } }
+@media (max-width: 960px) and (min-width: 761px) { .brand { font-size: 0; } .pillnav a { padding: 10px 12px; } }

@@ -1,0 +1,17 @@
+{
+  "//": "Typecontrole van de website zonder build-stap: TypeScript leest de gewone scripts als JavaScript (zie .github/workflows/checks.yml).",
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "target": "es2022",
+    "lib": ["es2022", "dom", "dom.iterable", "webworker.importscripts"],
+    "strict": false,
+    "noImplicitAny": false,
+    "skipLibCheck": true,
+    "types": []
+  },
+  "files": ["docs/js/types.d.ts"],
+  "include": ["docs/js/*.js"],
+  "exclude": ["docs/js/*-preact.js"]
+}
