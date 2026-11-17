@@ -35,13 +35,14 @@ function NewsItem({ n }) {
   </a>`;
 }
 
-function NewsList({ items }) {
+function NewsList({ items, tk, onClear }) {
   const [filter, setFilter] = useState(xs.newsF || 'all');
-  const shown = useMemo(() => items.filter((n) => filter === 'all' || n.kind === filter).slice(0, 40), [items, filter]);
+  const shown = useMemo(() => items.filter((n) => (filter === 'all' || n.kind === filter) && (!tk || n.tk === tk)).slice(0, 40), [items, filter, tk]);
   const count = useMemo(() => { const c = { pos: 0, neg: 0, neu: 0 }; shown.forEach((n) => { c[newsTone(n)]++; }); return c; }, [shown]);
   const pick = (k) => { xs.newsF = k; setFilter(k); };
   return html`<section class="tile pad span-2 news-tile">
     <div class="plan-head"><h3>Nieuws</h3><${Seg} value=${filter} options=${FILTERS} onPick=${pick} label="Nieuws filteren" /></div>
+    ${tk ? html`<p class="small news-only">Alleen ${tk} <button type="button" class="linklike" onClick=${onClear}>Toon alles</button></p>` : null}
     ${shown.length
       ? html`<p class="small muted" style="margin:2px 0 6px">${count.pos} positief, ${count.neg} negatief, ${count.neu} neutraal</p>
         <div class="news">${shown.map((n) => html`<${NewsItem} key=${n.url + '|' + n.tk + '|' + n.headline} n=${n} />`)}</div>`
@@ -81,16 +82,63 @@ function AnalystTable({ rows }) {
   </section>`;
 }
 
+// ---------- Stemmingskaart: elk aandeel als stip, analisten (links-rechts) tegenover het nieuws (onder-boven) ----------
+function moodPoints(items, rows) {
+  const tones = {};
+  items.forEach((n) => { if (!n.tk) return; const t = tones[n.tk] || (tones[n.tk] = { pos: 0, neg: 0, n: 0 }); const k = newsTone(n); if (k !== 'neu') t[k]++; t.n++; });
+  return rows.filter((x) => x.rc && isNum(x.rc.buy)).map((x) => {
+    const t = tones[x.o.tk];
+    const bull = x.sent && isNum(x.sent.bull) ? x.sent.bull : t && t.pos + t.neg ? t.pos / (t.pos + t.neg) : null;
+    return isNum(bull) ? { tk: x.o.tk, held: x.held, buy: x.rc.buy, bull } : null;
+  }).filter(Boolean);
+}
+function MoodMap({ pts, sel, onPick }) {
+  if (pts.length < 2) return null;
+  const X = (b) => Math.max(5, Math.min(90, (b - 0.3) / 0.7 * 100));
+  const Y = (v) => Math.max(8, Math.min(92, (0.8 - v) / 0.6 * 100));
+  const s = pts.find((p) => p.tk === sel);
+  return html`<section class="tile pad mood-tile">
+    <div class="plan-head"><h3>Stemmingskaart</h3><span class="muted small">klik op een stip</span></div>
+    <div class="mood-map">
+      <span class="mq a"></span><span class="mq b"></span><span class="mx"></span><span class="my"></span>
+      <span class="ml tr">beide positief</span><span class="ml bl">beide negatief</span><span class="ml br">analisten wel, nieuws niet</span><span class="ml tl">nieuws wel, analisten niet</span>
+      ${pts.map((p) => {
+        const x = X(p.buy), on = sel === p.tk;
+        return html`<button type="button" key=${p.tk} class=${'mood-dot' + (p.held ? '' : ' w') + (on ? ' on' : '') + (sel && !on ? ' dim' : '') + (x > 75 ? ' left' : '')}
+          style=${'left:' + x.toFixed(1) + '%;top:' + Y(p.bull).toFixed(1) + '%'} aria-pressed=${String(on)}
+          aria-label=${p.tk + ': ' + P1.format(p.buy) + ' van de analisten zegt kopen, nieuws ' + P1.format(p.bull) + ' positief'} onClick=${() => onPick(on ? null : p.tk)}><i></i><b>${p.tk}</b></button>`;
+      })}
+    </div>
+    <div class="mood-ax small muted"><span>← minder analisten zeggen kopen</span><span>meer →</span></div>
+    <div class="mood-leg small muted"><span><i></i>in bezit</span><span><i class="w"></i>volglijst</span><span>hoger = positiever nieuws</span></div>
+    ${s ? html`<div class="mood-sel"><span><b>${s.tk}</b> · ${P1.format(s.buy)} van de analisten zegt kopen · nieuws ${P1.format(s.bull)} positief</span><button type="button" class="btn ghost" onClick=${() => onPick(null)}>Toon alles</button></div>` : null}
+  </section>`;
+}
+
+const NEWS_SEGS = [['news', 'Nieuws'], ['an', 'Analisten'], ['ins', 'Insiders']];
 function NewsPage({ stamp }) {
   // stamp verandert bij nieuwe gegevens, zodat de lijsten opnieuw worden opgebouwd
   const items = useMemo(() => newsItems(), [stamp, muteKey()]);
   const rows = useMemo(() => analystRows(), [stamp]);
+  const pts = useMemo(() => moodPoints(items, rows), [items, rows]);
+  const [sel, setSel] = useState(null);
+  const [seg, setSeg] = useState(xs.newsSeg || 'news');
+  const pickSeg = (k) => { xs.newsSeg = k; setSeg(k); };
+  const map = html`<${MoodMap} pts=${pts} sel=${sel} onPick=${setSel} />`;
+  const list = html`<${NewsList} items=${items} tk=${sel} onClear=${() => setSel(null)} />`;
+  if (mode === 'm') {
+    return html`<div class="m-ptabs news-tabs" role="group" aria-label="Onderdeel">${NEWS_SEGS.map(([k, l]) => html`<button type="button" key=${k} aria-pressed=${String(seg === k)} onClick=${() => pickSeg(k)}>${l}</button>`)}</div>
+      ${seg === 'news' ? html`<div class="grid wide">${map}${list}<${Legacy} markup=${newsToolsTile()} /></div>` : null}
+      ${seg === 'an' ? html`<div class="grid wide"><${Legacy} markup=${suggestTile()} /><${AnalystTable} rows=${rows} /><${Legacy} markup=${reliabilityTile()} /></div>` : null}
+      ${seg === 'ins' ? html`<div class="grid wide"><${Legacy} markup=${insiderTile()} /></div>` : null}`;
+  }
   return html`
-    <div class="grid wide"><${NewsList} items=${items} /><${Legacy} markup=${suggestTile()} /></div>
+    <div class="grid wide">${list}${map}</div>
+    <div class="grid wide" style="margin-top:16px"><${Legacy} markup=${suggestTile()} /><${Legacy} markup=${newsToolsTile()} /></div>
     <div class="section-head"><h2>Analisten</h2><p class="muted small">Aanbevelingen, koersdoelen en hoe betrouwbaar ze zijn</p></div>
     <div class="grid wide"><${AnalystTable} rows=${rows} /><${Legacy} markup=${reliabilityTile()} /></div>
     <div class="section-head"><h2>Insiders</h2><p class="muted small">Kopen en verkopen bestuurders zelf?</p></div>
-    <div class="grid wide"><${Legacy} markup=${insiderTile()} /><${Legacy} markup=${newsToolsTile()} /></div>`;
+    <div class="grid wide"><${Legacy} markup=${insiderTile()} /></div>`;
 }
 
 let stampN = 0, lastData = null;

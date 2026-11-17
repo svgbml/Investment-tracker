@@ -1216,3 +1216,32 @@ body.welcoming #mshell { padding-bottom: 0; }
 .wbar span { font-size: 12px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .wbar b { color: var(--ink); }
 .wbar button:hover i { filter: brightness(1.1); }
+
+
+/* ===================== Nieuws: stemmingskaart en tabbladen op de telefoon ===================== */
+.news-tabs { margin: -16px -16px 14px; }
+.news-only { margin: 2px 0 6px; font-weight: 600; }
+.mood-map { position: relative; height: 300px; margin-top: 10px; border-radius: 14px; overflow: hidden; border: 1px solid var(--rule); background: var(--surface); }
+.mood-map .mq { position: absolute; width: 50%; height: 50%; }
+.mood-map .mq.a { right: 0; top: 0; background: rgba(11, 122, 75, .07); }
+.mood-map .mq.b { left: 0; bottom: 0; background: rgba(180, 49, 31, .07); }
+.mood-map .mx { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--rule); }
+.mood-map .my { position: absolute; top: 50%; left: 0; right: 0; height: 1px; background: var(--rule); }
+.mood-map .ml { position: absolute; font-size: 11px; font-weight: 700; color: var(--ink-2); }
+.mood-map .ml.tr { right: 8px; top: 6px; color: var(--gain); }
+.mood-map .ml.bl { left: 8px; bottom: 6px; color: var(--loss); }
+.mood-map .ml.br { right: 8px; bottom: 6px; }
+.mood-map .ml.tl { left: 8px; top: 6px; }
+.mood-dot { position: absolute; transform: translate(-6px, -50%); display: flex; align-items: center; gap: 4px; min-height: 30px; padding: 0 2px; border: 0; background: none; cursor: pointer; font: inherit; color: var(--ink); transition: opacity .2s; }
+.mood-dot.left { flex-direction: row-reverse; transform: translate(calc(-100% + 8px), -50%); }
+.mood-dot i { flex: none; width: 12px; height: 12px; border-radius: 50%; box-sizing: border-box; background: var(--ink); border: 2px solid var(--ink); transition: transform .2s, background-color .2s; }
+.mood-dot.w i { background: var(--surface); }
+.mood-dot.on i { background: var(--accent); border-color: var(--accent); transform: scale(1.5); box-shadow: 0 0 0 4px rgba(43, 91, 215, .18); }
+.mood-dot.dim { opacity: .35; }
+.mood-dot b { font-size: 12px; }
+.mood-ax { display: flex; justify-content: space-between; margin-top: 6px; }
+.mood-leg { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 4px; }
+.mood-leg i { display: inline-block; width: 10px; height: 10px; margin-right: 5px; border-radius: 50%; background: var(--ink); vertical-align: -1px; }
+.mood-leg i.w { background: var(--surface); border: 2px solid var(--ink); box-sizing: border-box; }
+.mood-sel { display: flex; align-items: center; gap: 10px; margin-top: 10px; padding: 10px 12px; border-radius: 12px; background: var(--soft); font-size: 14px; }
+.mood-sel span { flex: 1; }

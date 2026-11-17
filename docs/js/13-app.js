@@ -141,6 +141,12 @@ Object.assign(EN, {
   'Je bekijkt de functies met voorbeeldgetallen.': 'You are viewing the features with sample figures.', 'Eigen tracker opzetten': 'Set up your own tracker', 'of': 'or', 'mijn eigen gegevens laden': 'load my own data',
   'Je bekijkt een gedeelde portefeuille (alleen lezen).': 'You are viewing a shared portfolio (read only).', 'Zelf een tracker opzetten': 'Set up a tracker yourself', 'Er is een nieuwe versie van de tracker.': 'There is a new version of the tracker.', 'Nu bijwerken': 'Update now', 'Later': 'Later',
 });
+Object.assign(EN, {
+  'Stemmingskaart': 'Sentiment map', 'klik op een stip': 'click a dot', 'beide positief': 'both positive', 'beide negatief': 'both negative', 'analisten wel, nieuws niet': 'analysts yes, news no',
+  'nieuws wel, analisten niet': 'news yes, analysts no', '← minder analisten zeggen kopen': '← fewer analysts say buy', 'meer →': 'more →', 'in bezit': 'held', 'volglijst': 'watchlist',
+  'hoger = positiever nieuws': 'higher = more positive news', 'Toon alles': 'Show all', 'Per sector': 'By sector', 'Eén lijst': 'One list', 'Toon': 'Show', 'Periode': 'Period', 'Indeling': 'Layout', 'Totaal': 'Total', 'Waarde': 'Value',
+});
+EN_RE.push([/^Alleen (.+)$/, 'Only $1'], [/^Posities (\d+)$/, 'Positions $1'], [/^Volglijst (\d+)$/, 'Watchlist $1']);
 EN_RE.push([/^Inloggen is mislukt: (.*)$/, 'Sign-in failed: $1'], [/^Ingelogd\. Al gekoppeld: (.*)$/, 'Signed in. Already connected: $1'], [/^Ingelogd\. Trading 212 is gekoppeld\.$/, 'Signed in. Trading 212 is connected.']);
 const DICT = LANG === 'de' ? Object.assign({}, EN, DE) : LANG === 'fr' ? Object.assign({}, EN, FR) : EN;
 const T = (s) => (LANG !== 'nl' ? DICT[s] || s : s);
