@@ -272,7 +272,7 @@ function renderPlan() {
   const host = mode === 'm' ? $('m-plan-body') : $('plan-body');
   if (!host) return;
   // Componentenversie (js/plannen-preact.js) als die geladen is
-  if (window.PlanView && window.PlanView.ok) { window.PlanView.draw(host); return; }
+  if (window.PlanView && window.PlanView.ok) { window.PlanView.draw(host); secTabs('plan'); return; }
   const focus = document.activeElement && host.contains(document.activeElement) ? document.activeElement.id || null : null;
   const sec = (title, sub, tiles) => '<div class="section-head"><h2>' + esc(title) + '</h2>' + (sub ? '<p class="muted small">' + esc(sub) + '</p>' : '') + '</div><div class="plan-grid">' + tiles.filter(Boolean).join('') + '</div>';
   host.innerHTML =
@@ -287,6 +287,7 @@ function renderPlan() {
   drawForecast(host);
   drawWhatIf(host);
   drawWeekShare(host);
+  secTabs('plan');
   if (focus && $(focus)) { const el = $(focus); el.focus(); const v = el.value; el.value = ''; el.value = v; }
 }
 

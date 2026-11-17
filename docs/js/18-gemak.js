@@ -127,6 +127,37 @@ function renderAnalyse() {
     '<div class="dash-foot"><button type="button" class="btn ghost" data-dash-edit="analyse">Pagina aanpassen</button></div>';
   dashApply(host, 'analyse');
   drawBench(host); drawDrawdown(host); drawPeriodCmp(host); mountLedger(host);
+  secTabs('analyse');
+}
+
+// ---------- Telefoon: lange pagina's (Analyse, Plannen) als tabbladen per onderdeel ----------
+const SEC_SHORT = { 'Inleg en doelen': 'Inleg', 'Wat als': 'Wat als', 'Dividend en belasting': 'Dividend', 'Kosten en aankopen': 'Kosten', 'Spreiding en rekeningen': 'Spreiding', 'Delen en exporteren': 'Delen',
+  'Vooruit rekenen': 'Vooruit', 'Belasting, herbalanceren en rente': 'Belasting', 'Rendement': 'Rendement', 'Markt en onderzoek': 'Markt', 'Transacties en begrippen': 'Transacties' };
+const secPick = {};
+function secTabs(key) {
+  const host = $(key === 'plan' ? 'm-plan-body' : 'm-analyse-body'), bar = $(key === 'plan' ? 'm-plan-tabs' : 'm-analyse-tabs');
+  if (!host || !bar) return;
+  const groups = mode !== 'm' ? [] : [...host.querySelectorAll('.section-head')].map((h) => {
+    const w = h.closest('.dash-sec');
+    return { title: (h.querySelector('h2') || h).textContent.trim(), els: w ? [w] : [h, h.nextElementSibling].filter(Boolean) };
+  }).filter((g) => g.title);
+  if (groups.length < 2) { bar.hidden = true; groups.forEach((g) => g.els.forEach((el) => { el.hidden = false; })); return; }
+  let cur = secPick[key];
+  if (!groups.some((g) => g.title === cur)) cur = groups[0].title;
+  secPick[key] = cur;
+  bar.hidden = false;
+  bar.innerHTML = groups.map((g) => '<button type="button" data-sectab="' + esc(g.title) + '" aria-pressed="' + (g.title === cur) + '">' + esc(SEC_SHORT[g.title] || g.title) + '</button>').join('');
+  groups.forEach((g) => g.els.forEach((el) => { el.hidden = g.title !== cur; }));
+  const on = bar.querySelector('[aria-pressed="true"]');
+  if (on) bar.scrollLeft = Math.max(0, on.offsetLeft - 16);
+  bar.onclick = (e) => {
+    const b = e.target.closest('[data-sectab]');
+    if (!b) return;
+    secPick[key] = b.dataset.sectab;
+    window.scrollTo(0, 0);
+    // Opnieuw tekenen, zodat grafieken in het zichtbare onderdeel de juiste breedte krijgen
+    refresh(key === 'plan' ? 'plan' : 'analyse');
+  };
 }
 defineView('analyse', () => renderAnalyse());
 defineView('badge', () => { updateBadge(); maybeTour(); });

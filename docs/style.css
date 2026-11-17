@@ -1245,3 +1245,10 @@ body.welcoming #mshell { padding-bottom: 0; }
 .mood-leg i.w { background: var(--surface); border: 2px solid var(--ink); box-sizing: border-box; }
 .mood-sel { display: flex; align-items: center; gap: 10px; margin-top: 10px; padding: 10px 12px; border-radius: 12px; background: var(--soft); font-size: 14px; }
 .mood-sel span { flex: 1; }
+
+
+/* ===================== Analyse en Plannen: tabbladen per onderdeel op de telefoon ===================== */
+.sec-tabs { overflow-x: auto; scrollbar-width: none; }
+.sec-tabs::-webkit-scrollbar { display: none; }
+.sec-tabs button { flex: none; }
+#m-plan-body > .section-head:first-child, #m-plan-body .section-head, #m-analyse-body .section-head { margin-top: 4px; }

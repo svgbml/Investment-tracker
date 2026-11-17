@@ -144,7 +144,7 @@ Object.assign(EN, {
 Object.assign(EN, {
   'Stemmingskaart': 'Sentiment map', 'klik op een stip': 'click a dot', 'beide positief': 'both positive', 'beide negatief': 'both negative', 'analisten wel, nieuws niet': 'analysts yes, news no',
   'nieuws wel, analisten niet': 'news yes, analysts no', '← minder analisten zeggen kopen': '← fewer analysts say buy', 'meer →': 'more →', 'in bezit': 'held', 'volglijst': 'watchlist',
-  'hoger = positiever nieuws': 'higher = more positive news', 'Toon alles': 'Show all', 'Per sector': 'By sector', 'Eén lijst': 'One list', 'Toon': 'Show', 'Periode': 'Period', 'Indeling': 'Layout', 'Totaal': 'Total', 'Waarde': 'Value',
+  'hoger = positiever nieuws': 'higher = more positive news', 'Inleg': 'Contributions', 'Wat als': 'What if', 'Spreiding': 'Diversification', 'Delen': 'Sharing', 'Vooruit': 'Ahead', 'Belasting': 'Tax', 'Rendement': 'Return', 'Transacties': 'Transactions', 'Toon alles': 'Show all', 'Per sector': 'By sector', 'Eén lijst': 'One list', 'Toon': 'Show', 'Periode': 'Period', 'Indeling': 'Layout', 'Totaal': 'Total', 'Waarde': 'Value',
 });
 EN_RE.push([/^Alleen (.+)$/, 'Only $1'], [/^Posities (\d+)$/, 'Positions $1'], [/^Volglijst (\d+)$/, 'Watchlist $1']);
 EN_RE.push([/^Inloggen is mislukt: (.*)$/, 'Sign-in failed: $1'], [/^Ingelogd\. Al gekoppeld: (.*)$/, 'Signed in. Already connected: $1'], [/^Ingelogd\. Trading 212 is gekoppeld\.$/, 'Signed in. Trading 212 is connected.']);
