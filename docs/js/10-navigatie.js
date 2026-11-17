@@ -41,7 +41,7 @@ function openDetail(tk, originEl, push) {
   if (push) { history.pushState({ detail: tk }, '', viewHash(tk)); pushedDetail = true; }
   markFresh();
   renderDetail(true);
-  ov.querySelectorAll('.ghost').forEach((g) => g.remove());
+  ov.querySelectorAll('.tile.ghost').forEach((g) => g.remove());
   ov.classList.remove('anim', 'open', 'pop', 'fade-out');
   ov.hidden = false;
   ov.scrollTop = 0;
@@ -61,6 +61,7 @@ function openDetail(tk, originEl, push) {
   const g = ghostOf(originEl, r);
   ov.appendChild(g);
   setOrigin(sh, r);
+  ov.classList.add('zooming');
   void ov.offsetWidth;
   ov.classList.add('anim');
   sh.classList.add('zoom-anim');
@@ -70,7 +71,7 @@ function openDetail(tk, originEl, push) {
     sh.classList.add('zoomed');
     g.style.opacity = '0';
   });
-  zoomTimer = setTimeout(() => { g.remove(); sh.classList.remove('zoom-anim'); focusDetail(); }, ZOOM_MS + 20);
+  zoomTimer = setTimeout(() => { g.remove(); sh.classList.remove('zoom-anim'); ov.classList.remove('zooming'); focusDetail(); }, ZOOM_MS + 20);
 }
 
 function focusDetail() {
@@ -97,9 +98,9 @@ function closeDetail() {
 
 function cleanupDetail(sh) {
   ov.hidden = true;
-  ov.classList.remove('anim', 'open', 'pop', 'fade-out');
+  ov.classList.remove('anim', 'open', 'pop', 'fade-out', 'zooming');
   ov.removeAttribute('style');
-  ov.querySelectorAll('.ghost').forEach((g) => g.remove());
+  ov.querySelectorAll('.tile.ghost').forEach((g) => g.remove());
   [$('shell'), $('mshell')].forEach((s) => { s.classList.remove('zoom-anim', 'zoomed'); s.style.transformOrigin = ''; s.inert = false; });
   document.documentElement.classList.remove('locked');
   void sh;
@@ -151,7 +152,7 @@ function finishDetail() {
   g.style.opacity = '0';
   g.style.transition = 'opacity .2s .22s';
   ov.appendChild(g);
-  ov.classList.add('anim');
+  ov.classList.add('zooming', 'anim');
   ov.classList.remove('open', 'pop');
   ov.scrollTop = 0;
   setRect(r);

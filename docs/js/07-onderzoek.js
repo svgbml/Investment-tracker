@@ -178,6 +178,14 @@ function watchTile(sym, phone) {
   const unknown = !p && ((data.market && data.market.unknown) || []).includes(sym);
   const sub = W.earn ? 'cijfers ' + fDM.format(ymd(W.earn.date)) : p && p.sector ? sectorNl(p.sector) : p ? '' :
     unknown ? 'symbool niet gevonden; controleer het beurssymbool' : (!demo && !FEAT().has.fmp) ? 'koers vraagt een FMP-sleutel' : 'gegevens worden opgehaald';
+  // Ongeldig symbool: geen klikbare tegel, wel een knop om het weg te halen
+  if (unknown) {
+    return phone
+      ? '<div class="m-row bad"><span class="l"><span class="tk">' + esc(sym) + '</span><span class="nm">' + esc(sub) + '</span></span><span class="rt"><button type="button" class="btn ghost" data-xa="watch-remove" data-k="' + esc(sym) + '">Verwijderen</button></span></div>'
+      : '<section class="tile watch bad"><span class="row"><span class="tk">' + esc(sym) + '</span><span class="tag loss">Niet gevonden</span></span><span class="sub" style="margin-top:8px">' + esc(sub) + '</span>' +
+        '<span style="margin-top:10px"><button type="button" class="btn ghost" data-xa="watch-remove" data-k="' + esc(sym) + '">Verwijderen</button></span></section>';
+  }
+  const noChart = pts.length < 2 ? '<span class="spark-empty">' + esc(FEAT().has.td || FEAT().has.av ? 'Koersgeschiedenis wordt opgehaald' : 'Grafiek bouwt zich dag voor dag op; met een gratis Twelve Data-sleutel meteen') + '</span>' : '';
   if (phone) {
     return '<button type="button" class="m-row" data-ticker="~' + esc(sym) + '" aria-label="' + esc(c.name + ', volglijst. Openen') + '">' +
       '<span class="l"><span class="tk">' + esc(sym) + '</span><span class="nm">' + esc(c.name !== sym ? c.name : sub) + '</span></span>' +
@@ -189,12 +197,13 @@ function watchTile(sym, phone) {
     '<span class="nm">' + esc(c.name) + '</span>' +
     '<span class="row" style="margin-top:8px"><span class="v" style="font-size:22px">' + esc(p && isNum(p.price) ? money(p.price, p.currency) : '–') + '</span><b class="' + tone(ch) + '">' + esc(isNum(ch) ? spct(ch) : '') + '</b></span>' +
     (rb.html && p && p.range ? '<span class="sub" style="display:block;margin-top:6px">' + rb.html + '</span><span class="sub">' + esc(isNum(rb.off) ? (rb.off > -0.005 ? 'bij de jaartop' : P1.format(-rb.off) + ' onder de jaartop') : '') + '</span>' : '') +
-    '<span class="sub">' + esc(sub) + '</span>' + spark(pts, toneColor(ch)) + '</button>';
+    '<span class="sub">' + esc(sub) + '</span>' + (noChart || spark(pts, toneColor(ch))) + '</button>';
 }
 
 function watchAddForm(id) {
-  return '<form class="watch-add" data-watchform="' + id + '"><label class="sr-only" for="' + id + '">Symbool toevoegen</label>' +
-    '<input id="' + id + '" class="search" type="text" autocapitalize="characters" spellcheck="false" maxlength="12" placeholder="Beurssymbool, bijv. NVDA">' +
+  return '<form class="watch-add" data-watchform="' + id + '" autocomplete="off"><label class="sr-only" for="' + id + '">Bedrijf zoeken</label>' +
+    '<span class="ws-wrap"><input id="' + id + '" class="search" type="search" spellcheck="false" maxlength="40" placeholder="Zoek een bedrijf of beurssymbool" aria-autocomplete="list">' +
+    '<span class="ws-results" role="listbox" hidden></span></span>' +
     '<button type="submit" class="btn primary">Volgen</button><span class="small muted watch-status" role="status"></span></form>';
 }
 
@@ -203,6 +212,9 @@ function renderWatch() {
   const empty = '<p class="empty">Nog niets op je volglijst. Voeg een beurssymbool toe (zoals NVDA of LMT) om koers, agenda, nieuws en cijfers te volgen zonder het aandeel te hebben.</p>';
   if ($('watch-grid')) { if (!$('watch-in')) $('watch-add').innerHTML = watchAddForm('watch-in'); fill('watch-grid', syms.length ? syms.map((x) => watchTile(x, false)) : [empty]); }
   if ($('m-watch-rows')) { if (!$('m-watch-in')) $('m-watch-add').innerHTML = watchAddForm('m-watch-in'); fill('m-watch-rows', syms.length ? syms.map((x) => watchTile(x, true)) : ['<p class="m-sub" style="padding:16px">Nog niets op je volglijst.</p>']); }
+  const bad = unknownSyms();
+  const clean = bad.length ? '<p class="small loss watch-clean">' + esc(bad.length + (bad.length === 1 ? ' symbool wordt' : ' symbolen worden') + ' niet gevonden: ' + bad.join(', ') + '.') + ' <button type="button" class="linklike" data-xa="watch-clean">Ongeldige verwijderen</button></p>' : '';
+  ['watch-add', 'm-watch-add'].forEach((id) => { const host = $(id); if (!host) return; const old = host.querySelector('.watch-clean'); if (old) old.remove(); if (clean) host.insertAdjacentHTML('beforeend', clean); });
   const sg = watchSuggestTile();
   if ($('watch-sugg')) $('watch-sugg').innerHTML = sg;
   if ($('m-watch-sugg')) $('m-watch-sugg').innerHTML = sg;
@@ -222,23 +234,31 @@ async function setWatchlist(list, statusEl, note) {
   } catch (err) { say('Mislukt: ' + err.message, 'loss'); }
 }
 
-document.addEventListener('submit', (e) => {
+// Volgen met Enter of de knop: eerst kijken of het symbool bestaat (bedrijvenlijst en Finnhub)
+document.addEventListener('submit', async (e) => {
   const f = e.target.closest && e.target.closest('[data-watchform]');
   if (!f) return;
   e.preventDefault();
   const inp = f.querySelector('input');
-  const sym = (inp.value || '').trim().toUpperCase();
+  const q = (inp.value || '').trim();
+  const sym = q.toUpperCase();
   const st = f.querySelector('.watch-status');
-  const bad = (t) => { st.textContent = t; st.className = 'small watch-status loss'; };
-  if (!/^[A-Z0-9][A-Z0-9.\-]{0,11}$/.test(sym)) { bad('Gebruik het beurssymbool, zoals AAPL of BRK.B.'); return; }
+  const bad = (t, html) => { st.innerHTML = esc(t) + (html || ''); st.className = 'small watch-status loss'; };
+  if (!q) { bad('Typ een naam of beurssymbool.'); return; }
+  const res = await searchCompaniesSite(q);
+  const hit = res.find((r) => r.sym === sym) || (res.length === 1 ? res[0] : null);
+  if (!hit) {
+    if (res.length) { bad('Kies een bedrijf uit de lijst.'); const box = f.querySelector('.ws-results'); if (box) box.hidden = false; return; }
+    if (/^[A-Z0-9][A-Z0-9.\-]{0,11}$/.test(sym)) { bad(sym + ' is niet gevonden. ', '<button type="button" class="linklike" data-xa="watch-force" data-k="' + esc(sym) + '">Toch toevoegen</button>'); return; }
+    bad('Niets gevonden voor "' + q + '".'); return;
+  }
   const heldSyms = new Set([...M.byTk.keys()].concat(M.mk.ok ? Object.values(data.market.symbols || {}) : []));
-  if (heldSyms.has(sym)) { bad('Dit aandeel heb je al.'); return; }
+  if (heldSyms.has(hit.sym)) { bad('Dit aandeel heb je al.'); return; }
   const list = watchSyms().slice();
-  if (list.includes(sym)) { bad('Staat al op je volglijst.'); return; }
-  if (list.length >= 20) { bad('Maximaal 20 aandelen.'); return; }
-  list.push(sym);
-  inp.value = '';
-  setWatchlist(list, st, sym + ' staat op je volglijst.');
+  if (list.includes(hit.sym)) { bad('Staat al op je volglijst.'); return; }
+  if (list.length >= 30) { bad('Maximaal 30 aandelen.'); return; }
+  inp.value = ''; const box = f.querySelector('.ws-results'); if (box) { box.innerHTML = ''; box.hidden = true; }
+  setWatchlist(list.concat([hit.sym]), st, hit.sym + (hit.name ? ' (' + hit.name + ')' : '') + ' staat op je volglijst.');
 });
 
 function renderWatchDetail(sym) {
@@ -262,11 +282,11 @@ function renderWatchDetail(sym) {
   if (mode === 'm') {
     return '<div class="md"><div class="m-dtop"><button type="button" class="m-back" data-act="back">‹ Terug</button><span class="t">' + esc(sym) + '</span><span></span></div>' +
       '<div class="m-hero"><div class="m-swipe">' + head + '</div>' + chart + '</div>' +
-      '<div class="m-body"><div class="m-stack">' + agenda + research.join('') + market.tiles.join('') + market.table + '<div style="padding:8px 0">' + remove + '</div></div></div></div>';
+      '<div class="m-body"><div class="m-stack">' + agenda + priceAlertTile(sym, p && p.price, (p && p.currency) || 'USD') + research.join('') + market.tiles.join('') + market.table + '<div style="padding:8px 0">' + remove + '</div></div></div></div>';
   }
   return '<div class="band"><div class="d-top"><button type="button" class="btn dark" data-act="back">← Terug</button>' + remove + '</div>' +
     '<div class="hero-head"><div>' + head + '</div></div>' + chart + '</div>' +
-    '<div class="wrap"><div class="grid wide">' + agenda + market.tiles.join('') + '</div>' +
+    '<div class="wrap"><div class="grid wide">' + agenda + priceAlertTile(sym, p && p.price, (p && p.currency) || 'USD') + market.tiles.join('') + '</div>' +
     '<div class="section-head"><h2>Nieuws, analisten en cijfers</h2></div><div class="grid wide">' + research.join('') + '</div>' +
     (market.table ? '<div style="margin-top:16px">' + market.table + '</div>' : '') + '</div>';
 }

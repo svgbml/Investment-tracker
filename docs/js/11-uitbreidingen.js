@@ -713,3 +713,131 @@ async function saveAccounts(list, st) {
   try { await saveSettings({ accounts: list }); rerenderAll(); }
   catch (err) { if (st) { st.textContent = 'Opslaan is mislukt: ' + err.message + '.'; st.className = 'small plan-status acct-st loss'; } }
 }
+
+// =====================================================================
+// ---------- Doelen (potjes) ----------
+// Elk doel krijgt een deel van je accountwaarde en van je maandinleg; de tracker rekent uit wanneer je het haalt bij 7% per jaar.
+const goalsOf = () => ((M.settings && M.settings.goals) || []);
+function goalEta(have, monthly, target) {
+  if (have >= target) return 0;
+  const rm = Math.pow(1.07, 1 / 12) - 1;
+  let v = have, k = 0;
+  while (v < target && k < 720) { v = v * (1 + rm) + monthly; k++; }
+  return k < 720 ? k : null;
+}
+function goalsTile() {
+  const G = goalsOf();
+  const monthly = isNum(M.settings.monthly) ? M.settings.monthly : monthlyGuess();
+  const total = M.accountNow || 0;
+  const shareSum = sum(G.map((g) => g.share || 0));
+  const now = new Date();
+  const row = (g) => {
+    const have = total * (g.share || 0) / 100, m = monthly * (g.share || 0) / 100;
+    const k = goalEta(have, m, g.target);
+    const eta = k == null ? null : new Date(now.getFullYear(), now.getMonth() + k, 1);
+    const due = g.date ? new Date(g.date.length === 7 ? g.date + '-01' : g.date) : null;
+    const onTrack = due && eta ? eta <= due : null;
+    return '<div class="goal"><div class="goal-h"><b>' + esc(g.name) + '</b><span class="muted small">' + esc(eur(have)) + ' van ' + esc(eur(g.target)) + ' · ' + esc(N1.format(g.share || 0)) + '% van je account</span></div>' +
+      '<div class="meter"><div style="width:' + Math.min(100, have / g.target * 100).toFixed(1) + '%"></div></div>' +
+      '<p class="small" style="margin-top:4px">' + (k === 0 ? 'Gehaald.' : eta ? 'Rond ' + esc(new Intl.DateTimeFormat(LOCALE, { month: 'long', year: 'numeric' }).format(eta)) + ' bij ' + esc(eur(m)) + ' per maand en 7% per jaar' : 'Niet binnen 60 jaar bij deze inleg') +
+        (onTrack === true ? ' · <b class="gain">op schema</b> voor ' + esc(new Intl.DateTimeFormat(LOCALE, { month: 'long', year: 'numeric' }).format(due)) : onTrack === false ? ' · <b class="loss">later dan</b> ' + esc(new Intl.DateTimeFormat(LOCALE, { month: 'long', year: 'numeric' }).format(due)) : '') + '</p></div>';
+  };
+  const edit = '<details class="acct goals-edit"><summary><b>Doelen bewerken</b><span></span><span></span></summary><div class="goal-form">' +
+    G.concat([{ id: '', name: '', target: '', share: '', date: '' }]).map((g) => '<div class="h-row goal-row" data-goal="' + esc(g.id) + '"><input aria-label="Naam" data-g="name" maxlength="40" value="' + esc(g.name) + '" placeholder="Bijv. Huis">' +
+      '<input aria-label="Doelbedrag" data-g="target" type="number" min="0" step="100" value="' + esc(g.target) + '" placeholder="Bedrag €"><input aria-label="Deel van je account in procent" data-g="share" type="number" min="0" max="100" step="1" value="' + esc(g.share) + '" placeholder="% account">' +
+      '<input aria-label="Wanneer" data-g="date" type="month" value="' + esc(g.date ? g.date.slice(0, 7) : '') + '"><span></span><button type="button" class="icon-x" data-goal-del aria-label="Doel verwijderen">×</button></div>').join('') +
+    '<div class="plan-actions" style="margin-top:8px"><button type="button" class="btn primary" data-goals-save>Doelen opslaan</button><span class="small plan-status" id="goals-status" role="status"></span></div></div></details>';
+  return '<section class="tile pad full goals"><h3>Doelen</h3>' +
+    (G.length ? G.map(row).join('') + (shareSum > 100 ? '<p class="small loss">Samen ' + esc(N1.format(shareSum)) + '% van je account; dat is meer dan je hebt.</p>' : '')
+      : '<p class="muted">Verdeel je account over doelen, zoals een huis of je pensioen. Per doel zie je hoe ver je bent en wanneer je het bij je huidige inleg haalt.</p>') +
+    edit + '<p class="sub" style="margin-top:8px">Elk doel krijgt het opgegeven deel van je accountwaarde en van je maandinleg (' + esc(eur(monthly)) + '). Rekenvoorbeeld met 7% per jaar, geen belofte.</p></section>';
+}
+document.addEventListener('click', async (e) => {
+  const del = e.target.closest && e.target.closest('[data-goal-del]');
+  if (del) { del.closest('.goal-row').remove(); return; }
+  const b = e.target.closest && e.target.closest('[data-goals-save]');
+  if (!b) return;
+  const form = b.closest('.goal-form'), st = $('goals-status');
+  const goals = [...form.querySelectorAll('.goal-row')].map((r) => {
+    const v = (k) => r.querySelector('[data-g="' + k + '"]').value.trim();
+    return { id: r.dataset.goal || undefined, name: v('name'), target: Number(v('target')), share: Number(v('share')) || 0, date: v('date') || null };
+  }).filter((g) => g.name && g.target > 0);
+  try { await saveSettings({ goals }); rerenderAll(); }
+  catch (err) { if (st) { st.textContent = 'Opslaan is mislukt: ' + err.message + '.'; st.className = 'small plan-status loss'; } }
+});
+
+// =====================================================================
+// ---------- Inleg per maand: gestort tegenover je plan ----------
+function depositMonths() {
+  const W = M.weeks.filter((w) => isNum(w.newDeposits));
+  const by = new Map();
+  W.forEach((w) => { const d = new Date(w.t); const k = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); by.set(k, (by.get(k) || 0) + w.newDeposits); });
+  const out = [];
+  const d = new Date(); d.setDate(1);
+  for (let i = 5; i >= 0; i--) { const x = new Date(d.getFullYear(), d.getMonth() - i, 1); const k = x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0'); out.push({ k, t: x.getTime(), v: by.get(k) || 0 }); }
+  return out;
+}
+function depositTile() {
+  const monthly = isNum(M.settings.monthly) && M.settings.monthly > 0 ? M.settings.monthly : null;
+  const ms = depositMonths();
+  const cur = ms[ms.length - 1];
+  const remind = M.settings.depositReminder !== false;
+  return '<section class="tile pad"><h3>Inleg per maand</h3>' +
+    (monthly ? '<div class="fx-head"><span class="v big">' + esc(eur(cur.v)) + '</span><span class="muted small">van ' + esc(eur(monthly)) + ' deze maand' + (cur.v >= monthly * 0.9 ? ', gelukt' : '') + '</span></div>' +
+      '<div class="meter"><div style="width:' + Math.min(100, cur.v / monthly * 100).toFixed(1) + '%"></div></div>'
+      : '<p class="muted small">Stel bij Vooruitblik je inleg per maand in om hem hier te volgen.</p>') +
+    '<div style="margin-top:12px">' + bars(ms.map((m) => ({ v: m.v, color: monthly && m.v >= monthly * 0.9 ? C.gain : C.soft, tip: fMonY.format(m.t) + ': ' + eur(m.v) + (monthly ? ' van ' + eur(monthly) : '') })), true) +
+    barLabels(ms.map((m) => fMon.format(m.t).replace('.', ''))) + '</div>' +
+    '<label class="check small" style="margin-top:6px"><input type="checkbox" data-deposit-remind' + (remind ? ' checked' : '') + '> Herinnering op de 25e als ik nog niet genoeg heb ingelegd (melding)</label>' +
+    '<p class="sub">Uit je weekmetingen: stortingen min opnames per kalendermaand. Een storting telt mee vanaf de zaterdag erna.</p></section>';
+}
+document.addEventListener('change', async (e) => {
+  const cb = e.target.closest && e.target.closest('input[data-deposit-remind]');
+  if (!cb) return;
+  try { await saveSettings({ depositReminder: cb.checked }); } catch (err) { cb.checked = !cb.checked; }
+});
+
+// =====================================================================
+// ---------- Fondskosten (TER) en goedkopere fondsen op dezelfde index ----------
+// Lopende kosten per jaar volgens de aanbieders (indicatief; controleer het actuele percentage bij de aanbieder).
+const FUND_TER = [
+  [/^(VUAG|VUSA)$/, 'S&P 500', 0.07], [/^(CSPX|SXR8|IUSA)$/, 'S&P 500', 0.07], [/^SPY5$/, 'S&P 500', 0.03], [/^(SPXS|SPXP)$/, 'S&P 500', 0.05],
+  [/^(SXRV|CNDX)$/, 'Nasdaq-100', 0.30], [/^(EQQQ|EQAC)$/, 'Nasdaq-100', 0.30], [/^(XNAS|XNAQ)$/, 'Nasdaq-100', 0.20],
+  [/^(IWDA|SWDA|EUNL)$/, 'MSCI World', 0.20], [/^(SPPW)$/, 'MSCI World', 0.12], [/^(XDWD)$/, 'MSCI World', 0.19],
+  [/^(VWRL|VWCE|VWRA)$/, 'FTSE All-World', 0.19], [/^(SSAC)$/, 'MSCI ACWI', 0.20],
+];
+const CHEAPEST = { 'S&P 500': ['SPY5', 'SPDR S&P 500 UCITS ETF', 0.03], 'Nasdaq-100': ['XNAS', 'Xtrackers Nasdaq 100 UCITS ETF', 0.20], 'MSCI World': ['SPPW', 'SPDR MSCI World UCITS ETF', 0.12], 'FTSE All-World': ['VWCE', 'Vanguard FTSE All-World UCITS ETF', 0.19] };
+function terTile() {
+  const funds = M.companies.filter(isFundC).map((c) => { const f = FUND_TER.find((x) => x[0].test(c.tk)); return { c, idx: f && f[1], ter: f && f[2] }; });
+  if (!funds.length) return '';
+  const years = [10, 20], r = 0.07;
+  const fv = (v, ter, n) => v * Math.pow(1 + r - ter / 100, n);
+  const rows = funds.map((f) => {
+    const alt = f.idx && CHEAPEST[f.idx];
+    const better = alt && isNum(f.ter) && alt[2] < f.ter - 0.005 && alt[0] !== f.c.tk ? alt : null;
+    return '<tr><td class="co"><b>' + esc(f.c.tk) + '</b><span class="nm">' + esc(f.c.name) + '</span></td><td>' + esc(f.idx || '–') + '</td>' +
+      '<td class="num">' + esc(isNum(f.ter) ? N2.format(f.ter) + '%' : 'onbekend') + '</td><td class="num">' + esc(isNum(f.ter) ? eur(f.c.value * f.ter / 100) : '–') + '</td>' +
+      '<td>' + (better ? '<b>' + esc(better[0]) + '</b> <span class="muted small">' + esc(better[1]) + ', ' + esc(N2.format(better[2])) + '%</span><span class="sub">' + years.map((n) => n + ' jaar: ' + esc(eur(fv(f.c.value, better[2], n) - fv(f.c.value, f.ter, n))) + ' meer').join(' · ') + '</span>' : isNum(f.ter) ? '<span class="muted small">al een van de goedkoopste</span>' : '') + '</td></tr>';
+  }).join('');
+  const yearCost = sum(funds.map((f) => (isNum(f.ter) ? f.c.value * f.ter / 100 : 0)));
+  return '<section class="tile pad full"><h3>Fondskosten</h3><p class="small">Je betaalt ongeveer <b>' + esc(eur(yearCost)) + ' per jaar</b> aan lopende kosten van je fondsen (zit al in de koers verwerkt).</p>' +
+    '<div class="tbl-wrap" style="margin-top:8px"><table class="tbl"><thead><tr><th>Fonds</th><th>Index</th><th class="num">Kosten per jaar</th><th class="num">Nu ongeveer</th><th>Goedkoper op dezelfde index</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+    '<p class="sub" style="margin-top:8px">Verschil bij je huidige waarde, 7% per jaar en geen extra inleg. Fondsen op dezelfde index volgen vrijwel dezelfde bedrijven; let ook op valuta, herbeleggen (Acc) of uitkeren (Dist) en of je broker het fonds aanbiedt. Overstappen betekent verkopen en kan belasting- of wisselkosten geven. Kostenpercentages zijn indicatief; controleer ze bij de aanbieder. Geen beleggingsadvies.</p></section>';
+}
+
+// ---------- Dividend herbeleggen: wat het oplevert in de vooruitblik ----------
+function snowball(P) {
+  const value = M.totalValue || 0;
+  const dy = value > 0 && M.ev && M.ev.last12 > 0 ? M.ev.last12 / value : null;
+  if (!isNum(dy) || dy <= 0) return null;
+  const S = P.sets.find((x) => x.label === 'Gemiddeld') || P.sets[0];
+  const rm = Math.pow(1 + S.r, 1 / 12) - 1, rmOut = Math.pow(1 + S.r - dy, 1 / 12) - 1;
+  let a = P.start, b = P.start, paid = 0;
+  for (let k = 1; k <= P.years * 12; k++) { a = a * (1 + rm) + P.monthly; paid += b * (Math.pow(1 + dy, 1 / 12) - 1); b = b * (1 + rmOut) + P.monthly; }
+  return { dy, extra: a - b, paid, withDiv: a, without: b };
+}
+function snowballLine(P) {
+  const B = snowball(P);
+  if (!B) return '';
+  return '<p class="small" style="margin-top:8px"><b>Dividend herbeleggen:</b> met je dividendrendement van ' + esc(P2.format(B.dy)) + ' levert herbeleggen na ' + P.years + ' jaar ongeveer <b class="gain">' + esc(eur(B.extra)) + '</b> meer op dan het laten uitkeren (dan ontvang je onderweg zo’n ' + esc(eur(B.paid)) + ' aan dividend). Gemiddeld scenario.</p>';
+}

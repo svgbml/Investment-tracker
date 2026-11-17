@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=38">
+  <link rel="stylesheet" href="style.css?v=39">
 </head>
 <body data-page="home">
 
@@ -325,9 +325,16 @@
         <h3>Delen (alleen lezen)</h3>
         <div id="share-body"><p class="muted small">Bezig met laden…</p></div>
       </div>
+      <div class="install-box" id="backup-box">
+        <h3>Status en reservekopie</h3>
+        <p class="muted small">Zie of je tracker goed meet en welke bronnen werken. Maak af en toe een reservekopie: weken, orders, dividenden, notities en instellingen (zonder sleutels) in één bestand.</p>
+        <div class="dlg-actions" style="justify-content:flex-start;margin-top:8px"><button type="button" class="btn ghost" data-goto-status>Status bekijken</button><button type="button" class="btn ghost" data-backup>Reservekopie downloaden</button>
+          <label class="btn ghost">Terugzetten<input type="file" accept=".json,application/json" data-restore hidden></label></div>
+        <p class="small plan-status" id="backup-status" role="status"></p>
+      </div>
       <div class="install-box" id="update-box">
         <h3>Updates</h3>
-        <p class="muted small">Versie <b id="app-version"></b>. De site en de app zoeken zelf naar een nieuwe versie (bij openen en elk half uur) en vragen dan of je wilt bijwerken.</p>
+        <p class="muted small"><b id="app-version">Je hebt de nieuwste versie.</b> De site en de app zoeken zelf naar een nieuwe versie (bij openen en elk half uur) en vragen dan of je wilt bijwerken.</p>
         <div class="dlg-actions" style="margin-top:8px;justify-content:flex-start"><button type="button" class="btn ghost" data-upd="check">Controleren op updates</button></div>
         <p class="small" id="upd-status" role="status"></p>
         <p class="muted small">Je eigen Worker bijwerken: open je kopie van de repository op GitHub en kies <b>Sync fork</b>; Cloudflare bouwt de nieuwe versie dan vanzelf.</p>
@@ -354,24 +361,24 @@
   <div id="tip" class="tip" role="status" hidden></div>
   <div id="print-area" aria-hidden="true"></div>
 
-  <script src="config.js?v=38"></script>
+  <script src="config.js?v=39"></script>
   <!-- De site: gewone scripts op volgorde (één gedeeld bereik), daarna de Preact-componenten als module -->
-  <script src="js/00-kern.js?v=38"></script>
-  <script src="js/01-basis.js?v=38"></script>
-  <script src="js/02-instellingen.js?v=38"></script>
-  <script src="js/03-model.js?v=38"></script>
-  <script src="js/04-grafieken.js?v=38"></script>
-  <script src="js/05-portefeuille.js?v=38"></script>
-  <script src="js/06-plannen.js?v=38"></script>
-  <script src="js/07-onderzoek.js?v=38"></script>
-  <script src="js/08-risico.js?v=38"></script>
-  <script src="js/09-weergaven.js?v=38"></script>
-  <script src="js/10-navigatie.js?v=38"></script>
-  <script src="js/11-uitbreidingen.js?v=38"></script>
-  <script src="js/12-nieuws.js?v=38"></script>
-  <script src="js/13-app.js?v=38"></script>
-  <script src="js/15-start.js?v=38"></script>
-  <script type="module" src="js/nieuws-preact.js?v=38"></script>
-  <script type="module" src="js/plannen-preact.js?v=38"></script>
+  <script src="js/00-kern.js?v=39"></script>
+  <script src="js/01-basis.js?v=39"></script>
+  <script src="js/02-instellingen.js?v=39"></script>
+  <script src="js/03-model.js?v=39"></script>
+  <script src="js/04-grafieken.js?v=39"></script>
+  <script src="js/05-portefeuille.js?v=39"></script>
+  <script src="js/06-plannen.js?v=39"></script>
+  <script src="js/07-onderzoek.js?v=39"></script>
+  <script src="js/08-risico.js?v=39"></script>
+  <script src="js/09-weergaven.js?v=39"></script>
+  <script src="js/10-navigatie.js?v=39"></script>
+  <script src="js/11-uitbreidingen.js?v=39"></script>
+  <script src="js/12-nieuws.js?v=39"></script>
+  <script src="js/13-app.js?v=39"></script>
+  <script src="js/15-start.js?v=39"></script>
+  <script type="module" src="js/nieuws-preact.js?v=39"></script>
+  <script type="module" src="js/plannen-preact.js?v=39"></script>
 </body>
 </html>

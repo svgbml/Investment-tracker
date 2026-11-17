@@ -292,8 +292,8 @@ footer.foot-page { max-width: 1184px; margin: 0 auto; padding: 0 48px 40px; font
 .fresh .bars .b, .fresh .fin-c i, .fresh .eps-b i, .fresh .mcal-c i { animation: growY .7s var(--ease) both; animation-delay: .15s; }
 .fresh .hbars .pos, .fresh .hbars .neg, .fresh .meter > div, .fresh .bar-mini i, .fresh .rec-bar i, .fresh .mcal i { animation: growX .8s var(--ease) both; animation-delay: .15s; }
 .fresh .srri span.on, .fresh .lvl { animation: pop .45s var(--ease) both; animation-delay: .3s; }
-.fresh .kv div { animation: fadeIn .5s ease both; }
-.tile { transition: transform .2s var(--ease), box-shadow .2s var(--ease); }
+
+.tile { transition: transform .2s var(--ease); }
 button.tile:hover, .tile.clickable:hover { transform: translateY(-3px); box-shadow: 0 10px 24px rgba(20, 24, 31, .10); }
 .btn { transition: transform .15s var(--ease), background-color .2s, box-shadow .2s; }
 .btn:active { transform: scale(.97); }
@@ -332,7 +332,7 @@ button.tile:hover, .tile.clickable:hover { transform: translateY(-3px); box-shad
 .m-top {
   position: sticky; top: 0; z-index: 20; display: flex; align-items: center; justify-content: space-between; gap: 12px;
   padding: calc(8px + env(safe-area-inset-top)) 12px 8px 16px; background: rgba(232, 237, 250, .94);
-  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); transition: background-color .3s;
+   transition: background-color .3s;
 }
 body[data-page="list"] .m-top, body[data-page="stats"] .m-top { background: rgba(246, 247, 249, .94); }
 .m-top h1 { font-size: 22px; }
@@ -404,7 +404,7 @@ body[data-page="list"] .m-top, body[data-page="stats"] .m-top { background: rgba
 .m-tabs {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr));
   padding: 4px 6px calc(4px + env(safe-area-inset-bottom)); border-top: 1px solid var(--rule);
-  background: rgba(255, 255, 255, .95); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  background: rgba(255, 255, 255, .98); 
 }
 .m-tabs a, .m-tabs button {
   position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
@@ -417,7 +417,7 @@ body[data-page="list"] .m-top, body[data-page="stats"] .m-top { background: rgba
 /* Bedrijfspagina op de telefoon */
 .md .m-dtop {
   position: sticky; top: 0; z-index: 5; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 4px;
-  padding: calc(6px + env(safe-area-inset-top)) 8px 6px; background: rgba(232, 237, 250, .95); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  padding: calc(6px + env(safe-area-inset-top)) 8px 6px; background: rgba(232, 237, 250, .98); 
 }
 .md .m-dtop .t { text-align: center; font-weight: 700; }
 .m-back { display: inline-flex; align-items: center; gap: 4px; min-height: 44px; padding: 0 10px; border: 0; border-radius: 999px; background: transparent; color: var(--accent); font-weight: 600; cursor: pointer; }
@@ -826,7 +826,7 @@ button.alt:hover { outline: 2px solid var(--accent); }
 .why-in { padding: 0 4px 16px 4px; }
 :root[data-motion="off"] .why-d::details-content, :root[data-motion="off"] .why-d summary::after { transition: none; }
 /* Ingeklapte tegels: grafiek past helemaal */
-.bars, .chart, svg.dual, .donut, .fin-bars { transition: height .38s cubic-bezier(.2, .7, .2, 1), width .38s cubic-bezier(.2, .7, .2, 1); }
+.tile.fold-anim .bars, .tile.fold-anim .chart, .tile.fold-anim svg.dual, .tile.fold-anim .donut, .tile.fold-anim .fin-bars { transition: height .38s cubic-bezier(.2, .7, .2, 1), width .38s cubic-bezier(.2, .7, .2, 1); }
 .tile.folded .fit-chart { height: var(--fit-h) !important; }
 .tile.folded .donut.fit-chart { width: var(--fit-h); }
 .tile.fold.fit::after { height: 44px; background-position: center bottom 4px, 0 0; background-size: 18px, auto; }
@@ -925,3 +925,43 @@ details.acct summary { display: grid; grid-template-columns: auto minmax(0, 1fr)
 .drift-note:hover { box-shadow: 0 6px 16px rgba(20, 24, 31, .10); }
 :root[data-theme="dark"] .drift-note { background: #3A2E12; color: #F5D9A0; }
 #m-drift-note .drift-note { margin: 0 0 12px; }
+
+/* ---------- Vloeiender animaties ---------- */
+/* Inzoomen: de inhoud krijgt tijdens de animatie een vaste maat en staat los van de rest,
+   zodat de browser per beeld alleen de rand verplaatst in plaats van de hele bedrijfspagina opnieuw op te bouwen */
+.detail.zooming { overflow: hidden; }
+.detail.zooming .detail-inner { position: absolute; left: 0; top: 0; width: 100vw; height: 100vh; overflow: hidden; contain: strict; }
+.detail.anim { will-change: left, top, width, height; }
+/* Tegels zijn op zichzelf staande blokken: in- en uitklappen raakt de rest van de pagina minder */
+.tile { contain: layout paint; }
+/* Lange pagina's: tegels buiten beeld worden pas getekend als je erheen scrolt */
+#page-plan .plan-grid > .tile, #m-plan .plan-grid > .tile, #page-news .grid > .tile, #m-news .grid > .tile, #val-grid .tile, #m-val .tile { content-visibility: auto; contain-intrinsic-size: auto 420px; }
+/* Hoogstens twaalf tegels tegelijk laten inschuiven */
+.page.enter .stagger > :nth-child(n+13), .m-view.enter .stagger > :nth-child(n+13) { animation: none; }
+.page.in-r, .page.in-l, .m-view.in-r, .m-view.in-l { will-change: transform, opacity; }
+
+/* Volglijst: zoeken, ongeldige symbolen, grafiek die nog komt */
+.ws-wrap { position: relative; flex: 1 1 260px; min-width: 0; display: flex; }
+.ws-wrap .search { width: 100%; }
+.ws-results { position: absolute; z-index: 20; left: 0; right: 0; top: calc(100% + 4px); max-height: 340px; overflow: auto; border: 1px solid var(--rule); border-radius: 14px; background: var(--surface); box-shadow: 0 12px 28px rgba(20, 24, 31, .16); }
+.ws-hit { display: grid; grid-template-columns: 70px minmax(0, 1fr) auto; gap: 10px; align-items: center; width: 100%; min-height: 44px; padding: 6px 12px; border: 0; border-top: 1px solid var(--rule); background: transparent; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.ws-hit:first-child { border-top: 0; }
+.ws-hit:hover, .ws-hit:focus-visible { background: var(--bg); }
+.ws-hit:disabled { opacity: .55; cursor: default; }
+.ws-hit span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.watch-add { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.watch-clean { flex-basis: 100%; margin-top: 4px; }
+.tile.watch.bad { border: 2px dashed var(--rule); background: transparent; }
+.m-row.bad { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 10px 16px; border-top: 1px solid var(--rule); }
+.spark-empty { display: block; margin: auto -20px 0; padding: 18px 20px; font-size: 12px; color: var(--ink-2); background: var(--bg); border-radius: 0 0 var(--radius) var(--radius); }
+/* Doelen, koersalarm */
+.goal { padding: 10px 0; border-top: 1px solid var(--rule); }
+.goal:first-of-type { border-top: 0; }
+.goal-h { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; align-items: baseline; }
+.goal-row { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, .8fr) minmax(0, 1fr) 0 44px; }
+.palert-add { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
+.palert-add select { min-height: 44px; padding: 0 10px; border: 1px solid #C9CED6; border-radius: 10px; background: var(--surface); color: var(--ink); font: inherit; }
+.palert-add .eur-in input { width: 100px; }
+.linklike.danger { color: var(--loss); }
+:root[data-theme="dark"] .palert-add select { background: #10141A; border-color: #3A4250; }
+:root[data-theme="dark"] .ws-results { box-shadow: 0 12px 28px rgba(0, 0, 0, .5); }

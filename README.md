@@ -35,7 +35,12 @@ Zet ze aan op de website onder *Instellingen → Koppelingen en functies*. Sleut
 | Weekoverzicht per e-mail (optioneel, staat standaard uit) | [Resend](https://resend.com/signup) | gratis sleutel (`RESEND_KEY`) en je adres (`MAIL_TO`) |
 | Deel-link: iemand anders bekijkt je portefeuille, alleen lezen en desgewenst zonder bedragen | je eigen Worker | niets extra |
 | Volledige geschiedenis inlezen uit de CSV-export van Trading 212 (ook de echte bronbelasting) | Trading 212 | niets extra |
-| Reservebronnen als een bron zijn limiet bereikt of hapert (ECB, Eurostat, Finnhub, Alpha Vantage); bij Koppelingen zie je welke in gebruik is | diverse | werkt beter met meer sleutels |
+| Reservebronnen als een bron zijn limiet bereikt of hapert (ECB, Eurostat, Finnhub, Alpha Vantage, Twelve Data); bij Koppelingen zie je welke in gebruik is | diverse | werkt beter met meer sleutels |
+| Statuspagina (laatste meting, welke bronnen werken) en een melding als de metingen een paar keer achter elkaar mislukken | je eigen Worker | niets extra |
+| Reservekopie van je gegevens downloaden en terugzetten (zonder sleutels) | je eigen Worker | niets extra |
+| Eigen koersalarmen per aandeel (boven of onder een koers), meerdere doelen, dividend-sneeuwbal, kosten (TER) van je fondsen vergeleken, inleg per maand met herinnering op de 25e | Trading 212 en je eigen Worker | niets extra |
+| Bedrijven zoeken bij het toevoegen aan je volglijst; onbekende symbolen worden gemeld en zijn met één klik weg te halen | SEC-bedrijvenlijst en Finnhub | niets extra; Finnhub (`FINNHUB_KEY`) vindt ook Europese aandelen |
+| Koersgrafieken voor aandelen die FMP niet gratis geeft | [Twelve Data](https://twelvedata.com/register) | gratis sleutel (`TWELVEDATA_KEY`), optioneel; anders Alpha Vantage |
 | Waardering: koers-winstverhouding en dividendrendement tegenover de eigen geschiedenis en de sector | Financial Modeling Prep | gratis sleutel (`FMP_KEY`); zonder waarderingsdata rekent de site de K/W uit SEC-cijfers |
 | Nieuwspagina met marktnieuws, analisten per bedrijf, betrouwbaarheid van analisten en suggesties, insiderhandel | Finnhub | gratis sleutel (`FINNHUB_KEY`) |
 | Suggesties om te volgen | FMP (vergelijkbare bedrijven) en de samenstelling van je indexfondsen | gratis sleutel (`FMP_KEY`) of een fondsbestand |

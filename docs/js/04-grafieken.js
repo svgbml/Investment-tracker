@@ -37,8 +37,33 @@ const tFmt = (range, pts) => { const daily = pts && pts.length > 1 && (pts[1].t 
 
 /* Lijngrafiek op een vaste 1000×100-schaal die meerekt met de breedte.
  * sets: [{ pts: [{t, v}], color, area, dash, label, fmt }]; de eerste reeks bepaalt de tijdas. */
+// Lange reeksen uitdunnen tot wat het scherm kan tonen; per stukje blijven het hoogste en laagste punt
+// (en punten met een markering) behouden, zodat de vorm van de lijn gelijk blijft
+function thinSets(host, sets, o) {
+  const main = (sets[0] && sets[0].pts) || [];
+  const max = Math.max(200, Math.min(900, Math.round((host.clientWidth || 600) * 1.5)));
+  if (main.length <= max) return { sets, o };
+  const keep = new Set([0, main.length - 1]);
+  const buckets = Math.floor(max / 2), size = main.length / buckets;
+  for (let b = 0; b < buckets; b++) {
+    const from = Math.floor(b * size), to = Math.min(main.length, Math.floor((b + 1) * size));
+    let lo = -1, hi = -1;
+    for (let i = from; i < to; i++) { const v = main[i].v; if (!isNum(v)) continue; if (lo < 0 || v < main[lo].v) lo = i; if (hi < 0 || v > main[hi].v) hi = i; }
+    if (lo >= 0) keep.add(lo); if (hi >= 0) keep.add(hi);
+  }
+  (o.markers || []).forEach((m) => { if (m.i != null) keep.add(m.i); });
+  const idx = [...keep].sort((a, b) => a - b);
+  const remap = new Map(idx.map((i, j) => [i, j]));
+  const ts = new Set(idx.map((i) => main[i].t));
+  return {
+    sets: sets.map((s) => Object.assign({}, s, { pts: s.pts.filter((p) => ts.has(p.t)) })),
+    o: Object.assign({}, o, { markers: (o.markers || []).map((m) => (m.i != null ? Object.assign({}, m, { i: remap.get(m.i) }) : m)) }),
+  };
+}
+
 function lineChart(host, sets, o) {
   o = o || {};
+  ({ sets, o } = thinSets(host, sets, o));
   host.innerHTML = '';
   const main = (sets[0] && sets[0].pts) || [];
   if (main.length < 2) {
