@@ -90,7 +90,8 @@ function sortedCompanies() {
     result: (x, y) => (y.resultPct ?? -9) - (x.resultPct ?? -9),
     name: (x, y) => x.tk.localeCompare(y.tk),
   }[ui.listSort];
-  return M.companies.slice().sort(by);
+  const out = M.companies.slice().sort(by);
+  return ui.listDir === 'asc' ? out.reverse() : out;
 }
 
 function filteredCompanies() {
@@ -108,6 +109,7 @@ function listSummary() {
 
 function renderList() {
   $('list-sub').textContent = listSummary();
+  listWeights();
   segButtons($('list-filter'), FILTERS, ui.listFilter, (k) => { ui.listFilter = k; renderList(); });
   segButtons($('list-sort'), SORTS, ui.listSort, (k) => { ui.listSort = k; renderList(); });
   segButtons($('list-span'), SPANS, ui.listSpan, (k) => { ui.listSpan = k; renderList(); });
@@ -203,34 +205,94 @@ function renderMHome() {
   renderMStats();
 }
 
-const M_CHIPS = [['sort', 'move', 'Verandering'], ['sort', 'value', 'Waarde'], ['sort', 'result', 'Sinds aankoop'], ['sort', 'name', 'Naam'], ['sep'],
-  ['filter', 'up', 'Gestegen'], ['filter', 'down', 'Gedaald'], ['sep'], ['span', 'today', 'Vandaag'], ['span', '1m', '30 dagen'], ['span', 'all', 'Alles']];
-
+// ---------- Telefoon: Bedrijven als compacte tabel per sector, met grafiekjes en sorteerbare kolommen ----------
+const M_CHIPS = [['label', 'Toon'], ['filter', 'all', 'Alle'], ['filter', 'up', 'Gestegen'], ['filter', 'down', 'Gedaald'],
+  ['label', 'Periode'], ['span', 'today', 'Vandaag'], ['span', '1m', '30 dagen'], ['span', 'all', 'Alles'],
+  ['label', 'Indeling'], ['group', '1', 'Per sector'], ['group', '0', 'Eén lijst']];
+const PCT0 = nf({ style: 'percent', maximumFractionDigits: 0 });
+const listSectorOf = (c) => { const s = M.mk && M.mk.ok ? M.mk.sectorOf(c) : (isFundC(c) ? FUNDS : 'Onbekend'); return s === FUNDS ? 'Fondsen' : sectorNl(s); };
+function spanPct(c, pts) {
+  if (ui.listSpan === 'today') return c.changePct;
+  return pts.length > 1 && pts[0].v > 0 ? pts[pts.length - 1].v / pts[0].v - 1 : null;
+}
 function renderMList() {
   $('m-list-sub').textContent = listSummary();
+  const wn = watchSyms().length;
+  $$('#m-list-tabs [data-lpane]').forEach((b) => {
+    const k = b.dataset.lpane;
+    b.textContent = k === 'pos' ? 'Posities ' + M.companies.length : k === 'watch' ? 'Volglijst ' + wn : 'Waardering';
+    b.setAttribute('aria-pressed', String(k === ui.listPane));
+  });
+  $$('#m-list [data-lpane-body]').forEach((el) => { el.hidden = el.dataset.lpaneBody !== ui.listPane; });
   const chips = $('m-chips');
   chips.innerHTML = M_CHIPS.map((ch) => {
-    if (ch[0] === 'sep') return '<span class="sep" aria-hidden="true"></span>';
-    const on = ch[0] === 'sort' ? ui.listSort === ch[1] : ch[0] === 'filter' ? ui.listFilter === ch[1] : ui.listSpan === ch[1];
-    const lbl = ch[0] === 'span' ? 'Grafiek ' + ch[2].toLowerCase() : ch[2];
-    return '<button type="button" data-g="' + ch[0] + '" data-k="' + ch[1] + '" aria-pressed="' + on + '">' + esc(lbl) + '</button>';
+    if (ch[0] === 'label') return '<span class="lbl">' + esc(ch[1]) + '</span>';
+    const on = ch[0] === 'filter' ? ui.listFilter === ch[1] : ch[0] === 'span' ? ui.listSpan === ch[1] : String(ui.listGroup ? 1 : 0) === ch[1];
+    return '<button type="button" data-g="' + ch[0] + '" data-k="' + ch[1] + '" aria-pressed="' + on + '">' + esc(ch[2]) + '</button>';
   }).join('');
   chips.onclick = (e) => {
     const b = e.target.closest('button[data-g]');
     if (!b) return;
     const g = b.dataset.g, k = b.dataset.k;
-    if (g === 'sort') ui.listSort = k;
-    else if (g === 'filter') ui.listFilter = ui.listFilter === k ? 'all' : k;
-    else ui.listSpan = k;
+    if (g === 'filter') ui.listFilter = k; else if (g === 'span') ui.listSpan = k; else ui.listGroup = k === '1';
     renderMList();
   };
   const items = filteredCompanies();
-  fill('m-list-rows', items.length ? items.map((c) => {
+  const midLabel = ui.listSpan === 'today' ? M.dayWord === 'vandaag' ? 'Vandaag' : 'Dag' : ui.listSpan === '1m' ? '30 d' : 'Alles';
+  const head = (k, l, left) => {
+    const on = ui.listSort === k;
+    const arrow = on ? (ui.listDir === 'asc' ? ' ↑' : ' ↓') : '';
+    return '<button type="button" data-sortcol="' + k + '"' + (left ? ' class="l"' : '') + ' aria-pressed="' + on + '">' + esc(l) + arrow + '</button>';
+  };
+  const row = (c) => {
     const pts = seriesFor(c.tk, ui.listSpan);
-    const delta = ui.listSpan === 'today' ? c.change : pts.length > 1 ? pts[pts.length - 1].v - pts[0].v : c.change;
-    const bottom = ui.listSort === 'result' ? spct1(c.resultPct) : spct(c.changePct);
-    return mRow(c, pts, { top: eur(c.value), bottom, tone: ui.listSort === 'result' ? c.resultPct : delta });
-  }) : ['<p class="m-sub" style="padding:16px">Geen bedrijven gevonden' + (ui.listQuery ? ' voor “' + esc(ui.listQuery) + '”' : '') + '.</p>']);
+    const sp = spanPct(c, pts);
+    return '<button type="button" class="m-trow" data-ticker="' + esc(c.tk) + '" aria-label="' + esc(c.name + ', ' + eur(c.value) + ', ' + (isNum(sp) ? spct(sp) : '') + ', sinds aankoop ' + (isNum(c.resultPct) ? spct1(c.resultPct) : '–') + '. Openen') + '">' +
+      '<span class="n"><span class="tk">' + esc(c.tk) + '</span><span class="nm">' + esc(c.name) + '</span></span>' +
+      spark(pts, toneColor(sp), 'tspark') +
+      '<span class="v">' + esc(eur(c.value)) + '</span>' +
+      '<span class="p ' + tone(sp) + '">' + esc(isNum(sp) ? spct(sp) : '–') + '</span>' +
+      '<span class="t ' + tone(c.resultPct) + '">' + esc(isNum(c.resultPct) ? spct1(c.resultPct) : '–') + '</span></button>';
+  };
+  let body = [];
+  if (!items.length) body = ['<p class="m-sub" style="padding:16px">Geen bedrijven gevonden' + (ui.listQuery ? ' voor “' + esc(ui.listQuery) + '”' : '') + '.</p>'];
+  else if (ui.listGroup) {
+    const groups = new Map();
+    items.forEach((c) => { const s = listSectorOf(c); if (!groups.has(s)) groups.set(s, []); groups.get(s).push(c); });
+    [...groups.entries()].map(([s, cs]) => ({ s, cs, v: sum(cs.map((c) => c.value)), d: sum(cs.map((c) => c.change || 0)) })).sort((a, b) => b.v - a.v).forEach((g) => {
+      body.push('<div class="m-tgroup"><span>' + esc(g.s.toUpperCase() + ' · ' + (M.totalValue ? PCT0.format(g.v / M.totalValue) : '–')) + '</span><span>' + esc(eur(g.v)) + ' · <b class="' + tone(g.d) + '">' + esc(g.v ? spct(g.d / (g.v - g.d)) : '–') + '</b></span></div>');
+      g.cs.forEach((c) => body.push(row(c)));
+    });
+  } else body = items.map(row);
+  fill('m-list-rows', ['<div class="m-thead">' + head('name', 'Bedrijf', true) + '<span></span>' + head('value', 'Waarde') + head('move', midLabel) + head('result', 'Totaal') + '</div>'].concat(body));
+  $('m-list-rows').onclick = (e) => {
+    const b = e.target.closest('[data-sortcol]');
+    if (!b) return;
+    const k = b.dataset.sortcol;
+    if (ui.listSort === k) ui.listDir = ui.listDir === 'asc' ? 'desc' : 'asc';
+    else { ui.listSort = k; ui.listDir = 'desc'; }
+    renderMList();
+  };
+  $('m-list-note').textContent = 'Tik op een kolomkop om te sorteren; nog een keer draait de volgorde om. Grafiekje en middelste kolom: ' + (ui.listSpan === 'today' ? M.dayWord : ui.listSpan === '1m' ? 'laatste 30 dagen' : 'alles') + '.';
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('#m-list-tabs [data-lpane]');
+  if (!b) return;
+  ui.listPane = b.dataset.lpane;
+  renderMList();
+});
+
+// Desktop: verdelingsbalk boven de tegels
+function listWeights() {
+  const el = $('list-weights');
+  if (!el || !M.totalValue) return;
+  const cs = M.companies.slice().sort((a, b) => b.value - a.value);
+  const shades = ['#1F4FC4', '#2B5BD7', '#4A73DE', '#6A8CE4', '#8FAEF0', '#A9BFF0', '#C2D2F5', '#D7E0F7'];
+  el.innerHTML = cs.map((c, i) => {
+    const w = c.value / M.totalValue;
+    return '<button type="button" data-ticker="' + esc(c.tk) + '" style="flex:' + (w * 100).toFixed(2) + ' 1 0" aria-label="' + esc(c.tk + ', ' + P1.format(w) + ' van je beleggingen. Openen') + '">' +
+      '<i style="background:' + shades[Math.min(i, shades.length - 1)] + '"></i><span><b>' + esc(c.tk) + '</b> ' + esc(PCT0.format(w)) + '</span></button>';
+  }).join('');
 }
 
 $('m-search').addEventListener('input', (e) => { ui.listQuery = e.target.value; if (M) renderMList(); });

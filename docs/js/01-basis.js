@@ -114,7 +114,7 @@ let pushedDetail = false;
 let firstRender = true;
 const ui = {
   page: 'home', heroRange: '3d',
-  listSort: 'move', listFilter: 'all', listSpan: 'today', listQuery: '',
+  listSort: 'move', listFilter: 'all', listSpan: 'today', listQuery: '', listDir: 'desc', listGroup: true, listPane: 'pos',
   detail: null, detailRange: '3d', compare: false, origin: null, mTab: 'pos',
 };
 const RANGES = [['today', 'Vandaag'], ['3d', '3 dagen'], ['1m', '30 dagen'], ['ytd', 'Dit jaar'], ['1y', '1 jaar'], ['all', 'Alles']];

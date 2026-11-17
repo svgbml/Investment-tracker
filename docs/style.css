@@ -1185,3 +1185,34 @@ body.welcoming #mshell { padding-bottom: 0; }
 }
 .wl-brand { white-space: nowrap; }
 @media (max-width: 420px) { .wl-lang button { min-width: 38px; } .wl-brand { font-size: 15px; } }
+
+
+/* ===================== Bedrijven: compacte tabel (telefoon), verdelingsbalk (computer) ===================== */
+.m-ptabs { position: sticky; top: var(--mtop, 60px); z-index: 11; display: flex; padding: 0 16px; background: var(--bg); border-bottom: 1px solid var(--rule); }
+.m-ptabs button { min-height: 44px; padding: 0 12px; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; background: none; font-weight: 600; font-size: 14px; color: var(--ink-2); cursor: pointer; }
+.m-ptabs button[aria-pressed="true"] { color: var(--ink); border-bottom-color: var(--ink); font-weight: 700; }
+#m-list .m-list-tools { position: static; }
+.m-chips .lbl { flex: none; align-self: center; padding: 0 2px 0 6px; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-2); }
+.m-chips button[aria-pressed="true"] { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+.m-table { margin: 4px 16px 0; border-radius: 18px; overflow: hidden; background: var(--surface); }
+.m-thead, .m-trow { display: grid; grid-template-columns: minmax(0, 1fr) 44px 74px 62px 54px; gap: 6px; align-items: center; padding: 0 12px; }
+.m-thead { min-height: 38px; border-bottom: 1px solid var(--rule); }
+.m-thead button { min-height: 38px; padding: 0; border: 0; background: none; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-2); text-align: right; cursor: pointer; white-space: nowrap; }
+.m-thead button.l { text-align: left; }
+.m-thead button[aria-pressed="true"] { color: var(--ink); }
+.m-tgroup { display: flex; justify-content: space-between; gap: 8px; padding: 7px 12px; background: var(--empty); font-size: 12px; font-weight: 700; color: var(--ink-2); }
+.m-trow { width: 100%; min-height: 54px; border: 0; border-bottom: 1px solid var(--rule); background: var(--surface); text-align: left; cursor: pointer; font: inherit; color: inherit; }
+.m-trow:last-child { border-bottom: 0; }
+.m-trow:active { background: var(--bg); }
+.m-trow .n { display: flex; flex-direction: column; min-width: 0; }
+.m-trow .tk { font-weight: 700; font-size: 15px; }
+.m-trow .nm { font-size: 12px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.m-trow .tspark { display: block; width: 44px; height: 22px; }
+.m-trow .v, .m-trow .p { font-weight: 700; font-size: 14px; text-align: right; white-space: nowrap; }
+.m-trow .t { font-size: 13px; text-align: right; white-space: nowrap; }
+.wbar { display: flex; gap: 3px; margin: 18px 0 6px; }
+.wbar button { min-width: 0; display: flex; flex-direction: column; gap: 6px; padding: 0; border: 0; background: none; cursor: pointer; text-align: left; color: inherit; font: inherit; }
+.wbar i { display: block; height: 14px; border-radius: 4px; }
+.wbar span { font-size: 12px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wbar b { color: var(--ink); }
+.wbar button:hover i { filter: brightness(1.1); }
