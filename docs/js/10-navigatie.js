@@ -167,7 +167,7 @@ document.addEventListener('keydown', (e) => {
 // Klik op een tegel, rij of legenda-regel met een ticker: inzoomen
 document.addEventListener('click', (e) => {
   if (!e.target.closest) return;
-  if (e.target.closest('[data-act="links"]')) { openSettings(false); $('links-box').open = true; $('links-box').scrollIntoView({ block: 'nearest' }); return; }
+  if (e.target.closest('[data-act="links"]')) { openSettings(false); setGo('links'); return; }
   if (ov.contains(e.target)) return;
   const imp = e.target.closest('[data-act="import"]');
   if (imp) { openSettings(true); return; }

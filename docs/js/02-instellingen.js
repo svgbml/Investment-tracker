@@ -40,7 +40,49 @@ function openSettings(showImport) {
   loadLinks();
   if (typeof renderPush === 'function') { renderPush(); renderShare(); }
   $('dlg-settings').showModal();
+  if (!getToken() && !demo) setGo('account');
+  else if (showImport === true) setGo('import');
+  else if (matchMedia('(max-width: 760px)').matches) setList();
+  else setGo(setCur || 'links');
 }
+
+// ---------- Instellingen als pagina: een lijst met onderdelen, één onderdeel tegelijk ----------
+let setCur = null;
+function setGo(k) {
+  setCur = k;
+  $$('#form-settings .set-sec').forEach((el) => { el.hidden = el.dataset.set !== k; });
+  $$('#form-settings [data-set-go]').forEach((b) => b.setAttribute('aria-current', String(b.dataset.setGo === k)));
+  $('form-settings').dataset.view = 'sec';
+  $('dlg-settings').scrollTop = 0;
+  setSums();
+}
+function setList() {
+  $('form-settings').dataset.view = 'list';
+  $$('#form-settings [data-set-go]').forEach((b) => b.setAttribute('aria-current', 'false'));
+  setSums();
+}
+function setSums() {
+  const put = (k, t) => { const el = document.querySelector('[data-set-sum="' + k + '"]'); if (el) el.textContent = t; };
+  const th = (() => { try { return localStorage.getItem('tracker.theme') || 'auto'; } catch (e) { return 'auto'; } })();
+  const L = linkState;
+  const on = L ? LINKS.filter((x) => { const ks = (x.keys || []).filter((k) => !k[2]).map(([k]) => L.keys[k]); return x.flag ? L.flags[x.flag] !== false && (!x.keys || x.optKeys || ks.every(Boolean)) : ks.every(Boolean); }).length : null;
+  put('links', demo ? 'alles aan met voorbeeldgegevens' : on == null ? 'je bronnen en extra functies' : on + ' van ' + LINKS.length + ' aan');
+  put('account', getToken() ? 'gekoppeld · code in deze browser' : 'nog niet gekoppeld');
+  put('view', ({ light: 'Licht', dark: 'Donker', auto: 'Automatisch' })[th] + ' · ' + ({ nl: 'Nederlands', en: 'English', de: 'Deutsch', fr: 'Français' })[LANG]);
+  put('push', 'koersbewegingen, cijfers en insiders');
+  put('share', 'een link om mee te kijken');
+  put('install', 'op je beginscherm, met meldingen');
+  put('backup', 'meetstatus en reservekopie');
+  put('update', ($('app-version') && $('app-version').textContent) || '');
+  put('import', 'optioneel, eenmalig');
+}
+document.addEventListener('click', (e) => {
+  if (!e.target.closest) return;
+  const go = e.target.closest('[data-set-go]');
+  if (go) { setGo(go.dataset.setGo); return; }
+  if (e.target.closest('[data-set-back]')) { setList(); return; }
+  if (e.target.closest('[data-set-close]')) $('dlg-settings').close();
+});
 
 $('form-settings').addEventListener('submit', (e) => {
   const action = e.submitter && e.submitter.value;

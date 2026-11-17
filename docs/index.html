@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=55">
+  <link rel="stylesheet" href="style.css?v=51">
 </head>
 <body data-page="home">
 
@@ -307,11 +307,36 @@
   </div>
 
   <dialog id="dlg-settings" aria-labelledby="dlg-settings-title">
-    <form method="dialog" id="form-settings">
-      <h2 id="dlg-settings-title">Instellingen</h2>
+    <form method="dialog" id="form-settings" data-view="list">
+      <div class="set-top">
+        <button type="button" class="set-back" data-set-back><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 5l-7 7 7 7"/></svg><span>Instellingen</span></button>
+        <h2 id="dlg-settings-title">Instellingen</h2>
+        <button type="button" class="set-close" data-set-close aria-label="Sluiten"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+      <div class="set-layout">
+        <nav class="set-nav" aria-label="Onderdelen">
+          <div class="set-group"><button type="button" data-set-go="links" aria-current="false"><span class="set-ic" style="background:#2B5BD7" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg></span><span class="t"><b>Koppelingen</b><span data-set-sum="links"></span></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 5l7 7-7 7"/></svg></button><button type="button" data-set-go="account" aria-current="false"><span class="set-ic" style="background:#14181F" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 11V8a5 5 0 0 1 10 0v3M5 11h14v10H5z"/></svg></span><span class="t"><b>Toegang en Worker</b><span data-set-sum="account"></span></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 5l7 7-7 7"/></svg></button></div>
+          <div class="set-group"><button type="button" data-set-go="view" aria-current="false"><span class="set-ic" style="background:#7A4BD1" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18M12 3v18"/></svg></span><span class="t"><b>Weergave</b><span data-set-sum="view"></span></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 5l7 7-7 7"/></svg></button><button type="button" data-set-go="push" aria-current="false"><span class="set-ic" style="background:#D97A2B" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10 21h4"/></svg></span><span class="t"><b>Meldingen</b><span data-set-sum="push"></span></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 5l7 7-7 7"/></svg></button><button type="button" data-set-go="share" aria-current="false"><span class="set-ic" style="background:#0B7A4B" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7h16v-7M12 3v12M7 8l5-5 5 5"/></svg></span><span class="t"><b>Delen (alleen lezen)</b><span data-set-sum="share"></span></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 5l7 7-7 7"/></svg></button></div>
+          <div class="set-group"><button type="button" data-set-go="install" aria-current="false"><span class="set-ic" style="background:#3A414C" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 2h10v20H7zM11 18h2"/></svg></span><span class="t"><b>Als app installeren</b><span data-set-sum="install"></span></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 5l7 7-7 7"/></svg></button><button type="button" data-set-go="backup" aria-current="false"><span class="set-ic" style="background:#0B7A4B" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg></span><span class="t"><b>Status en reservekopie</b><span data-set-sum="backup"></span></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 5l7 7-7 7"/></svg></button><button type="button" data-set-go="update" aria-current="false"><span class="set-ic" style="background:#5B6472" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 0 1 14-5l2 2M20 12a8 8 0 0 1-14 5l-2-2M18 4v5h-5M6 20v-5h5"/></svg></span><span class="t"><b>Updates</b><span data-set-sum="update"></span></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 5l7 7-7 7"/></svg></button><button type="button" data-set-go="import" aria-current="false"><span class="set-ic" style="background:#8A93A3" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h10l4 4v14H5zM9 12h6M9 16h6"/></svg></span><span class="t"><b>Geschiedenis uit Google Sheet</b><span data-set-sum="import"></span></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 5l7 7-7 7"/></svg></button></div>
+        </nav>
+        <div class="set-main">
+        <section class="set-sec" data-set="links" hidden>
+          <h3 class="set-h">Koppelingen</h3>
+          <div id="links-box">
+        <div id="links-body"><p class="muted small">Sla eerst je toegangscode op.</p></div>
+          </div>
+        </section>
+        <section class="set-sec" data-set="account" hidden>
+          <h3 class="set-h">Toegang en Worker</h3>
       <label for="in-token">Toegangscode</label>
       <input id="in-token" name="token" type="password" autocomplete="off" spellcheck="false" placeholder="Je toegangscode">
       <p class="muted small">De code wordt alleen in deze browser bewaard.</p>
+      <details class="advanced" id="url-box">
+        <summary>Adres van je Worker</summary>
+        <label for="in-url">Adres van de Worker</label>
+        <input id="in-url" name="url" type="url" spellcheck="false" placeholder="https://…/api/data of …/exec">
+        <p id="url-hint" class="muted small">Het adres van je Cloudflare Worker, eindigend op /api/data (bijvoorbeeld https://investment-tracker.jouwnaam.workers.dev/api/data). De oude Apps Script-web-app (eindigt op /exec) werkt ook. Leeg laten: het standaardadres van deze site.</p>
+      </details>
       <details class="advanced" id="login-box">
         <summary>Toegangscode kwijt? Inloggen met je Trading 212-sleutel</summary>
         <div class="login-form" data-login-form>
@@ -321,18 +346,15 @@
           <div class="dlg-actions" style="justify-content:flex-start;margin-top:8px"><button type="button" class="btn ghost" data-login-go>Inloggen</button><span class="small login-st" role="status"></span></div>
         </div>
       </details>
-      <details class="advanced" id="url-box">
-        <summary>Adres van je Worker</summary>
-        <label for="in-url">Adres van de Worker</label>
-        <input id="in-url" name="url" type="url" spellcheck="false" placeholder="https://…/api/data of …/exec">
-        <p id="url-hint" class="muted small">Het adres van je Cloudflare Worker, eindigend op /api/data (bijvoorbeeld https://investment-tracker.jouwnaam.workers.dev/api/data). De oude Apps Script-web-app (eindigt op /exec) werkt ook. Leeg laten: het standaardadres van deze site.</p>
-      </details>
-      <details class="advanced" id="links-box">
-        <summary>Koppelingen en functies</summary>
-        <div id="links-body"><p class="muted small">Sla eerst je toegangscode op.</p></div>
-      </details>
+      <div class="dlg-actions set-actions">
+        <button value="save" id="btn-save" class="btn primary" type="submit">Opslaan en laden</button>
+        <button value="forget" class="btn ghost danger" type="submit">Code vergeten</button>
+      </div>
+        </section>
+        <section class="set-sec" data-set="view" hidden>
+          <h3 class="set-h">Weergave</h3>
       <div class="install-box">
-        <h3>Weergave</h3>
+        
         <div class="seg light" role="group" aria-label="Thema">
           <button type="button" data-theme-pick="light" aria-pressed="false">Licht</button>
           <button type="button" data-theme-pick="dark" aria-pressed="false">Donker</button>
@@ -354,8 +376,28 @@
         </div>
         <p class="muted small" style="margin-top:6px">In het Engels, Duits en Frans zijn menu's, koppen, knoppen en labels vertaald; langere uitleg blijft voorlopig Nederlands.</p>
       </div>
+
+        </section>
+        <section class="set-sec" data-set="push" hidden>
+          <h3 class="set-h">Meldingen</h3>
+      <div class="install-box" id="push-box">
+        
+        <div id="push-body"><p class="muted small">Bezig met laden…</p></div>
+      </div>
+
+        </section>
+        <section class="set-sec" data-set="share" hidden>
+          <h3 class="set-h">Delen (alleen lezen)</h3>
+      <div class="install-box" id="share-box">
+        
+        <div id="share-body"><p class="muted small">Bezig met laden…</p></div>
+      </div>
+
+        </section>
+        <section class="set-sec" data-set="install" hidden>
+          <h3 class="set-h">Als app installeren</h3>
       <div class="install-box" id="install-box">
-        <h3>Als app op je telefoon of computer</h3>
+        
         <p class="muted small" id="install-text">Zet de tracker op je beginscherm; hij opent dan als losse app en toont zonder verbinding de laatst geladen stand.</p>
         <button type="button" id="btn-install" class="btn ghost" hidden>Installeren</button>
         <details class="advanced" style="margin-top:8px"><summary>Zo installeer je hem</summary>
@@ -367,29 +409,33 @@
           <button type="button" class="btn ghost" data-install-copy style="margin-top:6px">Kopiëren</button>
         </details>
       </div>
-      <div class="install-box" id="push-box">
-        <h3>Meldingen</h3>
-        <div id="push-body"><p class="muted small">Bezig met laden…</p></div>
-      </div>
-      <div class="install-box" id="share-box">
-        <h3>Delen (alleen lezen)</h3>
-        <div id="share-body"><p class="muted small">Bezig met laden…</p></div>
-      </div>
+
+        </section>
+        <section class="set-sec" data-set="backup" hidden>
+          <h3 class="set-h">Status en reservekopie</h3>
       <div class="install-box" id="backup-box">
-        <h3>Status en reservekopie</h3>
+        
         <p class="muted small">Zie of je tracker goed meet en welke bronnen werken. Maak af en toe een reservekopie: weken, orders, dividenden, notities en instellingen (zonder sleutels) in één bestand.</p>
         <div class="dlg-actions" style="justify-content:flex-start;margin-top:8px"><button type="button" class="btn ghost" data-goto-status>Status bekijken</button><button type="button" class="btn ghost" data-backup>Reservekopie downloaden</button>
           <label class="btn ghost">Terugzetten<input type="file" accept=".json,application/json" data-restore hidden></label></div>
         <p class="small plan-status" id="backup-status" role="status"></p>
       </div>
+
+        </section>
+        <section class="set-sec" data-set="update" hidden>
+          <h3 class="set-h">Updates</h3>
       <div class="install-box" id="update-box">
-        <h3>Updates</h3>
+        
         <p class="muted small"><b id="app-version">Je hebt de nieuwste versie.</b> De site en de app zoeken zelf naar een nieuwe versie (bij openen en elk half uur) en vragen dan of je wilt bijwerken.</p>
         <div class="dlg-actions" style="margin-top:8px;justify-content:flex-start"><button type="button" class="btn ghost" data-upd="check">Controleren op updates</button></div>
         <p class="small" id="upd-status" role="status"></p>
         <p class="muted small">Je eigen Worker bijwerken: open je kopie van de repository op GitHub en kies <b>Sync fork</b>; Cloudflare bouwt de nieuwe versie dan vanzelf.</p>
       </div>
-      <details class="advanced" id="import-box">
+
+        </section>
+        <section class="set-sec" data-set="import" hidden>
+          <h3 class="set-h">Geschiedenis uit Google Sheet</h3>
+      <details class="advanced" id="import-box" open>
         <summary>Optioneel: geschiedenis uit de oude Google Sheet</summary>
         <p class="muted small">Neemt je weken, dagen, uren en de metingen van de laatste dagen over in de Cloudflare Worker. Eén keer doen is genoeg; zet daarna Live tracking in de sheet uit.</p>
         <label for="in-sheet-url">Adres van de sheet-web-app</label>
@@ -399,11 +445,8 @@
         <div class="dlg-actions" style="margin-top:12px"><button type="button" id="btn-import" class="btn ghost">Geschiedenis overnemen</button></div>
         <p id="import-status" class="small" role="status"></p>
       </details>
-      <div class="dlg-actions">
-        <button value="forget" class="btn ghost danger" type="submit">Code vergeten</button>
-        <span class="spacer"></span>
-        <button value="cancel" class="btn ghost" type="submit">Annuleren</button>
-        <button value="save" id="btn-save" class="btn primary" type="submit">Opslaan en laden</button>
+        </section>
+        </div>
       </div>
     </form>
   </dialog>
@@ -411,28 +454,28 @@
   <div id="tip" class="tip" role="status" hidden></div>
   <div id="print-area" aria-hidden="true"></div>
 
-  <script src="config.js?v=55"></script>
+  <script src="config.js?v=51"></script>
   <!-- De site: gewone scripts op volgorde (één gedeeld bereik), daarna de Preact-componenten als module -->
-  <script src="js/00-kern.js?v=55"></script>
-  <script src="js/01-basis.js?v=55"></script>
-  <script src="js/02-instellingen.js?v=55"></script>
-  <script src="js/03-model.js?v=55"></script>
-  <script src="js/04-grafieken.js?v=55"></script>
-  <script src="js/05-portefeuille.js?v=55"></script>
-  <script src="js/06-plannen.js?v=55"></script>
-  <script src="js/07-onderzoek.js?v=55"></script>
-  <script src="js/08-risico.js?v=55"></script>
-  <script src="js/09-weergaven.js?v=55"></script>
-  <script src="js/10-navigatie.js?v=55"></script>
-  <script src="js/11-uitbreidingen.js?v=55"></script>
-  <script src="js/12-nieuws.js?v=55"></script>
-  <script src="js/13-app.js?v=55"></script>
-  <script src="js/16-analyse.js?v=55"></script>
-  <script src="js/17-markt.js?v=55"></script>
-  <script src="js/18-gemak.js?v=55"></script>
-  <script src="js/20-handel.js?v=55"></script>
-  <script src="js/19-start.js?v=55"></script>
-  <script type="module" src="js/nieuws-preact.js?v=55"></script>
-  <script type="module" src="js/plannen-preact.js?v=55"></script>
+  <script src="js/00-kern.js?v=51"></script>
+  <script src="js/01-basis.js?v=51"></script>
+  <script src="js/02-instellingen.js?v=51"></script>
+  <script src="js/03-model.js?v=51"></script>
+  <script src="js/04-grafieken.js?v=51"></script>
+  <script src="js/05-portefeuille.js?v=51"></script>
+  <script src="js/06-plannen.js?v=51"></script>
+  <script src="js/07-onderzoek.js?v=51"></script>
+  <script src="js/08-risico.js?v=51"></script>
+  <script src="js/09-weergaven.js?v=51"></script>
+  <script src="js/10-navigatie.js?v=51"></script>
+  <script src="js/11-uitbreidingen.js?v=51"></script>
+  <script src="js/12-nieuws.js?v=51"></script>
+  <script src="js/13-app.js?v=51"></script>
+  <script src="js/16-analyse.js?v=51"></script>
+  <script src="js/17-markt.js?v=51"></script>
+  <script src="js/18-gemak.js?v=51"></script>
+  <script src="js/20-handel.js?v=51"></script>
+  <script src="js/19-start.js?v=51"></script>
+  <script type="module" src="js/nieuws-preact.js?v=51"></script>
+  <script type="module" src="js/plannen-preact.js?v=51"></script>
 </body>
 </html>
