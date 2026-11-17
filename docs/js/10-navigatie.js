@@ -412,6 +412,7 @@ window.addEventListener('resize', () => { clearTimeout(foldResize); foldResize =
 
 function render() {
   $('welcome').hidden = true;
+  document.body.classList.remove('welcoming');
   $('app').hidden = false;
   $('m-main').hidden = false;
   $('demo-banner').hidden = !demo;

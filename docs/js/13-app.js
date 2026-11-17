@@ -124,6 +124,24 @@ Object.assign(EN, {
   'Rondleiding opnieuw': 'Replay tour', 'Sneltoetsen': 'Keyboard shortcuts', 'Sluiten': 'Close', 'Overslaan': 'Skip', 'Klaar': 'Done', 'Gerealiseerd': 'Realised', 'Status van je tracker': 'Status of your tracker',
   'Verbruik per bron': 'Usage per source', 'Fouten op de website': 'Errors on the website', 'Fondskosten': 'Fund costs', 'Dividend': 'Dividend',
 });
+// Startscherm (voor er een tracker gekoppeld is)
+Object.assign(EN, {
+  'Je beleggingen in één oogopslag': 'Your investments at a glance',
+  'Deze site toont je Trading 212-portefeuille, opgehaald door je eigen Cloudflare Worker. Geen sleutel? Kijk dan eerst rond met voorbeeldgetallen: alles werkt, alleen de bedragen zijn verzonnen.': 'This site shows your Trading 212 portfolio, fetched by your own Cloudflare Worker. No key yet? Look around with sample figures first: everything works, only the amounts are made up.',
+  'Functies bekijken met voorbeeldgetallen': 'Explore with sample figures', 'Mijn tracker koppelen': 'Connect my tracker', 'Je beleggingen': 'Your investments', 'Voorbeeldgetallen': 'Sample figures',
+  'Al een tracker? Inloggen met je Trading 212-sleutel': 'Already have a tracker? Sign in with your Trading 212 key',
+  'Op een nieuwe browser of telefoon. Je Worker herkent de sleutel en geeft dit apparaat toegang; je andere koppelingen (FMP, Finnhub, SEC en de rest) staan al in de Worker en werken meteen. De sleutel wordt niet bewaard.': 'On a new browser or phone. Your Worker recognises the key and gives this device access; your other connections (FMP, Finnhub, SEC and the rest) are already in the Worker and work right away. The key is not stored.',
+  'Adres van je Worker': 'Your Worker address', 'Trading 212 API-sleutel': 'Trading 212 API key', 'API-secret': 'API secret', 'Inloggen': 'Sign in', 'Bezig met inloggen…': 'Signing in…',
+  'Vul het adres van je Cloudflare Worker in; het eindigt op /api/data.': 'Enter the address of your Cloudflare Worker; it ends in /api/data.', 'Vul je API-sleutel en secret van Trading 212 in.': 'Enter your Trading 212 API key and secret.',
+  'Waarde, resultaat en grafieken per dag, week en positie.': 'Value, result and charts per day, week and position.', 'Klasse 1 tot 7, wat samen beweegt en wat het risico verlaagt.': 'Class 1 to 7, what moves together and what lowers the risk.',
+  'Streefverdeling, vooruitblik, jaaroverzicht en mijlpalen.': 'Target allocation, projection, annual overview and milestones.', 'Agenda en sectoren': 'Calendar and sectors', 'Kwartaalcijfers, dividenden en vergelijkbare bedrijven.': 'Earnings, dividends and similar companies.',
+  'Nieuws en analisten': 'News and analysts', 'Nieuws, koersdoelen, stemming en insiderhandel.': 'News, price targets, sentiment and insider trading.', 'Valuta en inflatie': 'Currency and inflation',
+  'Euro-dollarkoers, rendement na inflatie, vergelijking met de index.': 'Euro-dollar rate, return after inflation, comparison with the index.', 'gratis FMP-sleutel': 'free FMP key', 'gratis Finnhub-sleutel': 'free Finnhub key', 'geen sleutel': 'no key',
+  'Zo zet je je eigen tracker op': 'How to set up your own tracker', ': een gratis Cloudflare-account en een Trading 212 API-sleutel zijn genoeg voor de basis.': ': a free Cloudflare account and a Trading 212 API key are enough for the basics.',
+  'Je bekijkt de functies met voorbeeldgetallen.': 'You are viewing the features with sample figures.', 'Eigen tracker opzetten': 'Set up your own tracker', 'of': 'or', 'mijn eigen gegevens laden': 'load my own data',
+  'Je bekijkt een gedeelde portefeuille (alleen lezen).': 'You are viewing a shared portfolio (read only).', 'Zelf een tracker opzetten': 'Set up a tracker yourself', 'Er is een nieuwe versie van de tracker.': 'There is a new version of the tracker.', 'Nu bijwerken': 'Update now', 'Later': 'Later',
+});
+EN_RE.push([/^Inloggen is mislukt: (.*)$/, 'Sign-in failed: $1'], [/^Ingelogd\. Al gekoppeld: (.*)$/, 'Signed in. Already connected: $1'], [/^Ingelogd\. Trading 212 is gekoppeld\.$/, 'Signed in. Trading 212 is connected.']);
 const DICT = LANG === 'de' ? Object.assign({}, EN, DE) : LANG === 'fr' ? Object.assign({}, EN, FR) : EN;
 const T = (s) => (LANG !== 'nl' ? DICT[s] || s : s);
 function trText(s) {

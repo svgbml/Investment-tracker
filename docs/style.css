@@ -1145,3 +1145,43 @@ body.hero-past[data-page="home"] .m-top .updated, body.hero-past[data-page="home
 .m-mini .mini-c { overflow: hidden; text-overflow: ellipsis; }
 .m-mini .mini-w { display: none; }
 .brand .top-mini .mini-spark { width: 110px; height: 30px; }
+
+
+/* ===================== Startscherm (nieuw ontwerp) ===================== */
+.welcome, #mshell .welcome, #shell .welcome { max-width: 1080px; margin: 0 auto; padding: 20px 24px 48px; }
+body.welcoming .topbar, body.welcoming .m-top, body.welcoming .m-tabs { display: none; }
+body.welcoming #mshell { padding-bottom: 0; }
+.wl-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0 32px; }
+.wl-brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 17px; }
+.wl-brand svg { width: 24px; height: 24px; color: var(--accent); }
+.wl-lang { display: flex; gap: 3px; padding: 3px; border-radius: 12px; background: var(--empty); }
+.wl-lang button { min-width: 44px; min-height: 38px; border: 0; border-radius: 9px; background: transparent; font-weight: 700; font-size: 13px; color: var(--ink-2); cursor: pointer; }
+.wl-lang button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px rgba(20, 24, 31, .12); }
+.wl-hero { display: flex; flex-wrap: wrap; align-items: center; gap: 28px 56px; }
+.wl-copy { flex: 1.2 1 420px; min-width: 0; }
+.welcome h1 { font-size: clamp(34px, 5vw, 56px); line-height: 1.05; letter-spacing: -0.03em; }
+.welcome .wl-copy p { margin-top: 16px; font-size: 18px; line-height: 1.5; color: var(--ink-2); max-width: 560px; }
+.welcome-actions { margin-top: 28px; }
+.wl-preview { flex: 1 1 320px; max-width: 440px; display: flex; flex-direction: column; gap: 6px; padding: 22px; border-radius: 24px; background: var(--surface); border: 1px solid var(--rule); box-shadow: 0 20px 50px rgba(20, 24, 31, .10); }
+.wl-pl { font-size: 14px; color: var(--ink-2); }
+.wl-pv { font-size: 42px; letter-spacing: -0.03em; line-height: 1.05; }
+.wl-pc { font-size: 15px; font-weight: 600; }
+.wl-preview svg { width: 100%; height: 90px; color: var(--accent); margin: 8px 0 4px; }
+.wl-rows { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.wl-rows span { display: flex; flex-direction: column; gap: 2px; padding: 10px; border-radius: 12px; background: var(--bg); font-size: 13px; }
+.wl-rows i { font-style: normal; font-weight: 700; }
+.wl-note { font-size: 12px; color: var(--ink-2); text-align: right; }
+.welcome .login-card { margin-top: 40px; border: 1px solid var(--rule); }
+.welcome .feat-list li { border: 1px solid var(--rule); }
+.feat-ic { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: var(--soft); color: var(--accent); margin-bottom: 6px; }
+.feat-ic svg { width: 18px; height: 18px; }
+.welcome .wl-foot { margin-top: 4px; }
+@media (max-width: 760px) {
+  .welcome, #mshell .welcome, #shell .welcome { padding: 12px 16px 40px; }
+  .wl-top { padding-bottom: 20px; }
+  .welcome .wl-copy p { font-size: 16px; }
+  .wl-preview { padding: 18px; max-width: none; }
+  .wl-pv { font-size: 34px; }
+}
+.wl-brand { white-space: nowrap; }
+@media (max-width: 420px) { .wl-lang button { min-width: 38px; } .wl-brand { font-size: 15px; } }

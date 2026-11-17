@@ -318,6 +318,7 @@ function showWelcome() {
   $('m-main').hidden = true;
   $('demo-banner').hidden = true;
   $('welcome').hidden = false;
+  document.body.classList.add('welcoming');
   $$('.updated').forEach((e) => { e.textContent = ''; });
 }
 
