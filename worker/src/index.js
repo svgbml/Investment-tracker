@@ -43,6 +43,8 @@ export default {
       ctx.waitUntil((async () => {
         if (env.T212_KEY && env.T212_SECRET) { try { await refreshEvents(env); } catch (e) { await fail('events', e); } }
         try { await planMarket(env); } catch (e) { await fail('plan', e); }
+        try { await cleanupOld(env, new Date(event.scheduledTime)); } catch (e) { await fail('opruimen', e); }
+        try { await alertEarnings(env); } catch (e) { await fail('meldingen', e); }
       })());
       return;
     }
@@ -73,6 +75,15 @@ export default {
       if (!want || !safeEqual(want, cal[1])) return new Response('Niet gevonden', { status: 404 });
       return new Response(await buildIcs(envIn), { status: 200, headers: { 'Content-Type': 'text/calendar; charset=utf-8', 'Cache-Control': 'max-age=3600' } });
     }
+    const shr = /^\/share\/([A-Za-z0-9_-]{20,80})$/.exec(url.pathname);
+    if (shr && request.method === 'GET') {
+      await ensureSchema(envIn);
+      const c = await shareConf(envIn);
+      if (!c || !c.token || !safeEqual(c.token, shr[1])) return json({ ok: false, error: 'Deze deel-link werkt niet (meer).' }, 404, cors);
+      let body = await getKv(envIn, 'data_share');
+      if (!body) { await saveDataCache(envIn, await buildData(await withKeys(envIn))); body = await getKv(envIn, 'data_share'); }
+      return new Response(body, { status: 200, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...cors } });
+    }
     if (!envIn.WEB_TOKEN) {
       return json({ ok: false, error: 'De Worker heeft nog geen WEB_TOKEN. Voeg die toe als geheim bij Cloudflare (Settings > Variables and Secrets).' }, 401, cors);
     }
@@ -99,6 +110,49 @@ export default {
         if (body && body.off) { await setKv(env, 'cal_token', ''); return json({ ok: true, url: null }, 200, cors); }
         return json({ ok: true, url: url.origin + '/cal/' + tok + '.ics' }, 200, cors);
       }
+      // Eigen adres onthouden (voor meldingen en de link in de weekmail)
+      if (url.pathname === '/api/features' || url.pathname === '/api/push/subscribe') {
+        if ((await getKv(env, 'self_origin')) !== url.origin) await setKv(env, 'self_origin', url.origin);
+        // Adres van de website (voor de link in de weekmail), uit de Referer: alles tot en met de laatste /
+        const base = /^https:\/\/[^/?#]+\/[^?#]*/.exec(request.headers.get('Referer') || '');
+        const site = base ? base[0].replace(/[^/]*$/, '') : null;
+        if (site && (await getKv(env, 'site_origin')) !== site) await setKv(env, 'site_origin', site);
+      }
+      if (url.pathname === '/api/push/key' && request.method === 'GET') {
+        return json({ ok: true, key: (await vapidKeys(env)).pub, devices: (await pushSubs(env)).length, rules: await alertRules(env) }, 200, cors);
+      }
+      if (url.pathname === '/api/push/subscribe' && request.method === 'POST') {
+        const b = await request.json().catch(() => ({}));
+        const sub = b && b.sub;
+        if (!sub || !/^https:\/\//.test(sub.endpoint || '') || !sub.keys || !sub.keys.p256dh || !sub.keys.auth) return json({ ok: false, error: 'Ongeldig abonnement.' }, 400, cors);
+        const list = (await pushSubs(env)).filter((x) => x.endpoint !== sub.endpoint);
+        list.push({ endpoint: String(sub.endpoint).slice(0, 600), keys: { p256dh: String(sub.keys.p256dh).slice(0, 200), auth: String(sub.keys.auth).slice(0, 60) }, added: isoLocal(Date.now()), label: String((b && b.label) || '').slice(0, 60) });
+        await setKv(env, 'push_subs', JSON.stringify(list.slice(-10)));
+        return json({ ok: true, devices: Math.min(list.length, 10) }, 200, cors);
+      }
+      if (url.pathname === '/api/push/unsubscribe' && request.method === 'POST') {
+        const b = await request.json().catch(() => ({}));
+        const list = (await pushSubs(env)).filter((x) => !b || !b.endpoint || x.endpoint !== b.endpoint);
+        await setKv(env, 'push_subs', JSON.stringify(b && b.endpoint ? list : []));
+        return json({ ok: true, devices: b && b.endpoint ? list.length : 0 }, 200, cors);
+      }
+      if (url.pathname === '/api/push/test' && request.method === 'POST') {
+        const n = await sendPush(env, { title: 'Testmelding', body: 'Meldingen van je Investeringstracker werken.', url: '#overzicht', tag: 'test' });
+        return json({ ok: true, sent: n }, 200, cors);
+      }
+      if (url.pathname === '/api/mail/test' && request.method === 'POST') {
+        return json({ ok: true, message: await weeklyMail(env, true) }, 200, cors);
+      }
+      if (url.pathname === '/api/share' && request.method === 'GET') {
+        const c = await shareConf(env);
+        return json({ ok: true, on: !!(c && c.token), token: c && c.token, amounts: !!(c && c.amounts), since: c && c.since }, 200, cors);
+      }
+      if (url.pathname === '/api/share' && request.method === 'POST') {
+        return json(Object.assign({ ok: true }, await shareAction(env, await request.json().catch(() => ({})))), 200, cors);
+      }
+      if (url.pathname === '/api/import-csv' && request.method === 'POST') {
+        return json(Object.assign({ ok: true }, await importCsv(env, await request.json().catch(() => ({})))), 200, cors);
+      }
       if (url.pathname === '/api/features' && request.method === 'GET') {
         return json({ ok: true, features: await featureStatus(env, envIn) }, 200, cors);
       }
@@ -113,14 +167,25 @@ export default {
         return json({ ok: true, features: await featureStatus(env, envIn) }, 200, cors);
       }
       if (url.pathname === '/api/data' && request.method === 'GET') {
-        // Het overzicht wordt na elke meting opgebouwd en bewaard; zo leest een websitevraag maar één rij.
-        const cached = await getKv(env, 'data_cache');
-        if (cached && !url.searchParams.has('fresh')) {
-          return new Response(cached, { status: 200, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...cors } });
+        // Het overzicht wordt na elke meting opgebouwd en bewaard, in twee delen: 'core' (metingen, posities, weken;
+        // verandert elke 10 minuten) en 'extra' (markt, onderzoek, koersen; verandert een paar keer per dag).
+        // Met ?part=core of ?part=extra en If-None-Match geeft de Worker 304 als er niets veranderd is.
+        let core = await getKv(env, 'data_core'), extra = await getKv(env, 'data_extra');
+        if (!core || !extra || url.searchParams.has('fresh')) {
+          await saveDataCache(env, await buildData(env));
+          core = await getKv(env, 'data_core'); extra = await getKv(env, 'data_extra');
         }
-        const data = await buildData(env);
-        await setKv(env, 'data_cache', JSON.stringify(data));
-        return json(data, 200, cors);
+        const part = url.searchParams.get('part');
+        if (part === 'core' || part === 'extra') {
+          let tags = {};
+          try { tags = JSON.parse((await getKv(env, 'data_etags')) || '{}'); } catch (e) { tags = {}; }
+          const tag = tags[part];
+          const h = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-cache', ...(tag ? { ETag: tag } : {}), ...cors };
+          if (tag && request.headers.get('If-None-Match') === tag) return new Response(null, { status: 304, headers: h });
+          return new Response(part === 'core' ? core : extra, { status: 200, headers: h });
+        }
+        // Zonder part (oudere versies van de site): beide delen samen
+        return new Response(core.slice(0, -1) + ',' + extra.slice(1), { status: 200, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...cors } });
       }
       if (url.pathname === '/api/run' && request.method === 'POST') {
         return json({ ok: true, message: await tick(env, new Date(), true) }, 200, cors);
@@ -138,7 +203,7 @@ export default {
       }
       if (url.pathname === '/api/etf' && request.method === 'POST') {
         const errs = await refreshEtf(env);
-        await setKv(env, 'data_cache', JSON.stringify(await buildData(env)));
+        await saveDataCache(env, await buildData(env));
         return json({ ok: !errs.length, message: errs.length ? errs.join(' ') : 'Samenstelling van de fondsen bijgewerkt.' }, 200, cors);
       }
       if (url.pathname === '/api/etf-upload' && request.method === 'POST') {
@@ -246,7 +311,7 @@ async function ensureSchema(env) {
 }
 
 // Sleutels die via de website zijn ingevuld; een geheim bij Cloudflare gaat altijd voor
-const KEY_NAMES = ['T212_KEY', 'T212_SECRET', 'FMP_KEY', 'FINNHUB_KEY', 'SEC_CONTACT', 'FRED_KEY', 'ALPHAVANTAGE_KEY'];
+const KEY_NAMES = ['T212_KEY', 'T212_SECRET', 'FMP_KEY', 'FINNHUB_KEY', 'SEC_CONTACT', 'FRED_KEY', 'ALPHAVANTAGE_KEY', 'RESEND_KEY', 'MAIL_TO', 'MAIL_FROM'];
 
 async function withKeys(env) {
   let stored = {};
@@ -270,7 +335,8 @@ async function saveKey(env, name, value) {
   await setKv(env, 'mkt_planned', '');
 }
 
-const FEATURE_DEFAULTS = { fx: true, inflation: true, sec: true, etfAuto: true, indices: true };
+// weeklyMail staat standaard uit: het weekoverzicht per e-mail is optioneel
+const FEATURE_DEFAULTS = { fx: true, inflation: true, sec: true, etfAuto: true, indices: true, weeklyMail: false };
 async function featureFlags(env) {
   const s = await getSettings(env);
   return Object.assign({}, FEATURE_DEFAULTS, (s && s.features) || {});
@@ -288,7 +354,37 @@ async function featureStatus(env, raw) {
     lastCron: await getKv(env, 'last_cron'),
     lastError: await getKv(env, 'last_error'),
     errors: errs,
+    health: await srcState(env),
   };
+}
+
+// ---------- Bronstatus: na herhaalde fouten of een limiet tijdelijk naar een reservebron ----------
+// kv 'src_health' = { bron: { fails, until (ms), msg, at, backup, backupAt } }
+async function srcState(env) { try { return JSON.parse((await getKv(env, 'src_health')) || '{}'); } catch (e) { return {}; } }
+async function srcDown(env, src) { const o = (await srcState(env))[src]; return !!(o && o.until && o.until > Date.now()); }
+// Een limiet: tot middernacht (UTC) uit; andere fouten: na 3 keer 6 uur uit
+async function srcFail(env, src, msg, limit) {
+  const st = await srcState(env);
+  const o = st[src] || { fails: 0 };
+  o.fails = (o.fails || 0) + 1; o.msg = String(msg || '').slice(0, 160); o.at = isoLocal(Date.now());
+  if (limit) { const d = new Date(); d.setUTCHours(24, 5, 0, 0); o.until = d.getTime(); }
+  else if (o.fails >= 3) o.until = Date.now() + 6 * HOUR_MS;
+  st[src] = o;
+  await setKv(env, 'src_health', JSON.stringify(st));
+}
+async function srcOk(env, src) {
+  const st = await srcState(env);
+  if (!st[src]) return;
+  delete st[src];
+  await setKv(env, 'src_health', JSON.stringify(st));
+}
+// Noteer welke reservebron het werk deed (voor de site, bij Koppelingen)
+async function srcBackup(env, src, backup) {
+  const st = await srcState(env);
+  const o = st[src] || { fails: 0 };
+  o.backup = backup; o.backupAt = isoLocal(Date.now());
+  st[src] = o;
+  await setKv(env, 'src_health', JSON.stringify(st));
 }
 
 async function noteExtError(env, source, msg) {
@@ -307,9 +403,35 @@ function corsHeaders(request, env) {
   return {
     'Access-Control-Allow-Origin': allow,
     'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Authorization, Content-Type',
+    'Access-Control-Allow-Headers': 'Authorization, Content-Type, If-None-Match',
+    'Access-Control-Expose-Headers': 'ETag',
     'Vary': 'Origin',
   };
+}
+
+// ---------- Opgebouwde gegevens bewaren (in twee delen, met een vingerafdruk per deel) ----------
+const EXTRA_KEYS = ['market', 'research', 'fin', 'idx', 'hicp', 'fx', 'marketNews', 'etf'];
+
+async function sha256Hex(s) {
+  const h = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(s)));
+  return [...new Uint8Array(h)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function saveDataCache(env, data) {
+  const core = {}, extra = { ok: true, part: 'extra' };
+  Object.keys(data).forEach((k) => { if (EXTRA_KEYS.includes(k)) extra[k] = data[k]; else core[k] = data[k]; });
+  core.part = 'core';
+  const cs = JSON.stringify(core), es = JSON.stringify(extra);
+  // generated verandert bij elke opbouw; zonder dat veld is de vingerafdruk alleen anders als de inhoud anders is
+  const tagOf = async (o) => '"' + (await sha256Hex(JSON.stringify(Object.assign({}, o, { generated: null })))).slice(0, 24) + '"';
+  await env.DB.batch([
+    env.DB.prepare('INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)').bind('data_core', cs),
+    env.DB.prepare('INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)').bind('data_extra', es),
+    env.DB.prepare('INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)').bind('data_etags', JSON.stringify({ core: await tagOf(core), extra: await tagOf(extra) })),
+    env.DB.prepare('DELETE FROM kv WHERE key = ?').bind('data_cache'),
+  ]);
+  try { await saveShareCache(env, data); } catch (e) { console.error('share', e); }
+  return data;
 }
 
 function json(obj, status, headers) {
@@ -321,21 +443,26 @@ function json(obj, status, headers) {
 
 // Geeft de toegangscode terug als sleutel én secret gelijk zijn aan die van Trading 212 in deze Worker.
 // Zo hoef je op een nieuw apparaat de toegangscode niet te weten: alle andere koppelingen staan al in de Worker.
-// Maximaal 10 mislukte pogingen per uur (voor de hele Worker); de sleutel wordt nergens bewaard.
+// Maximaal 10 mislukte pogingen per uur per verbinding (IP-adres, alleen als vingerafdruk bewaard) en 100 voor de
+// hele Worker samen, tegen raden vanaf veel adressen. De sleutel wordt nergens bewaard.
 async function loginWithT212(request, envIn, cors) {
   await ensureSchema(envIn);
   const body = await request.json().catch(() => ({}));
   const key = String((body && body.key) || '').trim(), secret = String((body && body.secret) || '').trim();
   const hour = new Date().toISOString().slice(0, 13);
+  const who = (await sha256Hex('ip:' + (request.headers.get('CF-Connecting-IP') || 'onbekend'))).slice(0, 16);
   let lim = {};
   try { lim = JSON.parse((await getKv(envIn, 'login_fail')) || '{}'); } catch (e) { lim = {}; }
-  const fails = lim.h === hour ? lim.n || 0 : 0;
-  if (fails >= 10) return json({ ok: false, error: 'Te veel mislukte pogingen. Probeer het over een uur opnieuw, of gebruik je toegangscode.' }, 429, cors);
+  if (lim.h !== hour) lim = { h: hour, total: 0, ips: {} };
+  lim.ips = lim.ips || {}; lim.total = lim.total || 0;
+  const fails = lim.ips[who] || 0;
+  if (fails >= 10 || lim.total >= 100) return json({ ok: false, error: 'Te veel mislukte pogingen. Probeer het over een uur opnieuw, of gebruik je toegangscode.' }, 429, cors);
   const env = await withKeys(envIn);
   if (!env.T212_KEY || !env.T212_SECRET) return json({ ok: false, error: 'In deze Worker staat nog geen Trading 212-sleutel. Log in met je toegangscode en voeg de sleutel toe bij Koppelingen.' }, 409, cors);
   const ok = key.length > 8 && secret.length > 8 && safeEqual(String(env.T212_KEY), key) && safeEqual(String(env.T212_SECRET), secret);
   if (!ok) {
-    await setKv(envIn, 'login_fail', JSON.stringify({ h: hour, n: fails + 1 }));
+    lim.ips[who] = fails + 1; lim.total++;
+    await setKv(envIn, 'login_fail', JSON.stringify(lim));
     return json({ ok: false, error: 'Deze sleutel en secret horen niet bij deze Worker. Controleer ze, en het adres van de Worker.' }, 401, cors);
   }
   return json({ ok: true, token: envIn.WEB_TOKEN, features: await featureStatus(env, envIn) }, 200, cors);
@@ -490,6 +617,7 @@ async function tick(env, now, force) {
     await env.DB.batch(rows.map((r) => stmt.bind(ts, r.ticker, r.name, r.value, r.unrealized, r.price, r.qty)));
     await setKv(env, 'pos_extra', JSON.stringify(posExtra(positions)));
     msgs.push(`${positions.length} posities gemeten (totaal €${total.toFixed(2)}).`);
+    try { const m = await alertMoves(env, rows, now); if (m) msgs.push(m); } catch (e) { console.error('meldingen', e); }
   }
 
   const p = parts(now);
@@ -507,10 +635,14 @@ async function tick(env, now, force) {
 
   if (p.weekday === 6 && p.hour === 9) {
     const last = await getKv(env, 'last_week_snapshot');
-    if (last !== p.day) msgs.push(await weeklySnapshot(env, now, false));
+    if (last !== p.day) {
+      msgs.push(await weeklySnapshot(env, now, false));
+      try { msgs.push(await alertDrift(env, p.day)); } catch (e) { console.error('meldingen', e); }
+      try { msgs.push(await weeklyMail(env, false)); } catch (e) { console.error('weekmail', e); }
+    }
   }
   const text = msgs.filter(Boolean).join(' ');
-  if (text) await setKv(env, 'data_cache', JSON.stringify(await buildData(env)));
+  if (text) await saveDataCache(env, await buildData(env));
   return text;
 }
 
@@ -620,6 +752,22 @@ async function housekeeping(env, now) {
   return msgs.join(' ');
 }
 
+// Eén keer per maand: oude uurregels, koersen van vergelijkbare bedrijven en sectordagen opruimen.
+// Dagregels, weken, posities en orders blijven altijd bewaard (daar draaien grafieken en jaaroverzichten op).
+const KEEP_HOURS_DAYS = 400, KEEP_EXT_DAYS = 420;
+async function cleanupOld(env, now) {
+  const month = parts(now).day.slice(0, 7);
+  if ((await getKv(env, 'cleanup_month')) === month) return '';
+  const day = (n) => new Date(now.getTime() - n * 864e5).toISOString().slice(0, 10);
+  const out = [];
+  const run = async (sql, arg, what) => { try { const r = await env.DB.prepare(sql).bind(arg).run(); const n = r.meta && r.meta.changes; if (n) out.push(n + ' ' + what); } catch (e) { /* tabel bestaat (nog) niet */ } };
+  await run('DELETE FROM hours WHERE hour < ?', now.getTime() - KEEP_HOURS_DAYS * 864e5, 'uurregels');
+  await run('DELETE FROM ext_prices WHERE day < ?', day(KEEP_EXT_DAYS), 'koersen');
+  await run('DELETE FROM ext_perf WHERE day < ?', day(KEEP_EXT_DAYS), 'sectordagen');
+  await setKv(env, 'cleanup_month', month);
+  return out.length ? 'Opgeruimd: ' + out.join(', ') + '.' : '';
+}
+
 async function batchChunks(env, stmts) {
   for (let i = 0; i < stmts.length; i += 50) await env.DB.batch(stmts.slice(i, i + 50));
 }
@@ -647,7 +795,7 @@ async function weeklySnapshot(env, now, force) {
     r2(num(p.walletImpact.currentValue)), r2(num(p.walletImpact.unrealizedProfitLoss)), num(p.quantity))));
   await batchChunks(env, stmts);
   await setKv(env, 'last_week_snapshot', day);
-  await setKv(env, 'data_cache', JSON.stringify(await buildData(env)));
+  await saveDataCache(env, await buildData(env));
   return `Weeksnapshot ${day}: accountwaarde €${account.toFixed(2)}, netto gestort €${netDeposits.toFixed(2)}.`;
 }
 
@@ -865,6 +1013,7 @@ async function refreshEvents(env) {
       perShare: num(d.grossAmountPerShare) || null, qty: num(d.quantity) || null,
     })).filter((d) => d.date).sort((a, b) => a.date.localeCompare(b.date));
   } catch (e) { out.errors.push('Dividendgeschiedenis: ' + e.message); }
+  try { const dc = JSON.parse((await getKv(env, 'div_csv')) || '[]'); if (dc.length) out.received = mergeCsvDividends(out.received, dc); } catch (e) { /* geen CSV-dividenden */ }
 
   let prev = null;
   try { prev = JSON.parse((await getKv(env, 'events')) || 'null'); } catch (e) { prev = null; }
@@ -902,6 +1051,23 @@ async function refreshEvents(env) {
       } catch (e) { out.errors.push(sym + ' dividend: ' + e.message); failed.add(h.ticker); if (/limiet|401|403/.test(e.message)) { held.forEach((x) => failed.add(x.ticker)); break; } }
     }
   }
+  // Reserve: datum en verwachting van de volgende kwartaalcijfers van Finnhub, voor aandelen waarvoor FMP niets gaf
+  if (env.FINNHUB_KEY) {
+    const need = held.filter((x) => !x.etf).concat(watchList).filter((h) => (!env.FMP_KEY || failed.has(h.ticker)) && !out.earnings.some((e) => e.ticker === h.ticker)).slice(0, 15);
+    const to = new Date(Date.now() + 100 * 864e5).toISOString().slice(0, 10);
+    let used = 0;
+    for (const h of need) {
+      const sym = SYMBOL_MAP[h.ticker] || h.ticker;
+      const r = await getJson(FINNHUB_BASE + '/calendar/earnings?from=' + today + '&to=' + to + '&symbol=' + encodeURIComponent(sym) + '&token=' + encodeURIComponent(env.FINNHUB_KEY));
+      if (r.status === 429) break;
+      const list = ((r.ok && r.body && r.body.earningsCalendar) || []).filter((x) => x.date && x.date >= today).sort((a, b) => a.date.localeCompare(b.date));
+      if (list[0]) {
+        out.earnings.push({ ticker: h.ticker, symbol: sym, date: list[0].date, epsEst: numOrNull(list[0].epsEstimate), revEst: numOrNull(list[0].revenueEstimate), src: 'finnhub' });
+        failed.delete(h.ticker); used++;
+      }
+    }
+    if (used) await srcBackup(env, 'fmp', 'Finnhub (kwartaalcijfers)');
+  }
   // Mislukt bij FMP (limiet of tijdelijke fout): houd de vorige gegevens van dat aandeel
   if (prev && failed.size) {
     ['earnings', 'dividends', 'lastEarnings'].forEach((k) => {
@@ -920,7 +1086,7 @@ async function refreshEvents(env) {
   } catch (e) { await setKv(env, 'etf_error', String(e.message || e)); }
   await flushFmp(env);
   await setKv(env, 'events', JSON.stringify(out));
-  await setKv(env, 'data_cache', JSON.stringify(await buildData(env)));
+  await saveDataCache(env, await buildData(env));
   return `Gebeurtenissen bijgewerkt: ${out.earnings.length} cijferdata, ${out.dividends.length} dividenden, ` +
     `${out.received.length} ontvangen dividenden${out.errors.length ? ' (' + out.errors.length + ' fouten)' : ''}.`;
 }
@@ -983,7 +1149,7 @@ async function syncOrders(env) {
   await batchChunks(env, stmts);
   if (full) await setKv(env, 'orders_full', '1');
   await setKv(env, 'orders_synced', parts(new Date()).day);
-  await setKv(env, 'data_cache', JSON.stringify(await buildData(env)));
+  await saveDataCache(env, await buildData(env));
   return `Orders: ${stmts.length} uitvoeringen bijgewerkt (${pages} pagina's).`;
 }
 
@@ -1031,13 +1197,18 @@ async function saveSettings(env, body) {
       })).filter((h) => h.name && h.value != null),
     }));
   }
+  if (body && body.alerts && typeof body.alerts === 'object') {
+    const a = body.alerts, num2 = (x, lo, hi) => { const v = Number(x); return isFinite(v) && v >= lo && v <= hi ? v : null; };
+    clean.alerts = { move: num2(a.move, 0, 50), earnings: !!a.earnings, insider: !!a.insider, drift: num2(a.drift, 0, 50) };
+  }
+  if (body && typeof body.mailAmounts === 'boolean') clean.mailAmounts = body.mailAmounts;
   if (body && body.features && typeof body.features === 'object') {
     clean.features = Object.assign({}, cur.features || {});
     Object.keys(FEATURE_DEFAULTS).forEach((k) => { if (typeof body.features[k] === 'boolean') clean.features[k] = body.features[k]; });
   }
   const next = Object.assign({}, cur, clean, { updated: isoLocal(Date.now()) });
   await setKv(env, 'settings', JSON.stringify(next));
-  await setKv(env, 'data_cache', JSON.stringify(await buildData(env)));
+  await saveDataCache(env, await buildData(env));
   return next;
 }
 
@@ -1113,7 +1284,7 @@ async function uploadEtf(env, key, csv) {
   if (!parsed) throw new Error('In dit bestand staat geen lijst met Ticker en Weight (%). Gebruik de holdings-CSV van iShares.');
   await setKv(env, 'etf_' + key, JSON.stringify(Object.assign({ label: src.label, fund: src.fund, uploaded: true }, parsed)));
   await setKv(env, 'etf_error', '');
-  await setKv(env, 'data_cache', JSON.stringify(await buildData(env)));
+  await saveDataCache(env, await buildData(env));
   return `${src.label}: ${parsed.count} bedrijven ingelezen (stand ${parsed.asOf || 'onbekend'}).`;
 }
 
@@ -1163,11 +1334,28 @@ async function getJson(url, headers) {
 async function externalTask(env, kind, arg) {
   if (kind === 'fx') {
     // ECB-referentiekoersen via Frankfurter, 400 dagen terug
-    const r = await getJson('https://api.frankfurter.dev/v1/' + ymdUTC(Date.now() - 400 * 864e5) + '..?from=EUR&to=USD,GBP');
-    if (!r.ok) { await noteExtError(env, 'fx', 'Frankfurter gaf ' + r.status); return 1; }
+    const since = ymdUTC(Date.now() - 400 * 864e5);
     const rates = { USD: [], GBP: [] };
-    Object.keys(r.body.rates || {}).sort().forEach((d) => { const o = r.body.rates[d]; if (o.USD) rates.USD.push([d, o.USD]); if (o.GBP) rates.GBP.push([d, o.GBP]); });
-    await setKv(env, 'fx', JSON.stringify({ updated: isoLocal(Date.now()), source: 'ECB via Frankfurter', rates }));
+    let source = 'ECB via Frankfurter';
+    const r = (await srcDown(env, 'frankfurter')) ? { ok: false, status: 'reserve' } : await getJson('https://api.frankfurter.dev/v1/' + since + '..?from=EUR&to=USD,GBP');
+    if (r.ok && r.body && r.body.rates) {
+      Object.keys(r.body.rates).sort().forEach((d) => { const o = r.body.rates[d]; if (o.USD) rates.USD.push([d, o.USD]); if (o.GBP) rates.GBP.push([d, o.GBP]); });
+      await srcOk(env, 'frankfurter');
+    } else {
+      // Reserve: dezelfde referentiekoersen rechtstreeks van het ECB Data Portal
+      if (r.status !== 'reserve') await srcFail(env, 'frankfurter', 'Frankfurter gaf ' + r.status);
+      const res = await fetch('https://data-api.ecb.europa.eu/service/data/EXR/D.USD+GBP.EUR.SP00.A?format=csvdata&startPeriod=' + since);
+      if (!res.ok) { await noteExtError(env, 'fx', 'Frankfurter en het ECB Data Portal gaven geen koersen (' + r.status + ', ' + res.status + ')'); return 2; }
+      const lines = (await res.text()).trim().split(/\r?\n/);
+      const head = lines[0].split(',');
+      const iC = head.indexOf('CURRENCY'), iT = head.indexOf('TIME_PERIOD'), iV = head.indexOf('OBS_VALUE');
+      lines.slice(1).map((l) => l.split(',')).filter((c) => rates[c[iC]] && c[iT] && c[iV] !== '' && isFinite(Number(c[iV])))
+        .sort((a, b) => a[iT].localeCompare(b[iT])).forEach((c) => rates[c[iC]].push([c[iT], Number(c[iV])]));
+      source = 'ECB Data Portal (reserve voor Frankfurter)';
+      await srcBackup(env, 'frankfurter', 'ECB Data Portal');
+    }
+    if (!rates.USD.length) { await noteExtError(env, 'fx', 'Geen koersen ontvangen.'); return 2; }
+    await setKv(env, 'fx', JSON.stringify({ updated: isoLocal(Date.now()), source, rates }));
     await noteExtError(env, 'fx', null);
     return 1;
   }
@@ -1178,11 +1366,21 @@ async function externalTask(env, kind, arg) {
     for (const area of ['NL', 'U2']) {
       const url = 'https://data-api.ecb.europa.eu/service/data/HICP/M.' + area + '.N.000000.4D0.INX?format=csvdata&startPeriod=' + start.toISOString().slice(0, 7);
       const res = await fetch(url);
-      if (!res.ok) { await noteExtError(env, 'inflation', 'ECB gaf ' + res.status); continue; }
-      const lines = (await res.text()).trim().split(/\r?\n/);
-      const head = lines[0].split(',');
-      const iT = head.indexOf('TIME_PERIOD'), iV = head.indexOf('OBS_VALUE');
-      out.series[area] = lines.slice(1).map((l) => l.split(',')).filter((c) => c[iT] && isFinite(Number(c[iV]))).map((c) => [c[iT], Number(c[iV])]);
+      if (res.ok) {
+        const lines = (await res.text()).trim().split(/\r?\n/);
+        const head = lines[0].split(',');
+        const iT = head.indexOf('TIME_PERIOD'), iV = head.indexOf('OBS_VALUE');
+        out.series[area] = lines.slice(1).map((l) => l.split(',')).filter((c) => c[iT] && isFinite(Number(c[iV]))).map((c) => [c[iT], Number(c[iV])]);
+        if (out.series[area].length) continue;
+      }
+      // Reserve: dezelfde HICP-index bij Eurostat (andere basis, 2015 = 100; de site rekent alleen met verhoudingen)
+      const geo = area === 'U2' ? 'EA' : area;
+      const es = await getJson('https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/prc_hicp_midx?format=JSON&lang=EN&geo=' + geo + '&coicop=CP00&unit=I15&sinceTimePeriod=' + start.toISOString().slice(0, 7));
+      const ti = es.ok && es.body && es.body.dimension && es.body.dimension.time && es.body.dimension.time.category && es.body.dimension.time.category.index;
+      if (!ti) { await noteExtError(env, 'inflation', 'ECB gaf ' + res.status + ' en Eurostat gaf ' + es.status); continue; }
+      out.series[area] = Object.entries(ti).sort((a, b) => a[1] - b[1]).map(([p, i]) => [p, numOrNull(es.body.value[i])]).filter((x) => x[1] != null);
+      out.source = 'Eurostat (reserve voor de ECB), HICP 2015 = 100';
+      await srcBackup(env, 'ecb_hicp', 'Eurostat');
     }
     if (Object.keys(out.series).length) { await setKv(env, 'hicp', JSON.stringify(out)); await noteExtError(env, 'inflation', null); }
     return 2;
@@ -1206,6 +1404,18 @@ async function externalTask(env, kind, arg) {
       out.series[id] = (await res.text()).trim().split(/\r?\n/).slice(1).map((l) => l.split(','))
         .filter((c) => /^\d{4}-\d{2}-\d{2}$/.test(c[0]) && isFinite(Number(c[1])) && c[1] !== '').map((c) => [c[0], Number(c[1])]);
     }
+    // Reserve: dezelfde indexen bij FMP (^GSPC en ^NDX), als FRED niets gaf en er een FMP-sleutel is
+    const missing = ['SP500', 'NASDAQ100'].filter((id) => !(out.series[id] && out.series[id].length));
+    if (missing.length && env.FMP_KEY && !(await srcDown(env, 'fmp'))) {
+      for (const id of missing) {
+        try {
+          const rows = await fmp(env, '/historical-price-eod/light?symbol=' + (id === 'SP500' ? '%5EGSPC' : '%5ENDX') + '&from=' + since);
+          out.series[id] = rows.filter((x) => x.date && isFinite(Number(x.price))).map((x) => [x.date, Number(x.price)]).sort((a, b) => a[0].localeCompare(b[0]));
+        } catch (e) { /* ook FMP lukt niet: dan blijft de vorige reeks staan */ }
+      }
+      if (missing.some((id) => out.series[id] && out.series[id].length)) { out.source = 'FMP (reserve voor FRED)'; await srcBackup(env, 'fred', 'FMP'); }
+    }
+    if (!Object.keys(out.series).some((id) => out.series[id] && out.series[id].length)) return 2;
     if (Object.keys(out.series).length) { await setKv(env, 'idx', JSON.stringify(out)); await noteExtError(env, 'indices', null); }
     return 2;
   }
@@ -1339,6 +1549,47 @@ async function avTask(env, tk) {
   return used;
 }
 
+// Profiel in dezelfde vorm als bij FMP, uit Finnhub: profile2 (naam, branche, beurswaarde), quote (koers) en metric (beta, jaarbereik)
+async function profileFromFinnhub(env, sym) {
+  if (!env.FINNHUB_KEY) return null;
+  const q = (path) => getJson(FINNHUB_BASE + path + (path.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(env.FINNHUB_KEY));
+  const pr = await q('/stock/profile2?symbol=' + encodeURIComponent(sym));
+  const qt = await q('/quote?symbol=' + encodeURIComponent(sym));
+  const mt = await q('/stock/metric?symbol=' + encodeURIComponent(sym) + '&metric=all');
+  if (pr.status === 429 || qt.status === 429) { await srcFail(env, 'finnhub', 'Finnhub-limiet', true); throw new Error('Finnhub-limiet bereikt'); }
+  const p = pr.ok ? pr.body || {} : {}, t = qt.ok ? qt.body || {} : {}, m = (mt.ok && mt.body && mt.body.metric) || {};
+  if (!p.name && !numOrNull(t.c)) return null;
+  const hi = numOrNull(m['52WeekHigh']), lo = numOrNull(m['52WeekLow']);
+  return {
+    symbol: sym, name: p.name || sym, price: numOrNull(t.c) || null, currency: p.currency || 'USD',
+    marketCap: numOrNull(p.marketCapitalization) != null ? numOrNull(p.marketCapitalization) * 1e6 : null,
+    beta: numOrNull(m.beta), lastDividend: numOrNull(m.dividendPerShareAnnual), range: lo != null && hi != null ? lo + '-' + hi : null,
+    change: numOrNull(t.dp), sector: FINNHUB_SECTOR[p.finnhubIndustry] || p.finnhubIndustry || null, industry: p.finnhubIndustry || null,
+    exchange: p.exchange || null, country: p.country || null, employees: null, ipoDate: p.ipo || null, isEtf: false, website: p.weburl || null, cik: null,
+    source: 'Finnhub',
+  };
+}
+// Finnhub-branches naar de sectornamen die de site (en FMP) gebruikt
+const FINNHUB_SECTOR = {
+  Technology: 'Technology', Semiconductors: 'Technology', Software: 'Technology', Communications: 'Communication Services', Media: 'Communication Services',
+  Pharmaceuticals: 'Healthcare', Biotechnology: 'Healthcare', 'Health Care': 'Healthcare', 'Life Sciences Tools & Services': 'Healthcare',
+  Banking: 'Financial Services', 'Financial Services': 'Financial Services', Insurance: 'Financial Services',
+  Retail: 'Consumer Cyclical', Automobiles: 'Consumer Cyclical', 'Hotels, Restaurants & Leisure': 'Consumer Cyclical', 'Textiles, Apparel & Luxury Goods': 'Consumer Cyclical',
+  Beverages: 'Consumer Defensive', 'Food Products': 'Consumer Defensive', 'Consumer products': 'Consumer Defensive', Tobacco: 'Consumer Defensive',
+  'Aerospace & Defense': 'Industrials', Machinery: 'Industrials', Airlines: 'Industrials', Logistics: 'Industrials', 'Electrical Equipment': 'Industrials',
+  Energy: 'Energy', 'Oil & Gas': 'Energy', Utilities: 'Utilities', 'Real Estate': 'Real Estate', Chemicals: 'Basic Materials', Metals: 'Basic Materials',
+};
+
+// Dagkoersen van Alpha Vantage (gratis: de laatste 100 handelsdagen); telt mee in het dagbudget
+async function avDaily(env, sym) {
+  if (!env.ALPHAVANTAGE_KEY) return [];
+  await avCount(env, 1);
+  const b = await av(env, 'TIME_SERIES_DAILY', 'symbol=' + encodeURIComponent(sym) + '&outputsize=compact');
+  const ser = b && b['Time Series (Daily)'];
+  if (!ser) return [];
+  return Object.entries(ser).map(([d, o]) => [d, numOrNull(o['4. close'])]).filter((x) => x[1] != null).sort((a, b2) => a[0].localeCompare(b2[0]));
+}
+
 async function finnhubTask(env, tk) {
   if (!env.FINNHUB_KEY) return 0;
   const sym = SYMBOL_MAP[tk] || tk;
@@ -1380,6 +1631,7 @@ async function finnhubTask(env, tk) {
       const list = (b && Array.isArray(b.data) ? b.data : []).filter((x) => x.transactionDate);
       list.sort((a, c) => c.transactionDate.localeCompare(a.transactionDate));
       out.insider = list.slice(0, 25).map((x) => ({ name: x.name, date: x.transactionDate, code: x.transactionCode, change: numOrNull(x.change), price: numOrNull(x.transactionPrice), shares: numOrNull(x.share) }));
+      try { await alertInsider(env, tk, prev.insider, out.insider); } catch (e) { console.error('meldingen', e); }
     } else if (k === 'target') {
       out.target = b && isFinite(Number(b.targetMean)) && Number(b.targetMean) > 0 ? { mean: numOrNull(b.targetMean), median: numOrNull(b.targetMedian), high: numOrNull(b.targetHigh), low: numOrNull(b.targetLow), updated: b.lastUpdated || null } : null;
     } else if (k === 'sent') {
@@ -1574,6 +1826,18 @@ async function planMarket(env) {
     all.forEach((h) => { if ((age.get(h.ticker) || '') < weekAgo2) tasks.push('sec:' + h.ticker); });
   }
   if (!env.FMP_KEY) {
+    // Zonder FMP: profielen (koers, branche, beta) via Finnhub en koersgeschiedenis via Alpha Vantage, als die sleutels er zijn
+    if (env.FINNHUB_KEY || env.ALPHAVANTAGE_KEY) {
+      await ensureMarketTables(env);
+      const { results: fr } = await env.DB.prepare('SELECT symbol FROM ext_profile WHERE updated = ?').bind(usDay).all();
+      const freshP = new Set(fr.map((r) => r.symbol));
+      const { results: hn } = await env.DB.prepare('SELECT symbol, COUNT(*) AS n FROM ext_prices GROUP BY symbol').all();
+      const nMap = new Map(hn.map((r) => [r.symbol, r.n]));
+      all.forEach((h) => {
+        if (env.FINNHUB_KEY && !freshP.has(h.symbol)) tasks.push('profile:' + h.symbol);
+        if (env.ALPHAVANTAGE_KEY && (nMap.get(h.symbol) || 0) < 20) tasks.push('eod:' + h.symbol);
+      });
+    }
     await setKv(env, 'mkt_queue', JSON.stringify(tasks));
     await setKv(env, 'mkt_planned', usDay);
     return `Extern: ${tasks.length} taken klaargezet (zonder FMP).`;
@@ -1638,6 +1902,20 @@ async function marketStep(env) {
   let avThisStep = false;
   let unknown = [];
   try { unknown = JSON.parse((await getKv(env, 'mkt_unknown')) || '[]'); } catch (e) { unknown = []; }
+  // FMP aan zijn limiet of stuk: profielen via Finnhub, koersgeschiedenis via Alpha Vantage, de rest later
+  let fmpDown = !!env.FMP_KEY && (await srcDown(env, 'fmp'));
+  const putProfile = (sym, keep) => {
+    writes.push(env.DB.prepare('INSERT OR REPLACE INTO ext_profile (symbol, data, updated) VALUES (?,?,?)').bind(sym, JSON.stringify(keep), usDay));
+    const pn = parts(new Date());
+    const inSession = pn.weekday <= 5 && pn.hm >= '15:30' && pn.hm < '22:30';
+    if (keep.price != null && !inSession) writes.push(env.DB.prepare('INSERT OR REPLACE INTO ext_prices (symbol, day, price) VALUES (?,?,?)').bind(sym, usDay, keep.price));
+  };
+  const finnhubProfile = async (sym) => {
+    const keep = await profileFromFinnhub(env, sym);
+    calls += 3;
+    if (keep) { putProfile(sym, keep); await srcBackup(env, 'fmp', 'Finnhub'); }
+    return keep;
+  };
   while (queue.length && calls < MARKET_STEP_CALLS && !stop) {
     const task = queue.shift();
     // Alpha Vantage staat 5 verzoeken per minuut toe: één aandeel per stap
@@ -1648,8 +1926,21 @@ async function marketStep(env) {
     try {
       if (kind === 'fx' || kind === 'hicp' || kind === 'idx' || kind === 'fh' || kind === 'fhnews' || kind === 'sec' || kind === 'av') {
         calls += await externalTask(env, kind, arg);
-      } else if (!env.FMP_KEY) {
-        // FMP-taak zonder sleutel: overslaan
+      } else if (kind === 'profile' && (!env.FMP_KEY || fmpDown)) {
+        if (env.FINNHUB_KEY) await finnhubProfile(arg);
+      } else if (kind === 'eod' && (!env.FMP_KEY || fmpDown)) {
+        // Reserve: dagkoersen (laatste 100 handelsdagen) van Alpha Vantage, binnen het dagbudget
+        if (env.ALPHAVANTAGE_KEY && !avThisStep && (await avCount(env, 0)) > 4) {
+          avThisStep = true;
+          const rows = await avDaily(env, arg);
+          calls++;
+          const st = env.DB.prepare('INSERT OR REPLACE INTO ext_prices (symbol, day, price) VALUES (?,?,?)');
+          rows.forEach(([d, v]) => writes.push(st.bind(arg, d, v)));
+          if (rows.length) await srcBackup(env, 'fmp', 'Alpha Vantage');
+        } else if (fmpDown) deferred.push(task);
+      } else if (!env.FMP_KEY || fmpDown) {
+        // FMP-taak zonder sleutel overslaan; met sleutel maar FMP tijdelijk uit: later opnieuw
+        if (fmpDown) deferred.push(task);
       } else if (kind === 'peers') {
         calls++;
         const list = await fmp(env, '/stock-peers?symbol=' + encodeURIComponent(arg));
@@ -1666,7 +1957,17 @@ async function marketStep(env) {
         });
       } else if (kind === 'profile') {
         calls++;
-        const p = (await fmp(env, '/profile?symbol=' + encodeURIComponent(arg)))[0];
+        let p;
+        try { p = (await fmp(env, '/profile?symbol=' + encodeURIComponent(arg)))[0]; }
+        catch (e) {
+          // Limiet of storing bij FMP: dit profiel (en bij een limiet ook de volgende) via Finnhub
+          if (!/limiet|402|401|403|FMP gaf 5/.test(e.message) || !env.FINNHUB_KEY) throw e;
+          await srcFail(env, 'fmp', e.message, /limiet/.test(e.message));
+          fmpDown = /limiet/.test(e.message) || (await srcDown(env, 'fmp'));
+          await finnhubProfile(arg);
+          done++;
+          continue;
+        }
         if (!p && !unknown.includes(arg)) unknown.push(arg);
         if (p && unknown.includes(arg)) unknown.splice(unknown.indexOf(arg), 1);
         if (p) {
@@ -1684,6 +1985,7 @@ async function marketStep(env) {
         }
       } else if (kind === 'eod') {
         calls++;
+        await srcOk(env, 'fmp');
         const from = new Date(Date.now() - 400 * 864e5).toISOString().slice(0, 10);
         try {
           const rows = await fmp(env, '/historical-price-eod/light?symbol=' + encodeURIComponent(arg) + '&from=' + from);
@@ -1760,7 +2062,7 @@ async function marketStep(env) {
   await setKv(env, 'eod_unavailable', JSON.stringify(noHist));
   await setKv(env, 'mkt_unknown', JSON.stringify(unknown));
   if (errors.length) await setKv(env, 'mkt_errors', JSON.stringify(errors.slice(-20)));
-  if (done) await setKv(env, 'data_cache', JSON.stringify(await buildData(env)));
+  if (done) await saveDataCache(env, await buildData(env));
   return `Markt: ${done} taken gedaan, ${queue.length} over${errors.length ? ', ' + errors.length + ' fouten' : ''}.`;
 }
 
@@ -1841,7 +2143,7 @@ async function importFromSheet(env, url, token) {
   if (lastH) await setKv(env, 'last_hour', String(lastH));
   const lastD = (data.days && data.days.rows || []).reduce((m, r) => (r[0].slice(0, 10) > m ? r[0].slice(0, 10) : m), '');
   if (lastD) await setKv(env, 'last_day', lastD);
-  await setKv(env, 'data_cache', JSON.stringify(await buildData(env)));
+  await saveDataCache(env, await buildData(env));
   return {
     weeks: (data.weeks || []).length,
     intraday: (data.intraday && data.intraday.rows || []).length,
@@ -1860,3 +2162,360 @@ function isDst(localIso) {
 }
 
 export const _test = { parts, isLive, shortTicker, isoLocal, isDst, hourStart, dayOf };
+
+
+// =====================================================================
+// ---------- Meldingen op je telefoon of computer (Web Push, zonder externe dienst) ----------
+// De Worker maakt zelf een sleutelpaar (VAPID) en versleutelt elke melding volgens RFC 8291 (aes128gcm).
+// Abonnementen (een adres van de pushdienst van je browser) staan in kv 'push_subs'.
+const b64u = (buf) => { const a = new Uint8Array(buf); let s = ''; for (let i = 0; i < a.length; i++) s += String.fromCharCode(a[i]); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); };
+const unb64u = (s) => { let t = String(s || '').replace(/-/g, '+').replace(/_/g, '/'); while (t.length % 4) t += '='; return Uint8Array.from(atob(t), (c) => c.charCodeAt(0)); };
+const concatBytes = (...a) => { const o = new Uint8Array(a.reduce((n, x) => n + x.length, 0)); let i = 0; a.forEach((x) => { o.set(x, i); i += x.length; }); return o; };
+async function hmacSha256(key, data) {
+  const k = await crypto.subtle.importKey('raw', key, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  return new Uint8Array(await crypto.subtle.sign('HMAC', k, data));
+}
+// HKDF met één blok (genoeg voor sleutels tot 32 bytes)
+async function hkdf(salt, ikm, info, len) {
+  const prk = await hmacSha256(salt, ikm);
+  return (await hmacSha256(prk, concatBytes(info, new Uint8Array([1])))).slice(0, len);
+}
+
+async function vapidKeys(env) {
+  let v = null;
+  try { v = JSON.parse((await getKv(env, 'vapid')) || 'null'); } catch (e) { v = null; }
+  if (v && v.jwk && v.pub) return v;
+  const kp = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
+  v = { jwk: await crypto.subtle.exportKey('jwk', kp.privateKey), pub: b64u(await crypto.subtle.exportKey('raw', kp.publicKey)) };
+  await setKv(env, 'vapid', JSON.stringify(v));
+  return v;
+}
+
+async function vapidHeader(env, endpoint) {
+  const v = await vapidKeys(env);
+  const te = new TextEncoder();
+  const enc = (o) => b64u(te.encode(JSON.stringify(o)));
+  const sub = (await getKv(env, 'self_origin')) || 'https://github.com/svgbml/Investment-tracker';
+  const unsigned = enc({ typ: 'JWT', alg: 'ES256' }) + '.' + enc({ aud: new URL(endpoint).origin, exp: Math.floor(Date.now() / 1000) + 12 * 3600, sub });
+  const key = await crypto.subtle.importKey('jwk', v.jwk, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
+  const sig = await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, key, te.encode(unsigned));
+  return 'vapid t=' + unsigned + '.' + b64u(sig) + ', k=' + v.pub;
+}
+
+// Versleutel een bericht voor één abonnement (RFC 8291, één record)
+async function encryptPush(sub, text) {
+  const te = new TextEncoder();
+  const uaPub = unb64u(sub.keys.p256dh), auth = unb64u(sub.keys.auth);
+  const local = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
+  const asPub = new Uint8Array(await crypto.subtle.exportKey('raw', local.publicKey));
+  const uaKey = await crypto.subtle.importKey('raw', uaPub, { name: 'ECDH', namedCurve: 'P-256' }, false, []);
+  const shared = new Uint8Array(await crypto.subtle.deriveBits({ name: 'ECDH', public: uaKey }, local.privateKey, 256));
+  const ikm = await hkdf(auth, shared, concatBytes(te.encode('WebPush: info\0'), uaPub, asPub), 32);
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const cek = await hkdf(salt, ikm, te.encode('Content-Encoding: aes128gcm\0'), 16);
+  const nonce = await hkdf(salt, ikm, te.encode('Content-Encoding: nonce\0'), 12);
+  const key = await crypto.subtle.importKey('raw', cek, 'AES-GCM', false, ['encrypt']);
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv: nonce }, key, concatBytes(te.encode(text), new Uint8Array([2]))));
+  return concatBytes(salt, new Uint8Array([0, 0, 16, 0]), new Uint8Array([asPub.length]), asPub, ct);
+}
+
+async function pushSubs(env) { try { return JSON.parse((await getKv(env, 'push_subs')) || '[]'); } catch (e) { return []; } }
+
+// Stuurt een melding naar alle aangemelde apparaten; verlopen abonnementen (404/410) worden opgeruimd
+async function sendPush(env, msg) {
+  const subs = await pushSubs(env);
+  if (!subs.length) return 0;
+  const body = JSON.stringify({ title: String(msg.title || 'Investeringstracker').slice(0, 80), body: String(msg.body || '').slice(0, 300), url: msg.url || '', tag: msg.tag || '' });
+  let sent = 0;
+  const keep = [];
+  for (const s of subs) {
+    try {
+      const res = await fetch(s.endpoint, {
+        method: 'POST',
+        headers: { 'Content-Encoding': 'aes128gcm', 'Content-Type': 'application/octet-stream', TTL: '86400', Urgency: msg.urgent ? 'high' : 'normal', Authorization: await vapidHeader(env, s.endpoint) },
+        body: await encryptPush(s, body),
+      });
+      if (res.status === 404 || res.status === 410) continue;
+      keep.push(s);
+      if (res.ok) sent++; else await noteExtError(env, 'push', 'De pushdienst gaf ' + res.status + '.');
+    } catch (e) { keep.push(s); await noteExtError(env, 'push', String(e.message || e)); }
+  }
+  if (keep.length !== subs.length) await setKv(env, 'push_subs', JSON.stringify(keep));
+  if (sent) await noteExtError(env, 'push', null);
+  return sent;
+}
+
+const ALERT_DEFAULTS = { move: 5, earnings: true, insider: true, drift: 5 };
+async function alertRules(env) { const s = await getSettings(env); return Object.assign({}, ALERT_DEFAULTS, (s && s.alerts) || {}); }
+
+// Eén keer per sleutel (bijvoorbeeld "move|2026-11-17|AAPL"); de laatste 400 sleutels worden onthouden
+async function alertOnce(env, key, msg) {
+  let sent = {};
+  try { sent = JSON.parse((await getKv(env, 'alerts_sent')) || '{}'); } catch (e) { sent = {}; }
+  if (sent[key]) return false;
+  const n = await sendPush(env, msg);
+  sent[key] = isoLocal(Date.now());
+  const keys = Object.keys(sent);
+  if (keys.length > 400) keys.slice(0, keys.length - 400).forEach((k) => { delete sent[k]; });
+  await setKv(env, 'alerts_sent', JSON.stringify(sent));
+  return n > 0;
+}
+
+// Na een meting: posities (en het totaal) die vandaag meer bewegen dan de drempel
+async function alertMoves(env, rows, now) {
+  if (!(await pushSubs(env)).length) return '';
+  const rules = await alertRules(env);
+  const lim = Number(rules.move);
+  if (!(lim > 0)) return '';
+  const day = parts(now).day;
+  const { results } = await env.DB.prepare('SELECT ticker, close FROM days WHERE day = (SELECT MAX(day) FROM days WHERE day < ?)').bind(day).all();
+  const prev = new Map(results.map((r) => [r.ticker, r.close]));
+  const hits = [];
+  for (const r of rows) {
+    const c = prev.get(r.ticker);
+    if (!(c > 0) || !(r.value > 0)) continue;
+    const ch = r.value / c - 1;
+    const need = r.ticker === TOTAL ? lim / 2 : lim;
+    // Meer dan 25% is bijna altijd een aankoop of verkoop, geen koersbeweging
+    if (Math.abs(ch) * 100 >= need && Math.abs(ch) < 0.25) hits.push({ r, ch });
+  }
+  for (const h of hits.slice(0, 5)) {
+    const tot = h.r.ticker === TOTAL;
+    const pct = (h.ch > 0 ? '+' : '−') + (Math.abs(h.ch) * 100).toFixed(1).replace('.', ',') + '%';
+    await alertOnce(env, 'move|' + day + '|' + h.r.ticker + '|' + (h.ch > 0 ? 'u' : 'd'), {
+      title: (tot ? 'Je portefeuille' : h.r.ticker) + ' ' + pct + ' vandaag',
+      body: tot ? 'Je beleggingen bewegen vandaag meer dan gewoonlijk.' : (h.r.name || h.r.ticker) + ' ' + (h.ch > 0 ? 'stijgt' : 'daalt') + ' ' + pct + ' sinds het slot van de vorige handelsdag.',
+      url: tot ? '#overzicht' : '#bedrijf/' + encodeURIComponent(h.r.ticker), tag: 'move-' + h.r.ticker, urgent: Math.abs(h.ch) >= lim * 2 / 100,
+    });
+  }
+  return hits.length ? hits.length + ' meldingen over koersbewegingen.' : '';
+}
+
+// Elke ochtend: kwartaalcijfers van je aandelen die morgen komen
+async function alertEarnings(env) {
+  if (!(await pushSubs(env)).length) return '';
+  const rules = await alertRules(env);
+  if (!rules.earnings) return '';
+  let ev = null;
+  try { ev = JSON.parse((await getKv(env, 'events')) || 'null'); } catch (e) { ev = null; }
+  const tomorrow = parts(new Date(Date.now() + 864e5)).day;
+  const list = ((ev && ev.earnings) || []).filter((e) => e.date === tomorrow);
+  for (const e of list.slice(0, 5)) {
+    await alertOnce(env, 'earn|' + e.date + '|' + e.ticker, { title: e.ticker + ': morgen kwartaalcijfers', body: 'Verwachte winst per aandeel ' + (e.epsEst != null ? String(e.epsEst).replace('.', ',') : 'onbekend') + '.', url: '#bedrijf/' + encodeURIComponent(e.ticker), tag: 'earn-' + e.ticker });
+  }
+  return list.length ? list.length + ' meldingen over kwartaalcijfers.' : '';
+}
+
+// Na het ophalen bij Finnhub: nieuwe aankopen door bestuurders (alleen kopen met eigen geld, code P)
+async function alertInsider(env, tk, prevList, newList) {
+  if (!(await pushSubs(env)).length) return;
+  const rules = await alertRules(env);
+  if (!rules.insider) return;
+  const seen = new Set((prevList || []).map((x) => x.date + '|' + x.name + '|' + x.change));
+  const since = new Date(Date.now() - 14 * 864e5).toISOString().slice(0, 10);
+  for (const x of (newList || []).filter((y) => y.code === 'P' && y.date >= since && !seen.has(y.date + '|' + y.name + '|' + y.change)).slice(0, 2)) {
+    await alertOnce(env, 'ins|' + tk + '|' + x.date + '|' + x.name, { title: tk + ': bestuurder koopt aandelen', body: (x.name || 'Een bestuurder') + ' kocht ' + (x.change || '?') + ' aandelen' + (x.price ? ' à $' + x.price : '') + ' op ' + x.date + '.', url: '#bedrijf/' + encodeURIComponent(tk), tag: 'ins-' + tk });
+  }
+}
+
+// Na de weeksnapshot: verdeling wijkt te veel af van je streefverdeling
+async function alertDrift(env, day) {
+  if (!(await pushSubs(env)).length) return '';
+  const s = await getSettings(env);
+  const rules = await alertRules(env);
+  const lim = Number(rules.drift);
+  const t = (s && s.targets) || {};
+  if (!(lim > 0) || !Object.keys(t).length) return '';
+  const { results: pos } = await env.DB.prepare('SELECT ticker, name, value FROM positions WHERE date = ?').bind(day).all();
+  const total = pos.reduce((n, p) => n + (p.value || 0), 0);
+  if (!total) return '';
+  const g = new Map();
+  if (s.targetMode === 'sector') {
+    await ensureMarketTables(env);
+    const { results: pr } = await env.DB.prepare('SELECT symbol, data FROM ext_profile').all();
+    const sec = new Map(pr.map((r) => { try { return [r.symbol, JSON.parse(r.data).sector]; } catch (e) { return [r.symbol, null]; } }));
+    pos.forEach((p) => { const k = ETF_RE.test(p.name || '') ? '@funds' : sec.get(SYMBOL_MAP[p.ticker] || p.ticker) || '@unknown'; g.set(k, (g.get(k) || 0) + p.value); });
+  } else pos.forEach((p) => g.set(p.ticker, (g.get(p.ticker) || 0) + p.value));
+  const diffs = Object.entries(t).filter(([, v]) => Number(v) > 0).map(([k, v]) => [k, (g.get(k) || 0) / total * 100 - Number(v)]).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
+  const big = diffs.filter((d) => Math.abs(d[1]) >= lim);
+  if (!big.length) return '';
+  const txt = big.slice(0, 3).map(([k, d]) => (k === '@funds' ? 'fondsen' : k) + ' ' + (d > 0 ? '+' : '−') + Math.abs(d).toFixed(1).replace('.', ',') + ' pp').join(', ');
+  await alertOnce(env, 'drift|' + day, { title: 'Je verdeling wijkt af van je doel', body: txt + '. De inleg-assistent op Plannen laat zien wat je met nieuwe inleg kunt kopen.', url: '#plannen', tag: 'drift' });
+  return 'Melding: verdeling wijkt af (' + txt + ').';
+}
+
+// =====================================================================
+// ---------- Weekoverzicht per e-mail (optioneel, via Resend) ----------
+// Staat standaard uit (functie 'weeklyMail'). Nodig: RESEND_KEY en MAIL_TO; MAIL_FROM is optioneel.
+// Lukt mailen niet, dan gaat het overzicht als melding naar je telefoon (als je meldingen aan hebt).
+async function weekSummary(env) {
+  const { results: wk } = await env.DB.prepare('SELECT date, account_value, net_deposits FROM weeks ORDER BY date DESC LIMIT 2').all();
+  if (!wk.length) return null;
+  const [w1, w0] = wk;
+  const res = w0 ? (w1.account_value - w0.account_value) - (w1.net_deposits - w0.net_deposits) : null;
+  const pct = w0 && w0.account_value ? res / w0.account_value : null;
+  const from = new Date(new Date(w1.date + 'T12:00:00Z').getTime() - 8 * 864e5).toISOString().slice(0, 10);
+  const { results: dr } = await env.DB.prepare('SELECT ticker, day, close FROM days WHERE day >= ? AND day <= ? AND ticker != ? ORDER BY day').bind(from, w1.date, TOTAL).all();
+  const by = new Map();
+  dr.forEach((r) => { const o = by.get(r.ticker) || { a: r.close, b: r.close }; o.b = r.close; by.set(r.ticker, o); });
+  const movers = [...by.entries()].map(([tk, o]) => [tk, o.a > 0 ? o.b / o.a - 1 : null]).filter((x) => x[1] != null && Math.abs(x[1]) < 0.4).sort((a, b) => b[1] - a[1]);
+  return { date: w1.date, account: w1.account_value, deposits: w1.net_deposits, res, pct, up: movers.slice(0, 3), down: movers.slice(-3).reverse().filter((m) => !movers.slice(0, 3).includes(m)) };
+}
+
+const nlPct = (v) => (v == null ? '–' : (v >= 0 ? '+' : '−') + (Math.abs(v) * 100).toFixed(1).replace('.', ',') + '%');
+const nlEur = (v) => (v == null ? '–' : (v < 0 ? '−' : '') + '€ ' + Math.abs(v).toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.'));
+
+async function weeklyMail(env, test) {
+  const flags = await featureFlags(env);
+  if (!test && !flags.weeklyMail) return '';
+  if (!env.RESEND_KEY || !env.MAIL_TO) { if (test) throw new Error('Vul bij Koppelingen een Resend-sleutel en je e-mailadres in.'); return ''; }
+  const S = await weekSummary(env);
+  if (!S) { if (test) throw new Error('Er is nog geen weekmeting om te versturen.'); return ''; }
+  const amounts = (await getSettings(env)).mailAmounts !== false;
+  const esc = (x) => String(x).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const lines = ['Rendement deze week: ' + nlPct(S.pct) + (amounts ? ' (' + nlEur(S.res) + ')' : '')];
+  if (amounts) lines.push('Accountwaarde: ' + nlEur(S.account) + ', netto gestort ' + nlEur(S.deposits));
+  if (S.up.length) lines.push('Stijgers: ' + S.up.map(([tk, v]) => tk + ' ' + nlPct(v)).join(', '));
+  if (S.down.length) lines.push('Dalers: ' + S.down.map(([tk, v]) => tk + ' ' + nlPct(v)).join(', '));
+  const site = (await getKv(env, 'site_origin')) || 'https://svgbml.github.io/Investment-tracker/';
+  const subject = 'Weekoverzicht ' + S.date + ': ' + nlPct(S.pct);
+  const text = lines.join('\n') + '\n\nBekijk alles: ' + site + '\n\nJe ontvangt deze mail omdat het weekoverzicht per e-mail aanstaat in je tracker (Instellingen > Koppelingen).';
+  const html = '<div style="font-family:system-ui,sans-serif;font-size:15px;color:#14181F;max-width:520px">' +
+    '<p style="color:#5B6472;margin:0">Weekoverzicht tot ' + esc(S.date) + '</p>' +
+    '<p style="font-size:34px;font-weight:700;margin:6px 0;color:' + ((S.pct || 0) >= 0 ? '#0B7A4B' : '#B4311F') + '">' + esc(nlPct(S.pct)) + '</p>' +
+    lines.slice(amounts ? 1 : 0).map((l) => '<p style="margin:4px 0">' + esc(l) + '</p>').join('') +
+    '<p style="margin-top:16px"><a href="' + esc(site) + '" style="color:#2B5BD7">Open de tracker</a></p>' +
+    '<p style="color:#5B6472;font-size:12px">Je ontvangt deze mail omdat het weekoverzicht per e-mail aanstaat in je tracker. Uitzetten: Instellingen &gt; Koppelingen.</p></div>';
+  let err = null;
+  try {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST', headers: { Authorization: 'Bearer ' + env.RESEND_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: env.MAIL_FROM || 'Investeringstracker <onboarding@resend.dev>', to: [env.MAIL_TO], subject, html, text }),
+    });
+    if (!res.ok) { const b = await res.json().catch(() => ({})); err = 'Resend gaf ' + res.status + (b && b.message ? ': ' + String(b.message).slice(0, 120) : ''); }
+  } catch (e) { err = String(e.message || e); }
+  if (err) {
+    await noteExtError(env, 'mail', err);
+    await srcFail(env, 'resend', err);
+    // Reserve: dezelfde samenvatting als melding
+    const n = await sendPush(env, { title: subject, body: lines.join(' · '), url: '#overzicht', tag: 'week' });
+    if (n) await srcBackup(env, 'resend', 'pushmelding');
+    if (test) throw new Error(err + (n ? '. Het overzicht is wel als melding verstuurd.' : ''));
+    return 'Weekmail mislukt' + (n ? ', als melding verstuurd' : '') + '.';
+  }
+  await noteExtError(env, 'mail', null);
+  await srcOk(env, 'resend');
+  return 'Weekmail verstuurd naar ' + env.MAIL_TO.replace(/(.).*(@.*)/, '$1…$2') + '.';
+}
+
+// =====================================================================
+// ---------- Deel-link: alleen-lezen weergave voor iemand anders ----------
+// kv 'share' = { token, amounts, since }. Zonder bedragen worden alle euro's met dezelfde factor geschaald
+// (accountwaarde = 10.000), zodat verhoudingen en procenten kloppen maar echte bedragen niet te zien zijn.
+async function shareConf(env) { try { return JSON.parse((await getKv(env, 'share')) || 'null'); } catch (e) { return null; } }
+
+function scaleMoney(d) {
+  const lw = (d.weeks || [])[d.weeks.length - 1];
+  const tot = (d.today || []).find((t) => t.ticker === TOTAL);
+  const ref = (lw && lw.accountValue) || (tot && tot.current) || 0;
+  const f = ref > 0 ? 10000 / ref : 0;
+  const sc = (v) => (typeof v === 'number' && isFinite(v) ? Math.round(v * f * 100) / 100 : v);
+  const obj = (o, keys) => { if (o) keys.forEach((k) => { if (k in o) o[k] = sc(o[k]); }); };
+  const rows = (t, idx) => { if (t && Array.isArray(t.rows)) t.rows.forEach((r) => idx.forEach((i) => { r[i] = sc(r[i]); })); };
+  rows(d.intraday, [2]); rows(d.hours, [2, 3, 4, 5, 6]); rows(d.days, [2, 3, 4, 5, 6, 7]); rows(d.orders, [4, 8, 9, 10, 11]);
+  (d.today || []).forEach((t) => obj(t, ['current', 'low', 'high', 'avg', 'open', 'change', 'allTimeHigh', 'allTimeLow', 'avgRange']));
+  (d.positions || []).forEach((p) => obj(p, ['value', 'unrealized', 'cost', 'quantity']));
+  (d.weeks || []).forEach((w) => obj(w, ['accountValue', 'netDeposits', 'cash', 'costBasis', 'investmentsValue', 'unrealized', 'totalResult', 'weekChange', 'newDeposits', 'weekResult']));
+  (d.peil || []).forEach((p) => { obj(p, ['total', 'investments', 'cash']); p.positions = []; });
+  Object.values(d.posExtra || {}).forEach((x) => obj(x, ['fx', 'cost']));
+  if (d.events) {
+    (d.events.received || []).forEach((x) => obj(x, ['amount', 'qty', 'wht']));
+    (d.events.dividends || []).forEach((x) => obj(x, ['estEur']));
+  }
+}
+
+function shareData(data, conf) {
+  const d = JSON.parse(JSON.stringify(data));
+  const s = data.settings || {};
+  d.settings = { targets: s.targets, targetMode: s.targetMode, watchlist: s.watchlist };
+  d.features = { flags: (data.features && data.features.flags) || {}, has: (data.features && data.features.has) || {} };
+  d.shared = { amounts: !!conf.amounts, since: conf.since || null };
+  delete d.part;
+  if (!conf.amounts) scaleMoney(d);
+  return d;
+}
+
+async function saveShareCache(env, data) {
+  const c = await shareConf(env);
+  if (!c || !c.token) return;
+  await setKv(env, 'data_share', JSON.stringify(shareData(data, c)));
+}
+
+async function shareAction(env, body) {
+  let c = (await shareConf(env)) || {};
+  const act = body && body.action;
+  if (act === 'off') { await setKv(env, 'share', 'null'); await setKv(env, 'data_share', ''); return { on: false }; }
+  if (act === 'on' || act === 'rotate' || !c.token) {
+    if (act === 'rotate' || !c.token) c.token = b64u(crypto.getRandomValues(new Uint8Array(24)));
+    c.since = c.since || isoLocal(Date.now());
+  }
+  if (body && typeof body.amounts === 'boolean') c.amounts = body.amounts;
+  c.amounts = !!c.amounts;
+  await setKv(env, 'share', JSON.stringify(c));
+  await saveDataCache(env, await buildData(env));
+  return { on: true, token: c.token, amounts: c.amounts, since: c.since };
+}
+
+// =====================================================================
+// ---------- Geschiedenis inlezen uit een Trading 212-export (CSV) ----------
+// De site leest het bestand en stuurt orders en dividenden. Orders die al via de API binnenkwamen
+// (zelfde aandeel, kant en aantal binnen 5 minuten) worden overgeslagen.
+async function importCsv(env, body) {
+  await ensureOrdersTable(env);
+  const n = (x) => { const v = Number(x); return isFinite(v) ? v : null; };
+  const str = (x, len) => String(x == null ? '' : x).replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, len);
+  const orders = (Array.isArray(body && body.orders) ? body.orders : []).slice(0, 5000)
+    .map((o) => ({ id: 'csv:' + str(o.id, 60), ts: n(o.ts), tk: str(o.tk, 20).toUpperCase(), name: str(o.name, 80), side: o.side === 'SELL' ? 'SELL' : 'BUY',
+      qty: Math.abs(n(o.qty) || 0), price: n(o.price), cur: str(o.cur, 5) || null, fx: n(o.fx), net: Math.abs(n(o.net) || 0), realised: n(o.realised), feeFx: Math.abs(n(o.feeFx) || 0), feeOther: Math.abs(n(o.feeOther) || 0) }))
+    .filter((o) => o.ts && o.tk && o.qty > 0 && o.id.length > 4);
+  const { results: have } = await env.DB.prepare('SELECT id, ts, ticker, side, qty FROM orders').all();
+  const ids = new Set(have.map((h) => h.id));
+  const byTk = new Map();
+  have.forEach((h) => { if (!byTk.has(h.ticker)) byTk.set(h.ticker, []); byTk.get(h.ticker).push(h); });
+  const dup = (o) => ids.has(o.id) || (byTk.get(o.tk) || []).some((h) => h.side === o.side && Math.abs(h.ts - o.ts) < 5 * 60000 && Math.abs((h.qty || 0) - o.qty) <= 1e-4 * Math.max(1, o.qty));
+  const st = env.DB.prepare('INSERT OR IGNORE INTO orders (id, ts, ticker, name, side, qty, price, currency, fx_rate, net, realised, fee_fx, fee_other, kind) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+  const fresh = orders.filter((o) => !dup(o));
+  await batchChunks(env, fresh.map((o) => st.bind(o.id, o.ts, o.tk, o.name || null, o.side, o.qty, o.price, o.cur, o.fx, r2(o.net), o.realised, r2(o.feeFx), r2(o.feeOther), 'TRADE')));
+
+  // Dividenden: bewaard in kv 'div_csv' en samengevoegd met wat Trading 212 via de API geeft (met echte bronbelasting)
+  let divCsv = [];
+  try { divCsv = JSON.parse((await getKv(env, 'div_csv')) || '[]'); } catch (e) { divCsv = []; }
+  const dkey = (d) => d.ticker + '|' + d.date + '|' + Number(d.amount).toFixed(2);
+  const known = new Set(divCsv.map(dkey));
+  let newDiv = 0;
+  (Array.isArray(body && body.dividends) ? body.dividends : []).slice(0, 5000).forEach((d) => {
+    const x = { ticker: str(d.tk, 20).toUpperCase(), date: str(d.date, 10), amount: n(d.amount), perShare: n(d.perShare), qty: n(d.qty), wht: n(d.wht), whtCur: str(d.whtCur, 5) || null };
+    if (!x.ticker || !/^\d{4}-\d{2}-\d{2}$/.test(x.date) || x.amount == null) return;
+    if (known.has(dkey(x))) return;
+    known.add(dkey(x)); divCsv.push(x); newDiv++;
+  });
+  divCsv.sort((a, b) => a.date.localeCompare(b.date));
+  await setKv(env, 'div_csv', JSON.stringify(divCsv));
+  let ev = null;
+  try { ev = JSON.parse((await getKv(env, 'events')) || 'null'); } catch (e) { ev = null; }
+  if (ev) { ev.received = mergeCsvDividends(ev.received || [], divCsv); await setKv(env, 'events', JSON.stringify(ev)); }
+  await saveDataCache(env, await buildData(env));
+  return { orders: fresh.length, skipped: orders.length - fresh.length, dividends: newDiv };
+}
+
+// Voeg dividenden uit de CSV toe aan die van de API (zelfde aandeel, datum binnen 3 dagen en bedrag binnen 2 cent = dezelfde)
+function mergeCsvDividends(received, divCsv) {
+  const out = received.map((d) => Object.assign({}, d));
+  divCsv.forEach((c) => {
+    const ct = Date.parse(c.date);
+    const m = out.find((d) => d.ticker === c.ticker && Math.abs(Date.parse(d.date) - ct) <= 3 * 864e5 && Math.abs((d.amount || 0) - c.amount) <= 0.02);
+    if (m) { if (c.wht != null) { m.wht = c.wht; m.whtCur = c.whtCur; } if (m.perShare == null && c.perShare != null) m.perShare = c.perShare; if (m.qty == null && c.qty != null) m.qty = c.qty; }
+    else out.push({ ticker: c.ticker, date: c.date, amount: c.amount, perShare: c.perShare, qty: c.qty, wht: c.wht, whtCur: c.whtCur, src: 'csv' });
+  });
+  return out.sort((a, b) => a.date.localeCompare(b.date));
+}
