@@ -40,8 +40,8 @@ function TargetTile({ bump }) {
     return html`<tr key=${x.key}>
       <td class="co"><b>${x.label}</b><span class="nm">${x.sub}</span></td>
       <td class="num">${P1.format(x.w)}<span class="bar-mini"><i style=${'width:' + Math.min(100, x.w * 200).toFixed(1) + '%'}></i></span></td>
-      <td class="num"><input class="t-in" type="number" inputmode="decimal" min="0" max="100" step="0.5" value=${isNum(tv) ? tv : ''} placeholder="–"
-        aria-label=${'Doel voor ' + x.label + ' in procent'} onInput=${(e) => setT(x.key, e.currentTarget.value)} /></td>
+      <td class="num"><span class="stepper"><button type="button" aria-label=${'Doel voor ' + x.label + ' 1 procent lager'} onClick=${() => setT(x.key, String(Math.max(0, Math.round(isNum(tv) ? tv : 0) - 1)))}>−</button><input class="t-in" type="number" inputmode="decimal" min="0" max="100" step="0.5" value=${isNum(tv) ? tv : ''} placeholder="–"
+        aria-label=${'Doel voor ' + x.label + ' in procent'} onInput=${(e) => setT(x.key, e.currentTarget.value)} /><button type="button" aria-label=${'Doel voor ' + x.label + ' 1 procent hoger'} onClick=${() => setT(x.key, String(Math.min(100, Math.round(isNum(tv) ? tv : 0) + 1)))}>+</button></span></td>
       <td class=${'num t-diff ' + (isNum(diff) && Math.abs(diff) >= 0.5 ? (diff > 0 ? 'loss' : 'gain') : '')}>
         ${isNum(diff) ? (Math.abs(diff) < 0.05 ? 'op doel' : sgn(diff, N1) + ' pp') : ''}
         <span class="sub">${isNum(eurDiff) && Math.abs(eurDiff) >= 1 ? (eurDiff > 0 ? eur(eurDiff) + ' bijkopen' : eur(-eurDiff) + ' te veel') : ''}</span></td>
@@ -72,7 +72,7 @@ function InlegTile({ version }) {
   const P = useMemo(() => inlegPlan(amount), [amount, version, data]);
   return html`<section class="tile pad full inleg"><h3>Maandelijkse inleg-assistent</h3>
     <div class="plan-amount"><label for="pp-amount">Ik stort</label>
-      <span class="eur-in">€<input id="pp-amount" type="number" inputmode="decimal" min="0" step="10" value=${amount} onInput=${(e) => pick(e.currentTarget.value)} /></span>
+      <span class="stepper big"><button type="button" aria-label="€ 10 minder" onClick=${() => pick(Math.max(0, amount - 10))}>−</button><span class="eur-in">€<input id="pp-amount" type="number" inputmode="decimal" min="0" step="10" value=${amount} onInput=${(e) => pick(e.currentTarget.value)} /></span><button type="button" aria-label="€ 10 meer" onClick=${() => pick(amount + 10)}>+</button></span>
       <${Seg} value=${amount} options=${[[50, '€ 50'], [100, '€ 100'], [250, '€ 250'], [500, '€ 500']]} onPick=${pick} label="Bedrag kiezen" /></div>
     ${P.buys.length
       ? html`<div class="legend-list advice">${P.buys.map((o) => html`<button type="button" class="legend-row rowbtn" data-ticker=${o.c.tk} key=${o.c.tk}>
@@ -114,7 +114,7 @@ function ForecastTile() {
   return html`<section class="tile pad plan-fc"><div class="plan-head"><h3>Vooruitblik</h3>
       <${Seg} value=${P.years} options=${[5, 10, 20, 30].map((y) => [y, y + ' jaar'])} onPick=${(y) => set('years', y)} label="Aantal jaren" /></div>
     <div class="plan-inputs">
-      <label>Inleg per maand<span class="eur-in">€<input type="number" inputmode="decimal" min="0" step="10" value=${Math.round(P.monthly)} onInput=${(e) => set('monthly', e.currentTarget.value)} /></span></label>
+      <label>Inleg per maand<span class="stepper big"><button type="button" aria-label="€ 25 minder per maand" onClick=${(e) => { e.preventDefault(); set('monthly', Math.max(0, Math.round(P.monthly) - 25)); }}>−</button><span class="eur-in">€<input type="number" inputmode="decimal" min="0" step="10" value=${Math.round(P.monthly)} onInput=${(e) => set('monthly', e.currentTarget.value)} /></span><button type="button" aria-label="€ 25 meer per maand" onClick=${(e) => { e.preventDefault(); set('monthly', Math.round(P.monthly) + 25); }}>+</button></span></label>
       <label>Doelbedrag (optioneel)<span class="eur-in">€<input type="number" inputmode="decimal" min="0" step="500" value=${P.goal ? Math.round(P.goal) : ''} placeholder="geen" onInput=${(e) => set('goal', e.currentTarget.value)} /></span></label>
       <button type="button" class="btn ghost" onClick=${save}>Bewaren</button></div>
     <div class="chart" ref=${chartRef} style="height:220px"></div><div class="xlabels" ref=${xRef}></div>

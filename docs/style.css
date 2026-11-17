@@ -1323,3 +1323,26 @@ body.welcoming #mshell { padding-bottom: 0; }
 .md .m-body .m-head:first-of-type { margin-top: 18px; }
 .d-acts { grid-auto-flow: row; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 @media (min-width: 761px) { .d-acts { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+
+
+/* ===================== Analyse en Plannen: uitleg met "?" en knoppen − en + ===================== */
+.term { text-decoration: none; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
+.term::after { content: "?"; display: inline-grid; place-items: center; flex: none; width: 18px; height: 18px; border-radius: 50%; border: 1px solid var(--rule); background: var(--surface); color: var(--ink-2); font-size: 11px; font-weight: 700; line-height: 1; }
+.term:hover::after, .term[aria-expanded="true"]::after { background: var(--accent); border-color: var(--accent); color: #FFFFFF; }
+.stepper { display: inline-flex; align-items: center; gap: 4px; }
+.stepper > button { flex: none; width: 32px; height: 32px; display: grid; place-items: center; padding: 0; border: 1px solid var(--rule); border-radius: 50%; background: var(--surface); color: var(--ink); font: 700 17px/1 inherit; cursor: pointer; }
+.stepper > button:active { background: var(--bg); }
+.stepper.big > button { width: 40px; height: 40px; font-size: 19px; }
+.plan-tbl .stepper input.t-in { width: 58px; }
+@media (max-width: 760px) { .plan-tbl .stepper > button { width: 30px; height: 30px; } .plan-tbl .stepper input.t-in { width: 48px; } }
+@media (max-width: 760px) {
+  .plan-tbl, .plan-tbl tbody { display: block; width: 100%; }
+  .plan-tbl thead { display: none; }
+  .plan-tbl tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "co step" "now step" "diff diff"; gap: 2px 10px; padding: 10px 0; border-top: 1px solid var(--rule); }
+  .plan-tbl td { padding: 0; border: 0; }
+  .plan-tbl td:nth-child(1) { grid-area: co; }
+  .plan-tbl td:nth-child(2) { grid-area: now; text-align: left; font-size: 13px; color: var(--ink-2); }
+  .plan-tbl td:nth-child(3) { grid-area: step; align-self: center; }
+  .plan-tbl td:nth-child(4) { grid-area: diff; text-align: left; font-size: 13px; }
+  .plan-tbl td:nth-child(4) .sub { display: inline; margin-left: 6px; }
+}
