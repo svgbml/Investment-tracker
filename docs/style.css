@@ -1348,22 +1348,29 @@ body.welcoming #mshell { padding-bottom: 0; }
 }
 
 
-/* ===================== Computer: menu als witte balk tussen grafiek en tegels, alles gecentreerd ===================== */
+/* ===================== Computer: één witte balk met menu en knoppen, de volle breedte van het scherm ===================== */
 .brand svg { display: none; }
-.topbar, body[data-page="home"] .topbar { grid-template-columns: 1fr auto; padding: 12px max(32px, calc((100% - 1216px) / 2)); }
-.pillnav, :root[data-theme="dark"] .pillnav { position: relative; display: flex; justify-content: center; gap: 4px; margin: 0; padding: 0 16px; border-radius: 0; background: var(--surface); border-bottom: 1px solid var(--rule); }
-.pillnav a, :root[data-theme="dark"] .pillnav a { min-width: 120px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 14px 18px 12px; border-radius: 0; color: var(--ink-2); font-size: 14px; font-weight: 600; }
+.topbar, body[data-page="home"] .topbar { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); padding: 0 40px; gap: 16px; }
+.pillnav, :root[data-theme="dark"] .pillnav { position: relative; display: flex; justify-content: center; gap: 4px; margin: 0; padding: 0; border-radius: 0; background: none; }
+.pillnav a, :root[data-theme="dark"] .pillnav a { min-width: 116px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 14px 16px 12px; border-radius: 0; color: var(--ink-2); font-size: 14px; font-weight: 600; }
 .pillnav a svg { width: 22px; height: 22px; }
 .pillnav a:hover { color: var(--ink); }
 .pillnav a[aria-current="page"], :root[data-theme="dark"] .pillnav a[aria-current="page"] { color: var(--ink); }
 .pill, :root[data-theme="dark"] .pill { top: 0; bottom: auto; height: 3px; border-radius: 0 0 3px 3px; background: var(--accent); }
-.band > .chart, .band > .xlabels, .band > .chart-note, .band > #d-legend { max-width: 1280px; margin-left: auto; margin-right: auto; }
-.chart.hero-chart { max-width: 1216px; margin: 12px auto 0; }
-.band .hero-head, .d-top { padding-left: 32px; padding-right: 32px; }
-.band > .xlabels { padding-left: 32px; padding-right: 32px; }
-.band > .chart-note { padding-left: 32px; padding-right: 32px; }
-.page > .wrap, .detail-inner > .wrap { max-width: 1280px; padding-left: 32px; padding-right: 32px; }
-@media (max-width: 1280px) and (min-width: 761px) { .pillnav a { min-width: 96px; padding: 12px 12px 10px; } }
+/* Geen vaste maximale breedte meer: alles loopt mee met het scherm */
+.wrap, .page > .wrap, .detail-inner > .wrap, .hero-head, .band .hero-head, .d-top, .banner, footer.foot-page, .chart-note, .chart-legend, .set-layout,
+.band > .chart, .band > .xlabels, .band > .chart-note, .band > #d-legend { max-width: none; }
+.wrap, .page > .wrap, .detail-inner > .wrap { padding-left: 40px; padding-right: 40px; }
+.band .hero-head, .d-top, .band > .xlabels, .band > .chart-note, .chart-legend, footer.foot-page { padding-left: 40px; padding-right: 40px; }
+.banner { margin-left: 40px; margin-right: 40px; }
+.chart.hero-chart { max-width: none; margin: 12px 40px 0; }
+@media (max-width: 1280px) and (min-width: 761px) {
+  .pillnav a, :root[data-theme="dark"] .pillnav a { min-width: 84px; padding: 12px 10px 10px; }
+  .topbar, body[data-page="home"] .topbar { padding: 0 24px; }
+  .wrap, .page > .wrap, .detail-inner > .wrap, .band .hero-head, .d-top, .band > .xlabels, .band > .chart-note, .chart-legend, footer.foot-page { padding-left: 24px; padding-right: 24px; }
+  .chart.hero-chart { margin: 12px 24px 0; }
+  .banner { margin-left: 24px; margin-right: 24px; }
+}
 
 
 /* Stemmingskaart: leesbaarder */

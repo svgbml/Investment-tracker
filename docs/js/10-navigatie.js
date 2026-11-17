@@ -184,13 +184,14 @@ const TITLES = { home: 'Overzicht', list: 'Bedrijven', news: 'Nieuws', stats: 'A
 const pageId = (p) => (mode === 'm' ? 'm-' + p : 'page-' + p);
 const pageHash = (p) => (p === 'list' ? 'bedrijven' : p === 'stats' ? 'analyse' : p === 'news' ? 'nieuws' : p === 'plan' ? 'plannen' : 'overzicht');
 
-// Menu op de computer: tussen de grote grafiek en de tegels op Overzicht, bovenaan de pagina elders
+// Balk op de computer (menu plus knoppen, één rij): op Overzicht tussen de grote grafiek en de tegels
+// (blijft bij scrollen bovenaan staan), op de andere pagina's bovenaan
 function placeDeskNav() {
-  const nav = document.querySelector('.pillnav');
-  if (!nav || mode !== 'd') return;
+  const bar = /** @type {HTMLElement|null} */ (document.querySelector('#shell .topbar'));
+  if (!bar || mode !== 'd') return;
   const band = document.querySelector('#page-home > .band');
-  if (ui.page === 'home' && band) { if (band.nextElementSibling !== nav) band.after(nav); }
-  else { const app = $('app'); if (app && app.firstElementChild !== nav) app.prepend(nav); }
+  if (ui.page === 'home' && band) { if (band.nextElementSibling !== bar) band.after(bar); }
+  else { const shell = $('shell'); if (shell && shell.firstElementChild !== bar) shell.prepend(bar); }
 }
 function placeIndicators() {
   placeDeskNav();
