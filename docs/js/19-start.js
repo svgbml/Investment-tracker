@@ -29,6 +29,18 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
 // ---------- Controle voor installeren: wat de browser op dit apparaat over de app zegt ----------
 // Geen gegevens van je portefeuille; alleen browser, service worker, manifest en meldingen, om te kunnen zien waarom installeren niet lukt.
 let installCheckText = '';
+// Sommige filters (adblockers met een VPN, zoals AdGuard) halen de manifest-verwijzing uit de pagina; zonder die verwijzing
+// kan Chrome de app niet installeren. Ontbreekt hij, dan zetten we hem zelf terug.
+let manifestRestored = false;
+function ensureManifest() {
+  if (document.querySelector('link[rel="manifest"]')) return;
+  const l = document.createElement('link');
+  l.rel = 'manifest'; l.href = 'manifest.webmanifest';
+  document.head.appendChild(l);
+  manifestRestored = true;
+}
+ensureManifest();
+new MutationObserver(ensureManifest).observe(document.head, { childList: true });
 async function installCheck() {
   const rows = [];
   const add = (k, v, ok) => rows.push([k, v, ok == null ? '' : ok ? 'gain' : 'loss']);
@@ -42,7 +54,9 @@ async function installCheck() {
     add('Service worker', !reg ? 'niet geregistreerd' : (reg.active ? 'actief' : 'nog niet actief') + (reg.waiting ? ', update wacht' : '') + (navigator.serviceWorker.controller ? ', bestuurt deze pagina' : ', bestuurt deze pagina nog niet'), !!(reg && reg.active));
   } catch (e) { add('Service worker', 'fout: ' + e.message, false); }
   try {
-    const href = /** @type {HTMLLinkElement} */ (document.querySelector('link[rel="manifest"]')).href;
+    const link = /** @type {HTMLLinkElement} */ (document.querySelector('link[rel="manifest"]'));
+    add('Manifest-verwijzing in de pagina', link ? (manifestRestored ? 'was weggehaald, door de site teruggezet' : 'aanwezig') : 'ontbreekt', !!link);
+    const href = link ? link.href : new URL('manifest.webmanifest', location.href).href;
     const m = await (await fetch(href, { cache: 'no-store' })).json();
     const icons = (m.icons || []).map((i) => i.sizes + (i.purpose && i.purpose !== 'any' ? ' ' + i.purpose : ''));
     const okIcons = (m.icons || []).some((i) => /192/.test(i.sizes)) && (m.icons || []).some((i) => /512/.test(i.sizes));
@@ -50,6 +64,8 @@ async function installCheck() {
     const res = await Promise.all((m.icons || []).map((i) => fetch(new URL(i.src, href)).then((r) => r.ok).catch(() => false)));
     add('Iconen', icons.join(', ') + (res.every(Boolean) ? ', alle bereikbaar' : ', NIET alle bereikbaar'), okIcons && res.every(Boolean));
   } catch (e) { add('Manifest', 'niet te lezen: ' + e.message, false); }
+  const filters = [...document.querySelectorAll('script[src], style, link[rel="stylesheet"]')].map((x) => /** @type {any} */ (x).src || /** @type {any} */ (x).href || x.textContent.slice(0, 200)).filter((t) => /adguard|ublock|adblock/i.test(t || ''));
+  add('Adblocker of filter in de pagina', filters.length ? 'ja (' + (/adguard/i.test(filters.join(' ')) ? 'AdGuard' : 'onbekend') + ')' : 'niet gezien', filters.length ? false : null);
   add('Chrome bood installeren aan', installOffered ? 'ja (knop Installeren hierboven)' : 'nee (nog niet)', installOffered ? true : null);
   add('Meldingen', !('Notification' in window) ? 'niet ondersteund in deze weergave' : Notification.permission === 'granted' ? 'toegestaan' : Notification.permission === 'denied' ? 'geweigerd (zet ze aan in de site-instellingen van je browser)' : 'nog niet gevraagd', 'Notification' in window ? Notification.permission !== 'denied' : null);
   add('Push', 'PushManager' in window ? 'ondersteund' : 'niet ondersteund', 'PushManager' in window);
