@@ -24,3 +24,8 @@ ALLOWED_ORIGIN = "https://svgbml.github.io"
 #   npx wrangler secret put T212_SECRET
 #   npx wrangler secret put WEB_TOKEN
 #   npx wrangler secret put FMP_KEY   (optioneel: aankomende kwartaalcijfers en dividenden)
+
+# Tests (nep-API's en een database in het geheugen) draaien vóór elke deploy; faalt er een, dan gaat de deploy niet door.
+# Zonder node:sqlite (Node ouder dan 22.13) worden ze overgeslagen.
+[build]
+command = "node test/run.mjs"
