@@ -37,6 +37,40 @@ function tradeInfo(btn) {
   const fx = fxOn(cur, Date.now());
   return { tk: null, sym, label: sym, name: p.name || sym, t212: null, cur, price: p.price, eurPer: isNum(p.price) && fx ? p.price / fx : null, held: 0 };
 }
+// Achtergrond in het orderscherm: risico van dit aandeel (schaal 1–7) en wat analisten vinden
+function tradeRisk(I) {
+  if (I.tk) {
+    const r = companyRisk(M.byTk.get(I.tk));
+    if (r && r.cls) return { cls: r.cls, vol: r.vol };
+  }
+  if (!M.mk.ok) return null;
+  const sym = I.tk ? M.mk.sym(I.tk) : I.sym;
+  const pts = (M.mk.prices(sym) || []).slice(-261);
+  const rs = [];
+  for (let i = 1; i < pts.length; i++) { const r = pts[i].v / pts[i - 1].v - 1; if (isNum(r) && Math.abs(r) < 0.5) rs.push(r); }
+  if (rs.length >= 60) { const vol = stdev(rs) * Math.sqrt(252); return { cls: srri(vol), vol }; }
+  const p = I.tk ? M.mk.profOf(I.tk) : M.mk.prof(sym);
+  return p && isNum(p.beta) && p.beta > 0 ? { cls: null, vol: null, beta: p.beta } : null;
+}
+function tradeFacts(I) {
+  const rows = [];
+  const R = tradeRisk(I);
+  if (R && R.cls) rows.push('<div><dt>Risico</dt><dd><span class="lvl" style="--k:' + R.cls + '">' + R.cls + '</span> ' + esc(RISK_WORDS[R.cls] + ' op een schaal van 1 tot 7' + (isNum(R.vol) ? ', schommelt ± ' + PCT0.format(R.vol) + ' per jaar' : '')) + '</dd></div>');
+  else if (R && R.beta) rows.push('<div><dt>Risico</dt><dd>' + esc((R.beta >= 1.3 ? 'beweeglijker dan de markt' : R.beta <= 0.8 ? 'rustiger dan de markt' : 'ongeveer als de markt') + ' (beta ' + N2.format(R.beta) + ')') + '</dd></div>');
+  else rows.push('<div><dt>Risico</dt><dd class="muted">onbekend (nog geen koershistorie)</dd></div>');
+  const key = I.tk || I.sym;
+  const rc = recOf(key);
+  if (rc) {
+    const word = rc.sell >= 0.3 ? 'vaak verkopen' : rc.buy >= 0.6 ? 'meestal kopen' : rc.buy >= 0.4 ? 'kopen en aanhouden' : 'meestal aanhouden';
+    const r = (data.research || {})[key];
+    const T = r && r.target && isNum(r.target.mean) ? r.target.mean : null;
+    const up = T && isNum(I.price) && I.price > 0 ? T / I.price - 1 : null;
+    rows.push('<div><dt>Analisten</dt><dd>' + esc(word + ': ' + PCT0.format(rc.buy) + ' van ' + rc.tot + ' zegt kopen') + '</dd></div>');
+    if (T) rows.push('<div><dt>Koersdoel analisten</dt><dd>' + esc(money(T, I.cur) + (isNum(up) ? ' (' + spct(up) + ')' : '')) + '</dd></div>');
+  } else rows.push('<div><dt>Analisten</dt><dd class="muted">' + esc(demo || (FEAT().keys && FEAT().keys.FINNHUB_KEY) ? 'geen oordeel bekend' : 'met een Finnhub-sleutel zie je hier wat analisten vinden') + '</dd></div>');
+  return rows.join('');
+}
+
 const newOrderId = () => (window.crypto && crypto.randomUUID ? crypto.randomUUID() : 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10));
 
 async function openTradeDialog(btn) {
@@ -67,6 +101,8 @@ async function openTradeDialog(btn) {
     const over = amount > L.perOrder;
     const canSell = I.held > 0;
     const ok = st.qty > 0 && amount > 0 && !over && (st.side === 'BUY' || (canSell && st.qty <= I.held + 1e-9)) && (st.type === 'market' || st.limit > 0);
+    const cash = isNum(M.cash) ? M.cash : null;
+    const short = st.side === 'BUY' && cash != null && amount + fee > cash + 0.005;
     dlg.innerHTML = '<div class="dlg-card" role="dialog" aria-modal="true" aria-label="Order plaatsen">' +
       '<h3>' + (st.side === 'BUY' ? 'Kopen' : 'Verkopen') + ': ' + esc(I.label) + '</h3><p class="small muted">' + esc(I.name) + (I.t212 ? ' · ' + esc(I.t212) : '') + (demo ? ' · voorbeeld: in de demo wordt niets verstuurd' : '') + '</p>' +
       (st.choices ? '<label class="wm-l">Beurs<select data-t="choice">' + st.choices.map((h) => '<option value="' + esc(h.ticker) + '"' + (h.ticker === I.t212 ? ' selected' : '') + '>' + esc(h.ticker + ' (' + h.cur + ')') + '</option>').join('') + '</select></label>' : '') +
@@ -78,10 +114,13 @@ async function openTradeDialog(btn) {
       (st.type === 'limit' ? '<div class="seg light" role="group" aria-label="Geldig" style="margin-top:8px"><button type="button" data-t="validity" data-v="DAY" aria-pressed="' + (st.validity === 'DAY') + '">Vandaag</button><button type="button" data-t="validity" data-v="GTC" aria-pressed="' + (st.validity === 'GTC') + '">Tot je annuleert</button></div>' : '') +
       (canSell && st.side === 'SELL' ? '<p class="small muted" style="margin-top:6px">Je hebt ' + esc(N4.format(I.held)) + ' stuks. <button type="button" class="linklike" data-t="all">Alles verkopen</button></p>' : '') +
       '<dl class="kv" style="margin-top:10px">' +
+      '<div><dt>Vrij saldo</dt><dd>' + (cash != null ? esc(eur(cash)) + (M.cashAt ? ' <span class="small muted">(stand ' + esc(fDT.format(M.cashAt)) + ')</span>' : '') : '<span class="muted">volgt na de volgende meting</span>') + '</dd></div>' +
       '<div><dt>Koers nu</dt><dd>' + esc(isNum(I.price) ? money(I.price, I.cur) : 'onbekend') + '</dd></div>' +
       '<div><dt>Geschat bedrag</dt><dd>' + esc(amount ? eur(amount) : '–') + '</dd></div>' +
       '<div><dt>Wisselkosten (0,15%)</dt><dd>' + esc(fee ? '± ' + eur(fee) : I.cur === 'EUR' ? 'geen' : '–') + '</dd></div>' +
-      '<div><dt>Jouw grenzen</dt><dd>' + esc(eur(L.perOrder) + ' per order, ' + eur(L.perDay) + ' per dag') + '</dd></div></dl>' +
+      '<div><dt>Jouw grenzen</dt><dd>' + esc(eur(L.perOrder) + ' per order, ' + eur(L.perDay) + ' per dag') + '</dd></div>' +
+      tradeFacts(I) + '</dl>' +
+      (short ? '<p class="small loss">Meer dan je vrije saldo. Trading 212 weigert de order als er niet genoeg geld op je rekening staat.</p>' : '') +
       (over ? '<p class="small loss">Groter dan je grens per order. Pas die aan bij Instellingen, Koppelingen.</p>' : '') +
       (st.type === 'market' ? '<p class="small muted">Een marktorder wordt uitgevoerd tegen de koers op dat moment; buiten de beurstijden wacht hij tot de beurs opent. De echte prijs kan afwijken.</p>' : '') +
       '<label class="check small" style="margin-top:8px"><input type="checkbox" data-t="sure"' + (st.sure ? ' checked' : '') + '> Ik begrijp dat dit een echte order met echt geld is.</label>' +

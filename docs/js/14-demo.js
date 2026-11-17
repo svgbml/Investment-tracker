@@ -248,7 +248,8 @@ function makeDemoData() {
   // Koersdoel en nieuwsstemming, ook voor de volglijst (NVDA, LMT)
   ['NVDA', 'LMT'].forEach((tk, i) => { research[tk] = Object.assign({}, research.AAPL, { news: research.AAPL.news.map((n) => Object.assign({}, n, { headline: n.headline.replace('Apple', tk) })) }); fin[tk] = fin.MSFT; });
   Object.keys(research).forEach((tk) => {
-    const pr = (profiles[tk] && profiles[tk].price) || (100 + rnd() * 300);
+    // Zelfde koers als de positie zelf, zodat koersdoel en koers bij elkaar passen
+    const pr = (posExtra[tk] && posExtra[tk].price) || (profiles[tk] && profiles[tk].price) || (100 + rnd() * 300);
     research[tk].target = { mean: +(pr * (0.95 + rnd() * 0.3)).toFixed(2), median: +(pr * 1.05).toFixed(2), high: +(pr * 1.45).toFixed(2), low: +(pr * 0.7).toFixed(2), updated: dIn(-5) };
     const bull = +(0.3 + rnd() * 0.5).toFixed(2);
     research[tk].sent = { bull, bear: +(1 - bull).toFixed(2), score: +(0.4 + rnd() * 0.5).toFixed(2), sector: 0.55, articles: Math.round(10 + rnd() * 80), buzz: 1 };
