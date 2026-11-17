@@ -88,7 +88,11 @@ function derive() {
     }
   }
   m.lastWeek = lw || null;
-  m.cash = lw && isNum(lw.cash) ? lw.cash : null;
+  // Vrij saldo: van de laatste meting als die er is, anders uit de weekmeting
+  const cn = data.cashNow;
+  const cnT = cn && cn.at ? new Date(cn.at).getTime() : null;
+  if (cn && isNum(cn.cash) && isNum(cnT) && (!lw || cnT >= lw.t)) { m.cash = cn.cash; m.cashAt = cnT; }
+  else { m.cash = lw && isNum(lw.cash) ? lw.cash : null; m.cashAt = lw ? lw.t : null; }
   m.accountNow = m.totalValue + (m.cash || 0);
   m.bench = findBench(m.companies);
   const allT = seriesOf(TOTAL).daily;

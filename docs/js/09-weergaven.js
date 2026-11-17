@@ -338,7 +338,7 @@ function renderAccount() {
   const unreal = sum(pl.map((c) => c.unreal));
   const facts = kvList([
     ['Beleggingen nu', eur(M.totalValue)],
-    ['Vrij saldo', M.cash != null ? eur(cash) + ' (stand ' + fDM.format(lw.t) + ')' : 'na de eerste weekmeting'],
+    ['Vrij saldo', M.cash != null ? eur(cash) + ' (stand ' + (M.cashAt && M.cashAt > (lw ? lw.t : 0) + DAY ? fDT.format(M.cashAt) : fDM.format(M.cashAt || lw.t)) + ')' : 'na de eerste weekmeting'],
     ['Netto gestort', lw ? eur(lw.netDeposits) : '–'],
     ['Resultaat nu', lw ? seur(total - lw.netDeposits) + ' (' + spct1((total - lw.netDeposits) / lw.netDeposits) + ')' : '–', lw ? tone(total - lw.netDeposits) : ''],
     ['Ongerealiseerd', seur(unreal), tone(unreal)],
@@ -356,7 +356,7 @@ function renderAccount() {
   ];
   const head = '<p class="hero-label">Accountwaarde nu</p><h2 id="d-title" class="' + (mode === 'm' ? 'm-value' : 'hero-value') + '">' + esc(eur(total)) + '</h2>' +
     '<p class="' + (mode === 'm' ? 'base' : 'hero-change muted') + '" style="' + (mode === 'm' ? 'padding:6px 0 0' : '') + '">' +
-    esc(M.cash != null ? 'Beleggingen ' + eur(M.totalValue) + ' nu, plus ' + eur(cash) + ' vrij saldo uit de weekmeting van ' + fDM.format(lw.t) + '.' : 'Alleen beleggingen; het vrije saldo komt uit de weekmeting.') + '</p>';
+    esc(M.cash != null ? 'Beleggingen ' + eur(M.totalValue) + ' nu, plus ' + eur(cash) + ' vrij saldo (stand ' + fDT.format(M.cashAt || lw.t) + ').' : 'Alleen beleggingen; het vrije saldo komt uit de weekmeting.') + '</p>';
   if (mode === 'm') {
     return '<div class="md"><div class="m-dtop"><button type="button" class="m-back" data-act="back">‹ Terug</button><span class="t">Accountwaarde</span><span></span></div>' +
       '<div class="m-hero"><div class="m-swipe">' + head + '</div></div>' +

@@ -687,6 +687,12 @@ async function tick(env, now, force) {
     await env.DB.batch(rows.map((r) => stmt.bind(ts, r.ticker, r.name, r.value, r.unrealized, r.price, r.qty)));
     await setKv(env, 'pos_extra', JSON.stringify(posExtra(positions)));
     msgs.push(`${positions.length} posities gemeten (totaal €${total.toFixed(2)}).`);
+    // Vrij saldo bij elke meting (anders alleen in de weeksnapshot, en dan klopt de accountwaarde niet na een aankoop)
+    try {
+      const sum = await t212(env, '/api/v0/equity/account/summary');
+      const cash = num(sum.cash && sum.cash.availableToTrade) + num(sum.cash && sum.cash.inPies) + num(sum.cash && sum.cash.reservedForOrders);
+      await setKv(env, 'cash_now', JSON.stringify({ cash: r2(cash), at: isoLocal(ts) }));
+    } catch (e) { console.error('saldo', e); }
     try { const m = await alertMoves(env, rows, now); if (m) msgs.push(m); } catch (e) { console.error('meldingen', e); }
     try { const m = await checkPriceAlerts(env, rows); if (m) msgs.push(m); } catch (e) { console.error('koersalarm', e); }
     try { const m = await depositReminder(env, now); if (m) msgs.push(m); } catch (e) { console.error('inleg', e); }
@@ -843,6 +849,11 @@ async function cleanupOld(env, now) {
 
 async function batchChunks(env, stmts) {
   for (let i = 0; i < stmts.length; i += 50) await env.DB.batch(stmts.slice(i, i + 50));
+}
+
+// Laatst gemeten vrij saldo (bij elke meting bijgewerkt)
+async function cashNowOf(env) {
+  try { const c = JSON.parse((await getKv(env, 'cash_now')) || 'null'); return c && isFinite(Number(c.cash)) ? c : null; } catch (e) { return null; }
 }
 
 // ---------- Weeksnapshot ----------
@@ -1050,6 +1061,7 @@ async function buildData(env) {
     weeks,
     positionsDate,
     positions,
+    cashNow: await cashNowOf(env),
     today,
     intraday: { columns: ['time', 'ticker', 'value'], rows: intra.map((r) => [isoLocal(r.ts), r.ticker, r.value]) },
     hours: { columns: ['hour', 'ticker', 'open', 'close', 'low', 'high', 'avg'],

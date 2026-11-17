@@ -80,6 +80,7 @@ await test('meting via /api/run en gegevens in twee delen met ETag', async () =>
   assert.ok(tag, 'ETag ontbreekt');
   const c = await jsonOf(core);
   assert.equal(c.part, 'core');
+  assert.equal(c.cashNow && c.cashNow.cash, 80, 'vrij saldo bij elke meting');
   assert.ok(c.positions.length === 2 && !('market' in c));
   const again = await req('/api/data?part=core', { headers: { 'If-None-Match': tag } });
   assert.equal(again.status, 304);
