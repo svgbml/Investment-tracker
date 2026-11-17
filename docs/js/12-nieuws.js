@@ -183,7 +183,7 @@ function watchSuggestTile() {
   return String(tpl`<section class="tile pad watch-sugg"><div class="plan-head"><h3>Suggesties om te volgen</h3>
       <span class="plan-actions">${all.length > n ? tpl`<button type="button" class="btn ghost" data-xa="watch-next">Andere suggesties</button>` : null}
       ${all.length > 10 ? tpl`<button type="button" class="btn ghost" data-xa="watch-more">${n === 20 ? 'Minder tonen' : 'Meer tonen'}</button>` : null}</span></div>
-    <p class="small muted">${L.length} van ${all.length} suggesties</p><div class="alt-list">${L.map(item)}</div>
+    <p class="small muted">${L.length} van ${all.length} suggesties</p><p class="small watch-status" role="status" aria-live="polite"></p><div class="alt-list">${L.map(item)}</div>
     <p class="sub" style="margin-top:8px">Vergelijkbare bedrijven van je posities (FMP) en de grootste bedrijven in je indexfondsen die je nog niet los volgt. Volgen is gratis en verandert niets aan je portefeuille.</p></section>`);
 }
 
@@ -219,7 +219,15 @@ document.addEventListener('click', async (e) => {
     return;
   }
   if (a === 'ws-share' || a === 'ws-png' || a === 'ws-mail') { shareWeek(a.slice(3), b); return; }
-  if (a === 'watch-add') { const list = watchSyms().slice(); if (!list.includes(b.dataset.k) && list.length < 30) { b.disabled = true; b.textContent = 'Bezig…'; list.push(b.dataset.k); setWatchlist(list, null, b.dataset.k + ' staat op je volglijst.'); } return; }
+  if (a === 'watch-add') {
+    const sym = b.dataset.k, tile = b.closest('.watch-sugg'), st = tile && tile.querySelector('.watch-status');
+    if (watchSyms().includes(sym)) return;
+    if (watchSyms().length >= 30) { if (st) { st.textContent = 'Je volglijst zit vol (maximaal 30 aandelen).'; st.className = 'small watch-status loss'; } return; }
+    b.disabled = true; b.textContent = 'Bezig…';
+    setWatchlist((cur) => (cur.includes(sym) || cur.length >= 30 ? cur : cur.concat([sym])), st, sym + ' staat op je volglijst.')
+      .catch(() => { b.disabled = false; b.textContent = 'Opnieuw'; });
+    return;
+  }
   if (a === 'acct-add') { const id = Math.random().toString(36).slice(2, 10); saveAccounts(accts().concat([{ id, name: 'Nieuwe rekening', broker: '', cash: 0, updated: new Date().toISOString().slice(0, 10), holdings: [] }]), null); return; }
   const f = b.closest('.acct-form');
   if (!f) return;

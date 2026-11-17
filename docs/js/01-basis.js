@@ -25,7 +25,7 @@ const DAY = 864e5;
 // Taal: Nederlands (standaard) of Engels; getallen en datums volgen de gekozen taal
 const LANG = (() => { try { return localStorage.getItem('tracker.lang') === 'en' ? 'en' : 'nl'; } catch (e) { return 'nl'; } })();
 const LOCALE = LANG === 'en' ? 'en-GB' : 'nl-NL';
-const VERSION = 'v39';
+const VERSION = 'v40';
 const nf = (o) => new Intl.NumberFormat(LOCALE, o);
 const EUR = nf({ style: 'currency', currency: 'EUR' });
 const P2 = nf({ style: 'percent', minimumFractionDigits: 2, maximumFractionDigits: 2 });

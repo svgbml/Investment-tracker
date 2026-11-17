@@ -803,7 +803,7 @@ function renderDetailChart(animate) {
 
 $('detail').addEventListener('click', (e) => {
   const uw = e.target.closest('[data-unwatch]');
-  if (uw) { const sym = uw.dataset.unwatch; closeDetail(); setWatchlist(watchSyms().filter((x) => x !== sym), null, sym + ' is van je volglijst gehaald.'); return; }
+  if (uw) { const sym = uw.dataset.unwatch; closeDetail(); setWatchlist((cur) => cur.filter((x) => x !== sym), null, sym + ' is van je volglijst gehaald.').catch(() => {}); return; }
   const op = e.target.closest('[data-open]');
   if (op) { switchDetail(op.dataset.open, 'r'); return; }
   const tab = e.target.closest('[data-tab]');

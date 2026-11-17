@@ -220,18 +220,37 @@ function renderWatch() {
   if ($('m-watch-sugg')) $('m-watch-sugg').innerHTML = sg;
 }
 
-async function setWatchlist(list, statusEl, note) {
+// Wijzigingen in de volglijst gaan een voor een, zodat twee snelle klikken elkaar niet overschrijven.
+// `next` is een lijst of een functie die de nieuwe lijst maakt uit de huidige.
+let watchQueue = Promise.resolve();
+let watchFetchTimer = null;
+function setWatchlist(next, statusEl, note) {
   const say = (t, cls) => { if (statusEl) { statusEl.textContent = t; statusEl.className = 'small watch-status ' + (cls || 'muted'); } };
-  try {
-    say('Bezig met opslaan…');
-    await saveSettings({ watchlist: list });
-    if (!demo && isWorker()) {
-      say(note + ' Gegevens worden opgehaald…');
-      try { await workerCall('/api/market?plan=1', { method: 'POST' }); } catch (e) { /* de Worker probeert het later opnieuw */ }
-      await load();
-    } else renderAll();
-    say(note, 'gain');
-  } catch (err) { say('Mislukt: ' + err.message, 'loss'); }
+  const run = async () => {
+    try {
+      say('Bezig met opslaan…');
+      const list = typeof next === 'function' ? next(watchSyms().slice()) : next;
+      await saveSettings({ watchlist: list });
+      renderAll();
+      say(note, 'gain');
+      // Koersen en profielen van nieuwe symbolen op de achtergrond ophalen; niet wachten, de lijst staat al goed
+      if (!demo && isWorker()) {
+        clearTimeout(watchFetchTimer);
+        watchFetchTimer = setTimeout(fetchWatchData, 1500);
+      }
+      return true;
+    } catch (err) { say('Mislukt: ' + err.message, 'loss'); throw err; }
+  };
+  const p = watchQueue.then(run, run);
+  watchQueue = p.catch(() => {});
+  return p;
+}
+async function fetchWatchData() {
+  const ctl = typeof AbortController === 'function' ? new AbortController() : null;
+  const stop = ctl ? setTimeout(() => ctl.abort(), 30000) : null;
+  try { await workerCall('/api/market?plan=1', { method: 'POST', signal: ctl ? ctl.signal : undefined }); } catch (e) { /* de Worker probeert het later opnieuw */ }
+  clearTimeout(stop);
+  try { await load(); } catch (e) { /* volgende keer */ }
 }
 
 // Volgen met Enter of de knop: eerst kijken of het symbool bestaat (bedrijvenlijst en Finnhub)
@@ -258,7 +277,7 @@ document.addEventListener('submit', async (e) => {
   if (list.includes(hit.sym)) { bad('Staat al op je volglijst.'); return; }
   if (list.length >= 30) { bad('Maximaal 30 aandelen.'); return; }
   inp.value = ''; const box = f.querySelector('.ws-results'); if (box) { box.innerHTML = ''; box.hidden = true; }
-  setWatchlist(list.concat([hit.sym]), st, hit.sym + (hit.name ? ' (' + hit.name + ')' : '') + ' staat op je volglijst.');
+  setWatchlist((cur) => (cur.includes(hit.sym) ? cur : cur.concat([hit.sym])), st, hit.sym + (hit.name ? ' (' + hit.name + ')' : '') + ' staat op je volglijst.');
 });
 
 function renderWatchDetail(sym) {

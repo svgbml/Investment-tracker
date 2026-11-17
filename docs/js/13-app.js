@@ -569,12 +569,12 @@ document.addEventListener('click', (e) => {
     if (list.includes(sym)) return;
     if (list.length >= 30) { if (st) { st.textContent = 'Maximaal 30 aandelen.'; st.className = 'small watch-status loss'; } return; }
     if (f) { f.querySelector('input').value = ''; const r = f.querySelector('.ws-results'); r.innerHTML = ''; r.hidden = true; }
-    setWatchlist(list.concat([sym]), st, sym + ' staat op je volglijst.');
+    setWatchlist((cur) => (cur.includes(sym) ? cur : cur.concat([sym])), st, sym + ' staat op je volglijst.').catch(() => {});
   } else if (act === 'watch-remove') {
-    setWatchlist(watchSyms().filter((x) => x !== sym), st, sym + ' is van je volglijst gehaald.');
+    setWatchlist((cur) => cur.filter((x) => x !== sym), st, sym + ' is van je volglijst gehaald.').catch(() => {});
   } else if (act === 'watch-clean') {
     const bad = new Set(unknownSyms());
-    setWatchlist(watchSyms().filter((x) => !bad.has(x)), st, bad.size + (bad.size === 1 ? ' ongeldig symbool' : ' ongeldige symbolen') + ' verwijderd.');
+    setWatchlist((cur) => cur.filter((x) => !bad.has(x)), st, bad.size + (bad.size === 1 ? ' ongeldig symbool' : ' ongeldige symbolen') + ' verwijderd.').catch(() => {});
   } else if (act === 'watch-more') { xs.suggN = xs.suggN === 20 ? 10 : 20; renderWatch(); }
   else if (act === 'watch-next') { xs.suggOff = (xs.suggOff || 0) + (xs.suggN || 10); renderWatch(); }
 });
