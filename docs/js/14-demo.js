@@ -282,6 +282,29 @@ function makeDemoData() {
     features: { flags: { fx: true, inflation: true, sec: true, etfAuto: true }, has: { fmp: true, finnhub: true, sec: true, t212: true } },
   };
 
+  // Marktoverzicht, maatstaven, deponeringen, 13F, economische agenda, pies, cijferdata en rente (voorbeelden)
+  Object.assign(extraDemo.idx.series, { VIXCLS: idxSer(17, 0, 0).map(([d], k) => [d, +(16 + 4 * Math.sin(k / 9) + rnd() * 2).toFixed(2)]), DGS10: idxSer(4.3, 0, 0.006), ECBDFR: idxSer(2, 0, 0).map(([d]) => [d, 2]) });
+  [['URTH', 160, 0.0003], ['VT', 125, 0.0003], ['VGK', 72, 0.0002], ['EWN', 52, 0.0002]].forEach(([sym, v0, dr]) => { market.prices[sym] = idxSer(v0, dr, 0.009); });
+  const demoSyms = Object.keys(META_INFO).filter((tk) => !/^(VUAG|SXRV|SPCX)$/.test(tk));
+  const forms = [['10-Q', '', -9], ['8-K', '2.02', -10], ['8-K', '5.02', -34], ['DEF 14A', '', -60], ['10-K', '', -110]];
+  const filingsPer = {};
+  demoSyms.slice(0, 5).forEach((tk, i) => { filingsPer[tk] = { checked: dIn(0), list: forms.map(([f, it, d], k) => ({ date: dIn(d - i * 3 - k), form: f, desc: f, items: it, url: 'https://www.sec.gov/' })) }; });
+  const f13top = (names) => names.map(([nm, pct, chg], k) => ({ name: nm, value: Math.round(pct * 2.6e11), shares: 1e6 * (20 - k), pct, chg, isNew: chg === null && k === names.length - 1 }));
+  // Twee bestuurders die kort na elkaar zelf kopen (voor 'Insiders die samen kopen')
+  if (research.MSFT) research.MSFT.insider = [{ name: 'Voorbeeld, D.', date: dIn(-6), code: 'P', change: 800, price: 410, shares: null }, { name: 'Voorbeeld, E.', date: dIn(-15), code: 'P', change: 1500, price: 402, shares: null }].concat(research.MSFT.insider || []);
+  extraDemo.ext2 = {
+    filings: { updated: iso(now), per: filingsPer },
+    f13: { updated: dIn(-2), funds: [
+      { cik: 1067983, label: 'Berkshire Hathaway (Warren Buffett)', period: (new Date().getFullYear()) + '-09-30', filed: dIn(-3), total: 2.6e11, n: 41, top: f13top([['APPLE INC', 0.22, -0.13], ['AMERICAN EXPRESS CO', 0.16, 0], ['BANK AMER CORP', 0.11, -0.07], ['COCA COLA CO', 0.1, 0], ['CHEVRON CORP NEW', 0.07, 0.04], ['OCCIDENTAL PETE CORP', 0.05, 0], ['MOODYS CORP', 0.04, 0], ['KRAFT HEINZ CO', 0.03, 0], ['CHUBB LIMITED', 0.03, 0.12], ['ALPHABET INC', 0.02, null]]), names: ['APPLE INC', 'COCA COLA CO', 'ALPHABET INC', 'AMERICAN EXPRESS CO'] },
+      { cik: 1336528, label: 'Pershing Square (Bill Ackman)', period: (new Date().getFullYear()) + '-09-30', filed: dIn(-4), total: 1.4e10, n: 11, top: f13top([['UBER TECHNOLOGIES INC', 0.2, 0.05], ['BROOKFIELD CORP', 0.17, 0], ['ALPHABET INC', 0.15, -0.02], ['RESTAURANT BRANDS INTL INC', 0.13, 0], ['HILTON WORLDWIDE HLDGS INC', 0.11, -0.1], ['AMAZON COM INC', 0.08, null]]), names: ['ALPHABET INC', 'AMAZON COM INC', 'UBER TECHNOLOGIES INC'] }] },
+    econ: { updated: iso(now), source: 'Voorbeeld', items: [[6, 'Consumer Price Index'], [9, 'Employment Situation'], [16, 'Gross Domestic Product'], [22, 'FOMC Press Release'], [30, 'Personal Income and Outlays']].map(([d, n]) => ({ date: dIn(d), name: n })) },
+    pies: { updated: iso(now), list: [
+      { id: 1, name: 'Dividend', invested: 420, value: 451.3, result: 31.3, resultPct: 0.0745, cash: 0.42, divGained: 9.8, progress: 0.45, goal: 1000, instruments: [{ tk: 'KO', target: 0.4, share: 0.41 }, { tk: 'MSFT', target: 0.3, share: 0.31 }, { tk: 'ASML', target: 0.3, share: 0.28 }] },
+      { id: 2, name: 'Chips', invested: 250, value: 238.9, result: -11.1, resultPct: -0.0444, cash: 0, divGained: 0.6, progress: null, goal: null, instruments: [{ tk: 'TSM', target: 0.5, share: 0.47 }, { tk: 'NVDA', target: 0.5, share: 0.53 }] }] },
+    earnHist: Object.fromEntries(demoSyms.slice(0, 6).map((tk, i) => [tk, [dIn(-12 - i * 2), dIn(-102 - i * 2), dIn(-193 - i * 2), dIn(-284 - i * 2)]])),
+    interest: Array.from({ length: 10 }, (_, k) => ({ date: dIn(-30 * k - 2), amount: +(0.08 + rnd() * 0.12).toFixed(2) })).reverse(),
+  };
+
   // Aankoopdagboek en andere rekeningen (voorbeelden)
   const demoNotes = {};
   const firstBuy = (tk) => orders.find((o) => o[1] === tk && o[3] === 'BUY');

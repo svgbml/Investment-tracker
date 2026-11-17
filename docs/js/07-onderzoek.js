@@ -91,6 +91,8 @@ function companyResearch(c) {
   else if (!Fin) tiles.push(offTile('Bedrijfscijfers', wait));
   else if (Fin.none) tiles.push('<section class="tile pad"><h3>Bedrijfscijfers</h3><p class="muted">' + esc(Fin.none) + '</p></section>');
   else tiles.push(finTile(Fin));
+  const fl = companyFilingsTile(String(M.mk.ok ? M.mk.sym(c.tk) : c.tk).replace(/^~/, ''));
+  if (fl) tiles.push(fl);
   return tiles;
 }
 
@@ -188,7 +190,7 @@ function watchTile(sym, phone) {
   const noChart = pts.length < 2 ? '<span class="spark-empty">' + esc(FEAT().has.td || FEAT().has.av ? 'Koersgeschiedenis wordt opgehaald' : 'Grafiek bouwt zich dag voor dag op; met een gratis Twelve Data-sleutel meteen') + '</span>' : '';
   if (phone) {
     return '<button type="button" class="m-row" data-ticker="~' + esc(sym) + '" aria-label="' + esc(c.name + ', volglijst. Openen') + '">' +
-      '<span class="l"><span class="tk">' + esc(sym) + '</span><span class="nm">' + esc(c.name !== sym ? c.name : sub) + '</span></span>' +
+      '<span class="l"><span class="tk">' + esc(sym) + '</span><span class="nm">' + esc(c.name !== sym ? c.name : sub) + '</span>' + watchBadges(sym, p) + '</span>' +
       spark(pts, toneColor(ch), 'mspark') +
       '<span class="rt"><b>' + esc(p && isNum(p.price) ? money(p.price, p.currency) : '–') + '</b><span class="chip-chg ' + tone(ch) + '">' + esc(isNum(ch) ? spct(ch) : 'volglijst') + '</span></span></button>';
   }
@@ -197,7 +199,7 @@ function watchTile(sym, phone) {
     '<span class="nm">' + esc(c.name) + '</span>' +
     '<span class="row" style="margin-top:8px"><span class="v" style="font-size:22px">' + esc(p && isNum(p.price) ? money(p.price, p.currency) : '–') + '</span><b class="' + tone(ch) + '">' + esc(isNum(ch) ? spct(ch) : '') + '</b></span>' +
     (rb.html && p && p.range ? '<span class="sub" style="display:block;margin-top:6px">' + rb.html + '</span><span class="sub">' + esc(isNum(rb.off) ? (rb.off > -0.005 ? 'bij de jaartop' : P1.format(-rb.off) + ' onder de jaartop') : '') + '</span>' : '') +
-    '<span class="sub">' + esc(sub) + '</span>' + (noChart || spark(pts, toneColor(ch))) + '</button>';
+    '<span class="sub">' + esc(sub) + '</span>' + watchBadges(sym, p) + (noChart || spark(pts, toneColor(ch))) + '</button>';
 }
 
 function watchAddForm(id) {
@@ -208,13 +210,13 @@ function watchAddForm(id) {
 }
 
 function renderWatch() {
-  const syms = watchSyms();
+  const syms = watchSyms().filter(watchTagFilter);
   const empty = '<p class="empty">Nog niets op je volglijst. Voeg een beurssymbool toe (zoals NVDA of LMT) om koers, agenda, nieuws en cijfers te volgen zonder het aandeel te hebben.</p>';
   if ($('watch-grid')) { if (!$('watch-in')) $('watch-add').innerHTML = watchAddForm('watch-in'); fill('watch-grid', syms.length ? syms.map((x) => watchTile(x, false)) : [empty]); }
   if ($('m-watch-rows')) { if (!$('m-watch-in')) $('m-watch-add').innerHTML = watchAddForm('m-watch-in'); fill('m-watch-rows', syms.length ? syms.map((x) => watchTile(x, true)) : ['<p class="m-sub" style="padding:16px">Nog niets op je volglijst.</p>']); }
   const bad = unknownSyms();
   const clean = bad.length ? '<p class="small loss watch-clean">' + esc(bad.length + (bad.length === 1 ? ' symbool wordt' : ' symbolen worden') + ' niet gevonden: ' + bad.join(', ') + '.') + ' <button type="button" class="linklike" data-xa="watch-clean">Ongeldige verwijderen</button></p>' : '';
-  ['watch-add', 'm-watch-add'].forEach((id) => { const host = $(id); if (!host) return; const old = host.querySelector('.watch-clean'); if (old) old.remove(); if (clean) host.insertAdjacentHTML('beforeend', clean); });
+  ['watch-add', 'm-watch-add'].forEach((id) => { const host = $(id); if (!host) return; const old = host.querySelector('.watch-clean'); if (old) old.remove(); if (clean) host.insertAdjacentHTML('beforeend', clean); const oc = host.querySelector('.watch-tags'); if (oc) oc.remove(); host.insertAdjacentHTML('beforeend', watchTagChips()); });
   const sg = watchSuggestTile();
   if ($('watch-sugg')) $('watch-sugg').innerHTML = sg;
   if ($('m-watch-sugg')) $('m-watch-sugg').innerHTML = sg;
@@ -301,11 +303,11 @@ function renderWatchDetail(sym) {
   if (mode === 'm') {
     return '<div class="md"><div class="m-dtop"><button type="button" class="m-back" data-act="back">‹ Terug</button><span class="t">' + esc(sym) + '</span><span></span></div>' +
       '<div class="m-hero"><div class="m-swipe">' + head + '</div>' + chart + '</div>' +
-      '<div class="m-body"><div class="m-stack">' + agenda + priceAlertTile(sym, p && p.price, (p && p.currency) || 'USD') + research.join('') + market.tiles.join('') + market.table + '<div style="padding:8px 0">' + remove + '</div></div></div></div>';
+      '<div class="m-body"><div class="m-stack">' + agenda + priceAlertTile(sym, p && p.price, (p && p.currency) || 'USD') + watchMetaTile(sym, p) + research.join('') + market.tiles.join('') + market.table + '<div style="padding:8px 0">' + remove + '</div></div></div></div>';
   }
   return '<div class="band"><div class="d-top"><button type="button" class="btn dark" data-act="back">← Terug</button>' + remove + '</div>' +
     '<div class="hero-head"><div>' + head + '</div></div>' + chart + '</div>' +
-    '<div class="wrap"><div class="grid wide">' + agenda + priceAlertTile(sym, p && p.price, (p && p.currency) || 'USD') + market.tiles.join('') + '</div>' +
+    '<div class="wrap"><div class="grid wide">' + agenda + priceAlertTile(sym, p && p.price, (p && p.currency) || 'USD') + watchMetaTile(sym, p) + market.tiles.join('') + '</div>' +
     '<div class="section-head"><h2>Nieuws, analisten en cijfers</h2></div><div class="grid wide">' + research.join('') + '</div>' +
     (market.table ? '<div style="margin-top:16px">' + market.table + '</div>' : '') + '</div>';
 }

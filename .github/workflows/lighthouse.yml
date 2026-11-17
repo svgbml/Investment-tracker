@@ -1,0 +1,31 @@
+name: Lighthouse
+
+# Snelheid, toegankelijkheid en grootte van de website (demo) binnen een budget; zie lighthouserc.json.
+# Los van de publicatie: een trage meting op de server van GitHub houdt de website niet tegen.
+on:
+  push:
+    paths: ['docs/**', 'lighthouserc.json', '.github/workflows/lighthouse.yml']
+  pull_request:
+    paths: ['docs/**', 'lighthouserc.json']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lighthouse:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Lighthouse CI
+        run: npx --yes @lhci/cli@0.14.0 autorun
+      - name: Rapport bewaren
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-rapport
+          path: .lighthouseci-report
+          if-no-files-found: ignore

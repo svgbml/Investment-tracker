@@ -33,6 +33,7 @@ Alle adressen vragen je toegangscode, als `?token=…` of als header `Authorizat
 | Reservekopie (zonder sleutels of toegangscodes), per tabel in pagina's van 2000 rijen; zonder `table` het overzicht | `GET /api/backup?table=weeks&offset=0` |
 | Reservekopie terugzetten, per pagina; `done: true` bij de laatste pagina bouwt de gegevens opnieuw op | `POST /api/restore` met `{"table": "weeks", "rows": [[…]], "done": false}` |
 | Bedrijf zoeken op naam of symbool (SEC-lijst, ETF's, Finnhub) | `GET /api/search?q=apple` |
+| Fout op de website melden (de site doet dit zelf; hoogstens 30 bewaard, zonder bedragen) | `POST /api/log` met `{"msg": "…", "src": "js/16-analyse.js", "line": 12, "ver": "v41"}` |
 | Nu een meting doen (test) | `POST /api/run` |
 | Nu een weeksnapshot maken | `POST /api/snapshot` |
 | Openstaande opname invoeren | `POST /api/pending` met `{"amount": 154.65}` |
@@ -101,6 +102,14 @@ Na de agenda zet de Worker elke ochtend taken klaar die hij buiten de meettijden
 - **Indexen**: S&P 500 en Nasdaq-100 (koersindex, zonder dividend) van FRED, zonder sleutel via de downloadlink of met `FRED_KEY` via de officiële API, voor "wat als alles in de index had gezeten" en als koershistorie voor de risicoberekening van indexfondsen.
 - **Koersdoel en nieuwsstemming** (Finnhub `price-target` en `news-sentiment`), als je abonnement ze toestaat.
 - **Alpha Vantage** (`ALPHAVANTAGE_KEY`, optioneel), reserve voor Finnhub: per aandeel `OVERVIEW` (analisten, gemiddeld koersdoel), `NEWS_SENTIMENT`, `EARNINGS` en `INSIDER_TRANSACTIONS`, alleen voor onderdelen die Finnhub niet levert (geen sleutel, ongeldige sleutel, niet in het abonnement of al twee dagen niet bijgewerkt). Dagbudget 24 verzoeken (`av_calls` in `kv`), één aandeel per stap. Welke onderdelen van Alpha Vantage komen staat in `src` per aandeel.
+- **SEC EDGAR, deponeringen en 13F** (met `SEC_CONTACT`): elke dag per stap hoogstens 5 bedrijven uit `data.sec.gov/submissions` (jaar- en kwartaalverslagen, 8-K), en één keer per week de laatste 13F-opgave van vier bekende beleggers (Berkshire Hathaway, Pershing Square, Scion, Bridgewater). Het CIK-nummer komt uit de bedrijvenlijst.
+- **FRED, extra reeksen**: naast de S&P 500 en de Nasdaq-100 ook de VIX (`VIXCLS`), de Amerikaanse 10-jaarsrente (`DGS10`) en de ECB-depositorente (`ECBDFR`). Met `FRED_KEY` ook de publicatiedata van inflatie, banen, groei en de Fed voor de economische agenda.
+- **Trading 212-pies**: één keer per dag de lijst, en per keer van 4 pies de naam en verdeling (Trading 212 staat 1 verzoek per 5 seconden toe).
+- **Maatstaf**: het symbool dat je op de site kiest (`settings.benchmark`) krijgt koershistorie en een profiel zoals een volgaandeel, maar geen meldingen.
+- **Rente over je vrije saldo** komt alleen uit de CSV-export (`POST /api/import-csv` met `interest`), want de API geeft die niet.
+- **Verbruik**: elk extern verzoek telt per bron en per dag (14 dagen); de statuspagina toont het naast de grenzen van de gratis abonnementen. De Worker houdt ook per dag bij hoeveel metingen lukten (30 dagen).
+- **Ochtendmelding**: zet je die op de nieuwspagina aan, dan stuurt de Worker op werkdagen rond 08:00 één melding met het nieuws van de afgelopen dag over je aandelen.
+- **Uurgegevens** blijven 180 dagen bewaard (daarna alleen de dagregels); metingen per 10 minuten worden na 3 dagen uren.
 - **Twelve Data** (`TWELVEDATA_KEY`, optioneel), reserve voor koershistorie: geeft FMP een 402 (niet in het gratis plan), dan haalt de Worker de dagkoersen bij Twelve Data (hoogstens 6 per stap), zonder sleutel bij Alpha Vantage. Wekelijks haalt de Worker ook de bedrijvenlijst van de SEC op voor het zoeken op de volglijst.
 - **Marktnieuws** (Finnhub `news?category=general`), één keer per dag, voor de nieuwspagina (`marketNews` in `/api/data`). Per aandeel bewaart de Worker ook wekelijks het gemiddelde koersdoel (`targetHist`), zodat de site later kan nagaan of koersdoelen uitkwamen.
 - **Waardering** (FMP `ratios-ttm` en `ratios`, per aandeel één keer per week; `sector-pe-snapshot` één keer per dag): koers-winstverhouding en dividendrendement, in `market.valuation` en `market.sectorPe`. Geeft FMP 402 (niet in het abonnement), dan stopt de Worker ermee (`val_denied`) en rekent de site de K/W uit SEC-cijfers.
@@ -118,6 +127,18 @@ Na de agenda zet de Worker elke ochtend taken klaar die hij buiten de meettijden
 ## Risico-indicatie
 
 De site rekent de indicatie zelf uit. De indeling volgt de Europese SRRI-klassen (1 tot 7) op basis van de jaarlijkse beweeglijkheid (volatiliteit): onder 0,5%, 2%, 5%, 10%, 15% en 25% en daarboven. Gebruikt worden de dagrendementen in euro van je huidige verdeling over het laatste jaar (koersen van FMP, FRED voor indexfondsen, anders je eigen metingen); is er voor minder dan 60% van je waarde koershistorie, dan je eigen weekrendementen. Het is een indicatie, geen officiële SRRI (die gebruikt 5 jaar weekrendementen).
+
+## Reservekopie naar Cloudflare R2 (optioneel)
+
+Maak in Cloudflare een R2-bucket (bijvoorbeeld `tracker-backup`) en voeg in `wrangler.toml` toe:
+
+```toml
+[[r2_buckets]]
+binding = "BACKUP"
+bucket_name = "tracker-backup"
+```
+
+Elke zondag zet de Worker dan een volledige kopie (zonder sleutels of toegangscodes) in de bucket als `backup-JJJJ-MM-DD.json`; de laatste acht blijven bewaard. Zo'n bestand kun je op de website terugzetten bij Instellingen. Zonder binding gebeurt er niets. Voeg de binding pas toe als de bucket bestaat, anders mislukt de deploy.
 
 ## Grenzen
 

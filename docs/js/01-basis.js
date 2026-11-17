@@ -17,15 +17,16 @@ const MIN_DAYS_CORR = 10;    // voor samenhang met de portefeuille
 const ZOOM_MS = 450;
 const unfolded = new Set();
 const FOLD_ROOTS = ['page-home', 'm-home', 'm-stats'];
-const FOLD_SKIP = '.grid.stats, .m-grid2, #kpis, #movers, #stats';
+const FOLD_SKIP = '.grid.stats, .m-grid2, #kpis, #movers, #stats, #m-analyse-body';
 let foldTimer = null;
 const HOUR = 3600e3;
 const DAY = 864e5;
 
 // Taal: Nederlands (standaard) of Engels; getallen en datums volgen de gekozen taal
-const LANG = (() => { try { return localStorage.getItem('tracker.lang') === 'en' ? 'en' : 'nl'; } catch (e) { return 'nl'; } })();
-const LOCALE = LANG === 'en' ? 'en-GB' : 'nl-NL';
-const VERSION = 'v40';
+// Taal: Nederlands (standaard), Engels, Duits of Frans; getallen en datums volgen de gekozen taal
+const LANG = (() => { try { const l = localStorage.getItem('tracker.lang'); return ['en', 'de', 'fr'].includes(l) ? l : 'nl'; } catch (e) { return 'nl'; } })();
+const LOCALE = { en: 'en-GB', de: 'de-DE', fr: 'fr-FR' }[LANG] || 'nl-NL';
+const VERSION = 'v41';
 const nf = (o) => new Intl.NumberFormat(LOCALE, o);
 const EUR = nf({ style: 'currency', currency: 'EUR' });
 const P2 = nf({ style: 'percent', minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -116,4 +117,4 @@ const ui = {
   listSort: 'move', listFilter: 'all', listSpan: 'today', listQuery: '',
   detail: null, detailRange: '3d', compare: false, origin: null, mTab: 'pos',
 };
-const RANGES = [['today', 'Vandaag'], ['3d', '3 dagen'], ['1m', '30 dagen'], ['all', 'Alles']];
+const RANGES = [['today', 'Vandaag'], ['3d', '3 dagen'], ['1m', '30 dagen'], ['ytd', 'Dit jaar'], ['1y', '1 jaar'], ['all', 'Alles']];

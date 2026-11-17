@@ -180,9 +180,9 @@ document.addEventListener('click', (e) => {
 
 // ---------- Pagina's en adresbalk ----------
 const ORDER = { home: 0, list: 1, news: 2, stats: 3, plan: 4 };
-const TITLES = { home: 'Overzicht', list: 'Bedrijven', news: 'Nieuws', stats: 'Statistieken', plan: 'Plannen' };
+const TITLES = { home: 'Overzicht', list: 'Bedrijven', news: 'Nieuws', stats: 'Analyse', plan: 'Plannen' };
 const pageId = (p) => (mode === 'm' ? 'm-' + p : 'page-' + p);
-const pageHash = (p) => (p === 'list' ? 'bedrijven' : p === 'stats' ? 'statistieken' : p === 'news' ? 'nieuws' : p === 'plan' ? 'plannen' : 'overzicht');
+const pageHash = (p) => (p === 'list' ? 'bedrijven' : p === 'stats' ? 'analyse' : p === 'news' ? 'nieuws' : p === 'plan' ? 'plannen' : 'overzicht');
 
 function placeIndicators() {
   const a = document.querySelector('.pillnav a[aria-current="page"]');
@@ -194,11 +194,10 @@ function placeIndicators() {
 }
 
 function showPage(p, animate, force) {
-  if (mode === 'd' && p === 'stats') p = 'home';
   const prev = ui.page;
   ui.page = p;
   if (M) ensurePage(p);
-  const ids = mode === 'm' ? ['home', 'list', 'news', 'stats', 'plan'] : ['home', 'list', 'news', 'plan'];
+  const ids = ['home', 'list', 'news', 'stats', 'plan'];
   const el = $(pageId(p));
   const move = animate && !reduceMotion();
   const swap = () => {
@@ -248,7 +247,7 @@ function parseHash() {
   const pk = Object.keys(PSEUDO).find((k) => PSEUDO[k] === h);
   if (pk) return { tk: pk };
   if (h.indexOf('volg/') === 0) return { tk: '~' + h.slice(5).toUpperCase() };
-  return { page: h === 'bedrijven' ? 'list' : h === 'statistieken' ? 'stats' : h === 'plannen' ? 'plan' : h === 'nieuws' ? 'news' : 'home' };
+  return { page: h === 'bedrijven' ? 'list' : h === 'statistieken' || h === 'analyse' ? 'stats' : h === 'plannen' ? 'plan' : h === 'nieuws' ? 'news' : 'home' };
 }
 
 function route(first) {
@@ -282,8 +281,7 @@ defineView('valuation', () => renderValuationList());
 const PAGE_VIEWS = { home: ['home'], list: ['list', 'watch', 'valuation'], news: ['news'], stats: ['stats'], plan: ['plan'] };
 const staleViews = new Set();
 function renderAll() {
-  const page = mode === 'd' && ui.page === 'stats' ? 'home' : ui.page;
-  const now = PAGE_VIEWS[page] || [];
+  const now = PAGE_VIEWS[ui.page] || [];
   [...VIEWS.keys()].forEach((n) => { if (now.includes(n)) staleViews.delete(n); else staleViews.add(n); });
   refresh(...now);
   foldSoon();

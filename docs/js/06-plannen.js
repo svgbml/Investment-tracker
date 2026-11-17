@@ -13,6 +13,7 @@ const demoSettings = () => {
   if (!o.goals) o.goals = [{ id: 'huis', name: 'Huis', target: 20000, share: 60, date: (new Date().getFullYear() + 6) + '-06' }, { id: 'buffer', name: 'Buffer', target: 1500, share: 40, date: null }];
   if (!o.priceAlerts) o.priceAlerts = [{ id: 'demo1', sym: 'ASML', op: 'below', price: 600, on: true }];
   if (!isNum(o.monthly)) o.monthly = 100;
+  if (!o.prefs) o.prefs = { watchMeta: { NVDA: { tags: ['chips'], note: 'Voorbeeld: kopen als de koers terugvalt.', lo: 90, hi: 115 }, LMT: { tags: ['defensie'] } }, fireCosts: 1800 };
   return o;
 };
 const plan = { mode: null, draft: null, amount: 100, years: 10, monthly: null, goal: null, status: '', year: null };
@@ -261,6 +262,8 @@ function exportTile() {
   const names = { posities: 'Posities', weken: 'Weken', transacties: 'Transacties', dividenden: 'Ontvangen dividend' };
   return '<section class="tile pad"><h3>Exporteren</h3><p class="sub">CSV-bestanden voor Excel of Google Sheets.</p><div class="exp">' +
     Object.keys(EXPORTS).map((k) => '<button type="button" class="btn ghost" data-export="' + k + '"' + (n[k] ? '' : ' disabled') + '>' + esc(names[k]) + ' <span class="muted small">(' + n[k] + ')</span></button>').join('') + '</div>' +
+    '<div class="exp" style="margin-top:8px"><button type="button" class="btn ghost" data-xlsx>Alles als Excel-werkmap (.xlsx)</button><button type="button" class="btn ghost" data-json-export>Alles als JSON</button></div>' +
+    '<p class="sub" style="margin-top:6px">De werkmap heeft een blad per soort gegevens en opent in Excel, Numbers en Google Sheets.</p>' +
     '<h3 style="margin-top:16px">Geschiedenis inlezen</h3><p class="sub">Exporteer in de Trading 212-app je geschiedenis als CSV (Geschiedenis, delen of exporteren) en kies dat bestand. Zo komen ook aankopen en dividenden van vóór de API in je overzicht, met de echte bronbelasting. Wat er al was, wordt overgeslagen.</p>' +
     '<div class="exp" style="margin-top:8px"><label class="btn ghost">CSV van Trading 212 kiezen<input type="file" accept=".csv,text/csv" data-t212csv hidden></label></div><p class="small plan-status" id="t212csv-status" role="status"></p></section>';
 }
@@ -278,7 +281,9 @@ function renderPlan() {
     sec('Dividend en belasting', 'Verwacht dividend, box 3 en het jaaroverzicht', [divCalendarTile(), box3Tile(), yearTile()]) +
     sec('Kosten en aankopen', 'Wisselkosten, fondskosten en je aankoopdagboek', [costTile(), terTile(), journalTile()]) +
     sec('Spreiding en rekeningen', 'Overlap met je fondsen en je andere rekeningen', [overlapTile(), exposureTile(), accountsTile()]) +
-    sec('Delen en exporteren', '', [weekShareTile(), exportTile()]);
+    sec('Delen en exporteren', '', [weekShareTile(), exportTile()]) +
+    planExtraSections().map((x) => sec(x.title, x.sub, x.tiles)).join('');
+  drawPlanExtra(host);
   drawForecast(host);
   drawWhatIf(host);
   drawWeekShare(host);

@@ -57,24 +57,92 @@ Object.assign(EN, {
   'Gemeten dagen': 'Days measured', 'Huidige reeks': 'Current streak', 'Beste dag': 'Best day', 'Slechtste dag': 'Worst day', 'Beste week': 'Best week', 'Slechtste week': 'Worst week',
   'Grootste veranderingen': 'Biggest changes', 'Alle bedrijven bekijken': 'View all companies', 'Zoek op naam of ticker': 'Search by name or ticker', 'Nog geen metingen van vandaag': 'No measurements today yet',
 });
-const T = (s) => (LANG === 'en' ? EN[s] || s : s);
+// Duits en Frans: dezelfde sleutels als EN; wat hier ontbreekt, valt terug op het Engels
+const DE = {
+  'Overzicht': 'Übersicht', 'Bedrijven': 'Firmen', 'Plannen': 'Planen', 'Nieuws': 'News', 'Statistieken': 'Statistiken', 'Instellingen': 'Einstellungen', 'Analyse': 'Analyse',
+  'Investeringstracker': 'Investment-Tracker', 'Waarde beleggingen': 'Wert der Anlagen', 'Agenda': 'Kalender', 'Sectoren': 'Sektoren', 'Valuta en koopkracht': 'Währung und Kaufkraft',
+  'Risico': 'Risiko', 'Weken': 'Wochen', 'Patronen': 'Muster', 'Volglijst': 'Beobachtungsliste', 'Vandaag': 'Heute', '3 dagen': '3 Tage', '30 dagen': '30 Tage', 'Dit jaar': 'Dieses Jahr', '1 jaar': '1 Jahr', 'Alles': 'Alles', 'Alle': 'Alle',
+  'Gestegen': 'Gestiegen', 'Gedaald': 'Gefallen', 'Verandering': 'Veränderung', 'Waarde': 'Wert', 'Sinds aankoop': 'Seit Kauf', 'Naam': 'Name', 'Toon': 'Zeigen', 'Sorteer': 'Sortieren', 'Grafiek': 'Diagramm',
+  'Accountwaarde': 'Kontowert', 'Netto gestort': 'Netto eingezahlt', 'Totaal resultaat': 'Gesamtergebnis', 'Ongerealiseerd': 'Unrealisiert', 'Gerealiseerd': 'Realisiert', 'Stortingen': 'Einzahlungen', 'Verdeling': 'Aufteilung',
+  'Kwartaalcijfers': 'Quartalszahlen', 'Ontvangen dividend': 'Erhaltene Dividenden', 'Dividend': 'Dividende', 'Euro en dollar': 'Euro und Dollar', 'Na inflatie': 'Nach Inflation', 'Risico-indicatie': 'Risikoindikator',
+  'Streefverdeling': 'Zielaufteilung', 'Vooruitblik': 'Ausblick', 'Mijlpalen': 'Meilensteine', 'Jaaroverzicht': 'Jahresübersicht', 'Exporteren': 'Exportieren', 'Doelen': 'Ziele',
+  'Inleg en doelen': 'Einzahlungen und Ziele', 'Wat als': 'Was wäre wenn', 'Dividend en belasting': 'Dividenden und Steuern', 'Kosten en aankopen': 'Kosten und Käufe', 'Spreiding en rekeningen': 'Streuung und Konten', 'Delen en exporteren': 'Teilen und exportieren',
+  'Vooruit rekenen': 'Vorausrechnen', 'Belasting, herbalanceren en rente': 'Steuern, Rebalancing und Zinsen', 'Rendement': 'Rendite', 'Markt en onderzoek': 'Markt und Recherche', 'Transacties en begrippen': 'Transaktionen und Begriffe',
+  'Echt rendement': 'Tatsächliche Rendite', 'Jij tegenover je maatstaf': 'Du im Vergleich zur Benchmark', 'Risico en rendement': 'Risiko und Rendite', 'Grootste daling': 'Größter Rückgang', 'Wie dreef je resultaat?': 'Was trieb dein Ergebnis?',
+  'Concentratie': 'Konzentration', 'Twee periodes vergelijken': 'Zwei Zeiträume vergleichen', 'Wisselkosten': 'Wechselkosten', 'Je pies': 'Deine Pies', 'Marktoverzicht': 'Marktübersicht', 'Economische agenda': 'Wirtschaftskalender',
+  'Screener': 'Screener', 'ETF-zoeker': 'ETF-Suche', 'Deponeringen bij de SEC': 'SEC-Einreichungen', 'Wat grote beleggers bezitten': 'Was große Investoren besitzen', 'Insiders die samen kopen': 'Insider, die gemeinsam kaufen',
+  'Koersreactie op kwartaalcijfers': 'Kursreaktion auf Quartalszahlen', 'Alle transacties': 'Alle Transaktionen', 'Begrippen': 'Begriffe', 'Kans om je doelen te halen': 'Chance, deine Ziele zu erreichen',
+  'Financieel onafhankelijk (FIRE)': 'Finanziell unabhängig (FIRE)', 'Elke maand inleggen, teruggerekend': 'Monatlich investieren, zurückgerechnet', 'Had je je dividend herbelegd?': 'Hättest du deine Dividende reinvestiert?',
+  'Herbalanceren met verkopen': 'Rebalancing mit Verkäufen', 'Rente over je vrije saldo': 'Zinsen auf dein freies Guthaben', 'Kostenoverzicht': 'Kostenübersicht', 'Aankoopdagboek': 'Kauftagebuch', 'Fondskosten': 'Fondskosten',
+  'Nieuws instellen': 'Nachrichten einstellen', 'Bronnen': 'Quellen', 'Analisten': 'Analysten', 'Insiders': 'Insider', 'Suggesties om te volgen': 'Vorschläge zum Beobachten', 'Volgen': 'Beobachten', 'Waardering': 'Bewertung',
+  'Positie': 'Position', 'Historie': 'Verlauf', 'Onderzoek': 'Recherche', 'Vergelijk': 'Vergleichen', 'Posities': 'Positionen', 'Koop': 'Kauf', 'Verkoop': 'Verkauf', 'Jaar': 'Jahr', 'Kosten': 'Kosten', 'Bedrijf': 'Unternehmen',
+  '← Terug': '← Zurück', '‹ Terug': '‹ Zurück', 'Terug': 'Zurück', 'Opslaan': 'Speichern', 'Annuleren': 'Abbrechen', 'Bewaren': 'Speichern', 'Sluiten': 'Schließen', 'Volgende': 'Weiter', 'Overslaan': 'Überspringen', 'Klaar': 'Fertig',
+  'Meer tonen': 'Mehr zeigen', 'Minder tonen': 'Weniger zeigen', 'Mijn aandelen': 'Meine Aktien', 'Markt': 'Markt', 'Pagina aanpassen': 'Seite anpassen', 'Snel zoeken': 'Schnellsuche', 'Gebruiken': 'Verwenden',
+  'Licht': 'Hell', 'Donker': 'Dunkel', 'Automatisch': 'Automatisch', 'Aan': 'An', 'Uit': 'Aus', 'Weergave': 'Darstellung', 'Animaties': 'Animationen', 'Taal': 'Sprache', 'Leesbaarheid': 'Lesbarkeit', 'Hulp': 'Hilfe',
+  'Compact': 'Kompakt', 'Grotere tekst': 'Größere Schrift', 'Rondleiding opnieuw': 'Rundgang erneut', 'Sneltoetsen': 'Tastenkürzel', 'Koppelingen en functies': 'Verbindungen und Funktionen', 'Updates': 'Updates',
+  'Sector': 'Sektor', 'Branche': 'Branche', 'Beurswaarde': 'Marktkapitalisierung', 'Koers': 'Kurs', 'Dividendrendement': 'Dividendenrendite', 'Koers-winstverhouding': 'Kurs-Gewinn-Verhältnis',
+  'Beleggingen nu': 'Anlagen jetzt', 'Vrij saldo': 'Freies Guthaben', 'Resultaat nu': 'Ergebnis jetzt', 'Grootste positie': 'Größte Position', 'Grootste veranderingen': 'Größte Veränderungen', 'Alle bedrijven bekijken': 'Alle Unternehmen ansehen',
+  'Zoek op naam of ticker': 'Nach Name oder Ticker suchen', 'Beste dag': 'Bester Tag', 'Slechtste dag': 'Schlechtester Tag', 'Mijn tracker koppelen': 'Meinen Tracker verbinden', 'Functies bekijken met voorbeeldgetallen': 'Funktionen mit Beispieldaten ansehen',
+  '▲ Positief': '▲ Positiv', '▼ Negatief': '▼ Negativ', '● Neutraal': '● Neutral', 'Status van je tracker': 'Status deines Trackers', 'Verbruik per bron': 'Verbrauch pro Quelle', 'Fouten op de website': 'Fehler auf der Website',
+};
+const FR = {
+  'Overzicht': 'Aperçu', 'Bedrijven': 'Sociétés', 'Plannen': 'Plans', 'Nieuws': 'Actus', 'Statistieken': 'Statistiques', 'Instellingen': 'Paramètres', 'Analyse': 'Analyse',
+  'Investeringstracker': 'Suivi des investissements', 'Waarde beleggingen': 'Valeur des placements', 'Agenda': 'Agenda', 'Sectoren': 'Secteurs', 'Valuta en koopkracht': 'Devises et pouvoir d’achat',
+  'Risico': 'Risque', 'Weken': 'Semaines', 'Patronen': 'Tendances', 'Volglijst': 'Liste de suivi', 'Vandaag': 'Aujourd’hui', '3 dagen': '3 jours', '30 dagen': '30 jours', 'Dit jaar': 'Cette année', '1 jaar': '1 an', 'Alles': 'Tout', 'Alle': 'Tous',
+  'Gestegen': 'En hausse', 'Gedaald': 'En baisse', 'Verandering': 'Variation', 'Waarde': 'Valeur', 'Sinds aankoop': 'Depuis l’achat', 'Naam': 'Nom', 'Toon': 'Afficher', 'Sorteer': 'Trier', 'Grafiek': 'Graphique',
+  'Accountwaarde': 'Valeur du compte', 'Netto gestort': 'Versé net', 'Totaal resultaat': 'Résultat total', 'Ongerealiseerd': 'Latent', 'Gerealiseerd': 'Réalisé', 'Stortingen': 'Versements', 'Verdeling': 'Répartition',
+  'Kwartaalcijfers': 'Résultats trimestriels', 'Ontvangen dividend': 'Dividendes reçus', 'Dividend': 'Dividende', 'Euro en dollar': 'Euro et dollar', 'Na inflatie': 'Après inflation', 'Risico-indicatie': 'Indicateur de risque',
+  'Streefverdeling': 'Répartition cible', 'Vooruitblik': 'Projection', 'Mijlpalen': 'Étapes', 'Jaaroverzicht': 'Bilan annuel', 'Exporteren': 'Exporter', 'Doelen': 'Objectifs',
+  'Inleg en doelen': 'Versements et objectifs', 'Wat als': 'Et si', 'Dividend en belasting': 'Dividendes et impôts', 'Kosten en aankopen': 'Frais et achats', 'Spreiding en rekeningen': 'Diversification et comptes', 'Delen en exporteren': 'Partager et exporter',
+  'Vooruit rekenen': 'Projections', 'Belasting, herbalanceren en rente': 'Impôts, rééquilibrage et intérêts', 'Rendement': 'Rendement', 'Markt en onderzoek': 'Marché et recherche', 'Transacties en begrippen': 'Transactions et notions',
+  'Echt rendement': 'Rendement réel', 'Jij tegenover je maatstaf': 'Toi face à ton indice de référence', 'Risico en rendement': 'Risque et rendement', 'Grootste daling': 'Plus forte baisse', 'Wie dreef je resultaat?': 'Qui a porté ton résultat ?',
+  'Concentratie': 'Concentration', 'Twee periodes vergelijken': 'Comparer deux périodes', 'Wisselkosten': 'Frais de change', 'Je pies': 'Tes pies', 'Marktoverzicht': 'Aperçu du marché', 'Economische agenda': 'Agenda économique',
+  'Screener': 'Filtre', 'ETF-zoeker': 'Recherche d’ETF', 'Deponeringen bij de SEC': 'Dépôts auprès de la SEC', 'Wat grote beleggers bezitten': 'Ce que détiennent les grands investisseurs', 'Insiders die samen kopen': 'Initiés qui achètent ensemble',
+  'Koersreactie op kwartaalcijfers': 'Réaction du cours aux résultats', 'Alle transacties': 'Toutes les transactions', 'Begrippen': 'Notions', 'Kans om je doelen te halen': 'Chance d’atteindre tes objectifs',
+  'Financieel onafhankelijk (FIRE)': 'Indépendance financière (FIRE)', 'Elke maand inleggen, teruggerekend': 'Investir chaque mois, en rétrospective', 'Had je je dividend herbelegd?': 'Et si tu avais réinvesti tes dividendes ?',
+  'Herbalanceren met verkopen': 'Rééquilibrer en vendant', 'Rente over je vrije saldo': 'Intérêts sur ton solde libre', 'Kostenoverzicht': 'Aperçu des frais', 'Aankoopdagboek': 'Journal d’achats', 'Fondskosten': 'Frais des fonds',
+  'Nieuws instellen': 'Réglages des actualités', 'Bronnen': 'Sources', 'Analisten': 'Analystes', 'Insiders': 'Initiés', 'Suggesties om te volgen': 'Suggestions à suivre', 'Volgen': 'Suivre', 'Waardering': 'Valorisation',
+  'Positie': 'Position', 'Historie': 'Historique', 'Onderzoek': 'Recherche', 'Vergelijk': 'Comparer', 'Posities': 'Positions', 'Koop': 'Achat', 'Verkoop': 'Vente', 'Jaar': 'Année', 'Kosten': 'Frais', 'Bedrijf': 'Entreprise',
+  '← Terug': '← Retour', '‹ Terug': '‹ Retour', 'Terug': 'Retour', 'Opslaan': 'Enregistrer', 'Annuleren': 'Annuler', 'Bewaren': 'Enregistrer', 'Sluiten': 'Fermer', 'Volgende': 'Suivant', 'Overslaan': 'Passer', 'Klaar': 'Terminé',
+  'Meer tonen': 'Afficher plus', 'Minder tonen': 'Afficher moins', 'Mijn aandelen': 'Mes actions', 'Markt': 'Marché', 'Pagina aanpassen': 'Personnaliser la page', 'Snel zoeken': 'Recherche rapide', 'Gebruiken': 'Utiliser',
+  'Licht': 'Clair', 'Donker': 'Sombre', 'Automatisch': 'Automatique', 'Aan': 'Activé', 'Uit': 'Désactivé', 'Weergave': 'Affichage', 'Animaties': 'Animations', 'Taal': 'Langue', 'Leesbaarheid': 'Lisibilité', 'Hulp': 'Aide',
+  'Compact': 'Compact', 'Grotere tekst': 'Texte plus grand', 'Rondleiding opnieuw': 'Revoir la visite', 'Sneltoetsen': 'Raccourcis', 'Koppelingen en functies': 'Connexions et fonctions', 'Updates': 'Mises à jour',
+  'Sector': 'Secteur', 'Branche': 'Industrie', 'Beurswaarde': 'Capitalisation', 'Koers': 'Cours', 'Dividendrendement': 'Rendement du dividende', 'Koers-winstverhouding': 'PER',
+  'Beleggingen nu': 'Placements actuels', 'Vrij saldo': 'Solde libre', 'Resultaat nu': 'Résultat actuel', 'Grootste positie': 'Plus grande position', 'Grootste veranderingen': 'Plus fortes variations', 'Alle bedrijven bekijken': 'Voir toutes les entreprises',
+  'Zoek op naam of ticker': 'Chercher par nom ou symbole', 'Beste dag': 'Meilleur jour', 'Slechtste dag': 'Pire jour', 'Mijn tracker koppelen': 'Connecter mon suivi', 'Functies bekijken met voorbeeldgetallen': 'Découvrir avec des données d’exemple',
+  '▲ Positief': '▲ Positif', '▼ Negatief': '▼ Négatif', '● Neutraal': '● Neutre', 'Status van je tracker': 'État de ton suivi', 'Verbruik per bron': 'Utilisation par source', 'Fouten op de website': 'Erreurs sur le site',
+};
+// Nieuwe koppen ook in het Engels
+Object.assign(EN, {
+  'Analyse': 'Analysis', 'Dit jaar': 'This year', '1 jaar': '1 year', 'Doelen': 'Goals', 'Vooruit rekenen': 'Projections', 'Belasting, herbalanceren en rente': 'Tax, rebalancing and interest', 'Markt en onderzoek': 'Market and research',
+  'Transacties en begrippen': 'Transactions and terms', 'Echt rendement': 'Actual return', 'Jij tegenover je maatstaf': 'You versus your benchmark', 'Risico en rendement': 'Risk and return', 'Grootste daling': 'Largest drop',
+  'Wie dreef je resultaat?': 'What drove your result?', 'Concentratie': 'Concentration', 'Twee periodes vergelijken': 'Compare two periods', 'Wisselkosten': 'Currency fees', 'Je pies': 'Your pies', 'Marktoverzicht': 'Market overview',
+  'Economische agenda': 'Economic calendar', 'Screener': 'Screener', 'ETF-zoeker': 'ETF finder', 'Deponeringen bij de SEC': 'SEC filings', 'Wat grote beleggers bezitten': 'What big investors hold', 'Insiders die samen kopen': 'Insiders buying together',
+  'Koersreactie op kwartaalcijfers': 'Price reaction to earnings', 'Alle transacties': 'All transactions', 'Begrippen': 'Terms', 'Kans om je doelen te halen': 'Chance of reaching your goals', 'Financieel onafhankelijk (FIRE)': 'Financial independence (FIRE)',
+  'Elke maand inleggen, teruggerekend': 'Monthly investing, back-tested', 'Had je je dividend herbelegd?': 'Had you reinvested your dividends?', 'Herbalanceren met verkopen': 'Rebalancing with selling', 'Rente over je vrije saldo': 'Interest on your free cash',
+  'Nieuws instellen': 'News settings', 'Bronnen': 'Sources', 'Pagina aanpassen': 'Customise page', 'Snel zoeken': 'Quick search', 'Leesbaarheid': 'Readability', 'Hulp': 'Help', 'Compact': 'Compact', 'Grotere tekst': 'Larger text',
+  'Rondleiding opnieuw': 'Replay tour', 'Sneltoetsen': 'Keyboard shortcuts', 'Sluiten': 'Close', 'Overslaan': 'Skip', 'Klaar': 'Done', 'Gerealiseerd': 'Realised', 'Status van je tracker': 'Status of your tracker',
+  'Verbruik per bron': 'Usage per source', 'Fouten op de website': 'Errors on the website', 'Fondskosten': 'Fund costs', 'Dividend': 'Dividend',
+});
+const DICT = LANG === 'de' ? Object.assign({}, EN, DE) : LANG === 'fr' ? Object.assign({}, EN, FR) : EN;
+const T = (s) => (LANG !== 'nl' ? DICT[s] || s : s);
 function trText(s) {
   const t = s.trim();
   if (!t) return null;
-  if (EN[t]) return s.replace(t, EN[t]);
+  if (DICT[t]) return s.replace(t, DICT[t]);
   for (const [re, rep] of EN_RE) if (re.test(t)) return s.replace(t, t.replace(re, rep));
   return null;
 }
 function translateTree(root) {
-  if (LANG !== 'en' || !root) return;
+  if (LANG === 'nl' || !root) return;
   const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   const nodes = []; while (w.nextNode()) nodes.push(w.currentNode);
   nodes.forEach((n) => { if (n.parentElement && /^(SCRIPT|STYLE|TEXTAREA)$/.test(n.parentElement.tagName)) return; const r = trText(n.nodeValue); if (r != null && r !== n.nodeValue) n.nodeValue = r; });
   (root.querySelectorAll ? root.querySelectorAll('[aria-label],[placeholder],[title]') : []).forEach((el) => ['aria-label', 'placeholder', 'title'].forEach((a) => { const v = el.getAttribute(a); if (v) { const r = trText(v); if (r != null && r !== v) el.setAttribute(a, r); } }));
 }
-if (LANG === 'en') {
-  document.documentElement.lang = 'en';
-  document.title = 'Investment tracker';
+if (LANG !== 'nl') {
+  document.documentElement.lang = LANG;
+  document.title = DICT['Investeringstracker'] || 'Investment tracker';
   // Alleen de stukken die veranderden, meteen (geen wachten op een volgend beeld: dat stopt in een tab op de achtergrond)
   const TR_OPTS = { childList: true, characterData: true, subtree: true };
   const mo = new MutationObserver((recs) => {
@@ -326,7 +394,7 @@ function parseT212Csv(text) {
     fx: col(/^exchange rate$/), res: col(/^result$/), total: col(/^total$/), totalCur: col(/^currency \(total\)$/), wht: col(/^withholding tax$/), whtCur: col(/^currency \(withholding tax\)$/),
     feeFx: col(/^currency conversion fee$/), stamp: col(/stamp duty/), ftt: col(/french transaction tax/), id: col(/^id$/) };
   if (I.act < 0 || I.time < 0 || I.tk < 0) throw new Error('dit lijkt geen export van Trading 212 (kolommen Action, Time en Ticker ontbreken)');
-  const orders = [], dividends = [];
+  const orders = [], dividends = [], interest = [];
   lines.slice(1).forEach((l, n) => {
     const c = parseCsvLine(l, ',');
     const act = c[I.act] || '', ts = Date.parse(String(c[I.time] || '').replace(' ', 'T') + 'Z');
@@ -335,12 +403,14 @@ function parseT212Csv(text) {
     if (/buy|sell/i.test(act)) {
       orders.push({ id: c[I.id] || ('r' + n + '-' + ts), ts, tk: c[I.tk], name: c[I.name], side: /sell/i.test(act) ? 'SELL' : 'BUY', qty: v(I.qty), price: v(I.price), cur: c[I.cur],
         fx: v(I.fx), net: v(I.total), realised: v(I.res), feeFx: v(I.feeFx), feeOther: (v(I.stamp) || 0) + (v(I.ftt) || 0) });
+    } else if (/interest/i.test(act)) {
+      interest.push({ date: new Date(ts).toISOString().slice(0, 10), amount: v(I.total) });
     } else if (/^dividend/i.test(act)) {
       dividends.push({ tk: c[I.tk], date: new Date(ts).toISOString().slice(0, 10), amount: v(I.total), perShare: v(I.price), qty: v(I.qty), wht: v(I.wht), whtCur: I.whtCur >= 0 ? c[I.whtCur] : null });
     }
   });
-  if (!orders.length && !dividends.length) throw new Error('geen aankopen, verkopen of dividenden gevonden');
-  return { orders, dividends };
+  if (!orders.length && !dividends.length && !interest.length) throw new Error('geen aankopen, verkopen, dividenden of rente gevonden');
+  return { orders, dividends, interest };
 }
 document.addEventListener('change', async (e) => {
   const el = e.target;
@@ -352,12 +422,12 @@ document.addEventListener('change', async (e) => {
     if (!isWorker()) throw new Error('dit kan alleen met de Cloudflare Worker');
     say('Bezig met inlezen…');
     const P = parseT212Csv(await el.files[0].text());
-    let o = 0, sk = 0, dv = 0;
+    let o = 0, sk = 0, dv = 0, it = 0;
     for (let i = 0; i < Math.max(P.orders.length, 1); i += 1000) {
-      const r = await workerCall('/api/import-csv', { method: 'POST', body: JSON.stringify({ orders: P.orders.slice(i, i + 1000), dividends: i ? [] : P.dividends }) });
-      o += r.orders; sk += r.skipped; dv += r.dividends;
+      const r = await workerCall('/api/import-csv', { method: 'POST', body: JSON.stringify({ orders: P.orders.slice(i, i + 1000), dividends: i ? [] : P.dividends, interest: i ? [] : P.interest }) });
+      o += r.orders; sk += r.skipped; dv += r.dividends; it += r.interest || 0;
     }
-    say(o + ' orders en ' + dv + ' dividenden toegevoegd' + (sk ? '; ' + sk + ' orders stonden er al' : '') + '. De gegevens worden opnieuw geladen.', 'gain');
+    say(o + ' orders, ' + dv + ' dividenden en ' + it + ' rentebetalingen toegevoegd' + (sk ? '; ' + sk + ' orders stonden er al' : '') + '. De gegevens worden opnieuw geladen.', 'gain');
     load();
   } catch (err) { say('Inlezen is mislukt: ' + err.message + '.', 'loss'); }
   el.value = '';
@@ -382,7 +452,8 @@ function renderDriftNote() {
     return '<a class="drift-note" href="#plannen"><b>Je verdeling wijkt af van je doel</b><span>' + esc(D.big.slice(0, 3).map((o) => o.x.label + ' ' + sgn(o.d, N1) + ' pp').join(', ')) +
       '. Op Plannen zie je wat je met nieuwe inleg kunt kopen om weer dichter bij je doel te komen.</span><span class="more" aria-hidden="true">Naar Plannen ›</span></a>';
   })();
-  ['drift-note', 'm-drift-note'].forEach((id) => { if ($(id)) $(id).innerHTML = html; });
+  const all = html + (typeof concNote === 'function' ? concNote() : '');
+  ['drift-note', 'm-drift-note'].forEach((id) => { if ($(id)) $(id).innerHTML = all; });
 }
 
 // =====================================================================
@@ -441,10 +512,11 @@ function renderStatusView() {
     ['Weken', NI.format(S.rows.weeks || 0)],
     ['Orders', NI.format(S.rows.orders || 0)],
     ['Overzicht voor de site', kb(S.sizes.data_core) + ' + ' + kb(S.sizes.data_extra) + ' + ' + kb(S.sizes.data_series)],
-  ]) + '<p class="sub" style="margin-top:8px">Elke maand ruimt de Worker uurregels ouder dan 400 dagen op. Een reservekopie maak je bij Instellingen.</p></section>';
+  ]) + '<p class="sub" style="margin-top:8px">Na drie dagen worden metingen per 10 minuten uurregels; elke maand ruimt de Worker uurregels ouder dan 180 dagen op (de dagregels blijven). Een reservekopie maak je bij Instellingen.</p></section>';
   const keys = '<section class="tile pad"><h3>Koppelingen</h3>' + kvList(Object.entries(S.keys || {}).map(([k, v]) => [k.replace(/_KEY|_CONTACT/g, '').replace('T212', 'Trading 212').replace('_', ' '), v ? 'ingesteld' : 'niet ingesteld', v ? 'gain' : ''])) + '</section>';
   const head = pseudoHead('Status van je tracker', ok ? 'Alles werkt' : stale ? 'Geen nieuwe metingen' : 'Er gaat iets mis', ok ? 'Laatste meting ' + ago(S.lastMeasurement) + '.' : 'Bekijk hieronder de laatste fout. Een melding volgt na drie mislukte metingen.', ok ? 'gain' : 'loss');
-  return pseudoPage('Status', head, [[meas, src], [db, keys]], [meas, src, db, keys]);
+  const extra = statusExtraRows(S);
+  return pseudoPage('Status', head, [[meas, src], [db, keys]].concat(extra), [meas, src, db, keys].concat(...extra));
 }
 document.addEventListener('click', (e) => {
   const b = e.target.closest && e.target.closest('[data-goto-status]');

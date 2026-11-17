@@ -40,7 +40,7 @@ function tradeMarkers(tk, pts) {
   if (!T.has || pts.length < 2) return [];
   const t0 = pts[0].t, t1 = pts[pts.length - 1].t;
   return (T.byTk.get(tk) || []).filter((x) => (!x.kind || x.kind === 'TRADE') && x.t >= t0 && x.t <= t1 + HOUR).slice(-4)
-    .map((x) => ({ i: nearestIdx(pts, x.t), label: (x.side === 'SELL' ? 'verkoop ' : 'koop ') + eur(x.net) }));
+    .map((x) => { const nt = x.side === 'BUY' ? notesMap()[noteKey(x)] : null; return { i: nearestIdx(pts, x.t), label: (x.side === 'SELL' ? 'verkoop ' : 'koop ') + eur(x.net) + (nt ? ' – ' + (nt.length > 38 ? nt.slice(0, 36) + '…' : nt) : '') }; });
 }
 
 // Valuta-effect en transacties van één bedrijf

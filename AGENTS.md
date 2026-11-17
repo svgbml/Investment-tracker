@@ -18,7 +18,7 @@ The user-facing language is **Dutch**: all UI text, code comments, commit messag
 |---|---|
 | `worker/src/index.js` | The whole Worker: schema, crons, external sources, HTTP API |
 | `worker/wrangler.toml` | Crons, D1 binding, public vars |
-| `docs/js/00-kern.js` … `15-start.js` | The site, as ordered classic scripts sharing one scope: core helpers, data, charts, pages, demo data, start |
+| `docs/js/00-kern.js` … `19-start.js` | The site, as ordered classic scripts sharing one scope: core helpers, data, charts, pages, demo data, start |
 | `docs/js/nieuws-preact.js` | The news page as Preact components (an ES module, loaded last) |
 | `docs/vendor/preact-htm.js` | Preact 10 + hooks + htm in one file (MIT), unchanged from npm |
 | `docs/index.html`, `docs/style.css` | Markup and styles (light and dark theme) |
@@ -60,14 +60,18 @@ The user-facing language is **Dutch**: all UI text, code comments, commit messag
 - Keep animations, and honour `prefers-reduced-motion` (`reduceMotion()`). Keep them cheap: animate `transform`/`opacity`, not shadows, sizes or blur. During the zoom into a detail page `#detail` has the class `zooming`, which gives the content a fixed size so only the outer frame moves. The zoom placeholder is `.tile.ghost`; never select plain `.ghost`, that also matches `.btn.ghost` buttons.
 - Measurements (`series`) load as a delta (`part=series&since=`) and are kept in IndexedDB (`idbGet`/`idbSet`, with a localStorage fallback). Long line charts are thinned by `thinSets` before drawing.
 - When editing files with a script, use Python `str.replace`, not JS `String.replace`: in JS a `$$` in the replacement collapses to `$`, which once broke `$('…')` calls on the live site.
+- Site preferences that need no validation (watchlist labels, news filters, limits, FIRE costs, box 3 amounts …) go in `settings.prefs` via `savePrefs(patch)` (the Worker stores it as data, max 40 kB). Per-device layout choices (page customisation, display options, the tour) stay in `localStorage`.
+- Explain jargon with `trm(label, key)` and an entry in `GLOSS` (`18-gemak.js`); use `rawKv` instead of `kvList` when a label contains such a term. Heavy calculations go through `runOffThread(fn, input)` (a Web Worker built from a self-contained function).
+- Line charts can zoom (pinch, Ctrl + scroll, double click to reset); pass `zoom: false` to `lineChart` to switch it off. New pages register views in `PAGE_VIEWS`; sections wrapped in `.dash-sec[data-sec]` can be reordered and hidden by the user.
+- Translations: `EN`, `DE` and `FR` in `13-app.js` map Dutch text to the other language; German and French fall back to English. Add new headings and buttons to `EN` at least.
 - `makeDemoData()` powers the keyless demo (`?demo`). **Every new feature needs demo data**, otherwise it is invisible to visitors without a key.
 - After changing any file in `docs/`, bump the cache version: every `?v=N` in `index.html`, the precache list and `CACHE = 'tracker-vN'` in `sw.js`, and `VERSION` in `js/01-basis.js`. A new file must also be added to the precache list.
 
 ## Checking your work
 
-There is no test suite. Before committing:
+Before committing:
 
-0. Run `node tools/check-site.mjs` (syntax, duplicate or browser-clashing names, cache version, script list) and `node worker/test/run.mjs` (Worker against mocked APIs and an in-memory SQLite D1). Both run in GitHub Actions; the Pages deploy and the Cloudflare build wait for them. Add a Worker test for every new route, source or fallback.
+0. Run `node tools/check-site.mjs` (syntax, duplicate or browser-clashing names, cache version, script list), `node tools/check-types.mjs` (TypeScript `checkJs`; fails when a file gets more type findings than `tools/types-baseline.json` allows; after fixing findings run it with `--update`) and `node worker/test/run.mjs` (Worker against mocked APIs and an in-memory SQLite D1). A separate Lighthouse workflow checks the demo against the budget in `lighthouserc.json`; it does not block the deploy. Both run in GitHub Actions; the Pages deploy and the Cloudflare build wait for them. Add a Worker test for every new route, source or fallback.
 1. `node --check` every file in `docs/js/` (the module with `--input-type=module` or by importing it) and import `worker/src/index.js` in Node to catch syntax errors. Also check that no top-level name is declared twice across `docs/js/` and none is a property of `window`.
 2. Serve `docs/` locally (`python3 -m http.server`) and open `/?demo` at desktop (1360×900) and phone (390×844) size. Check for console errors and look at screenshots of what you changed, in light and dark.
 3. For data handling, also try sparse data: no weeks, one position, no optional sources. Tiles should explain what is missing, never show `NaN`, `undefined` or crash.

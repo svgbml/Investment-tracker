@@ -41,6 +41,17 @@ Zet ze aan op de website onder *Instellingen → Koppelingen en functies*. Sleut
 | Eigen koersalarmen per aandeel (boven of onder een koers), meerdere doelen, dividend-sneeuwbal, kosten (TER) van je fondsen vergeleken, inleg per maand met herinnering op de 25e | Trading 212 en je eigen Worker | niets extra |
 | Bedrijven zoeken bij het toevoegen aan je volglijst; onbekende symbolen worden gemeld en zijn met één klik weg te halen | SEC-bedrijvenlijst en Finnhub | niets extra; Finnhub (`FINNHUB_KEY`) vindt ook Europese aandelen |
 | Koersgrafieken voor aandelen die FMP niet gratis geeft | [Twelve Data](https://twelvedata.com/register) | gratis sleutel (`TWELVEDATA_KEY`), optioneel; anders Alpha Vantage |
+| Analyse: echt rendement (XIRR en TWR, per positie en totaal), eigen maatstaf (S&P 500, Nasdaq-100, MSCI World, FTSE All-World, Europa, Nederland of een eigen symbool), grootste daling, Sharpe, Sortino, Calmar en beta, bijdrage per positie, kalender van een heel jaar, twee periodes vergelijken, gerealiseerd en ongerealiseerd, wisselkosten per jaar en munt, concentratiegrenzen met melding, jaar in beeld | Trading 212 (berekend op de site); maatstaf via FRED of de koershistorie van de Worker | niets extra |
+| Plannen: kans om je doelen te halen (Monte Carlo, in een aparte thread), FIRE, maandelijks inleggen terugrekenen, dividend herbeleggen, herbalanceren met verkopen, rente over je vrije saldo, box 3 nu tegenover werkelijk rendement | Trading 212; rente uit de CSV-export | niets extra |
+| Marktoverzicht (indexen, VIX, rente VS, ECB-depositorente, euro-dollar) | FRED en de ECB | niets; met `FRED_KEY` betrouwbaarder |
+| Economische agenda: rentebesluiten ECB en Fed, publicaties van inflatie, banen en groei in de VS | vergaderkalenders en [FRED](https://fred.stlouisfed.org/docs/api/api_key.html) | `FRED_KEY` voor de publicaties uit de VS |
+| Deponeringen bij de SEC (jaar- en kwartaalverslagen, 8-K), 13F van grote beleggers, insiders die samen kopen, koersreactie op kwartaalcijfers | SEC EDGAR, Finnhub | `SEC_CONTACT`; insiders via `FINNHUB_KEY` |
+| Screener en ETF-zoeker | profielen en waardering van de Worker; vaste lijst bekende fondsen | werkt beter met `FMP_KEY` of `FINNHUB_KEY` |
+| Trading 212-pies met rendement per pie | Trading 212 | de sleutel moet de pies mogen lezen |
+| Volglijst met labels, notitie en koopzone; nieuws met gedempte bronnen en een ochtendmelding | je eigen Worker | niets extra |
+| Alle transacties in één lijst, export naar Excel (.xlsx) en JSON, uitleg van begrippen, pagina's aanpassen, snel zoeken (Ctrl+K) en sneltoetsen, vegen en omlaag trekken op de telefoon, teller op het app-icoon, compact, grotere tekst en kleurenblindvriendelijk, rondleiding, Duits en Frans, inzoomen in grafieken | de site zelf | niets extra |
+| Statuspagina met verbruik per bron, meetgeschiedenis van 30 dagen en fouten van de website | je eigen Worker | niets extra |
+| Wekelijkse reservekopie buiten de database | [Cloudflare R2](https://developers.cloudflare.com/r2/) | een R2-bucket met binding `BACKUP` (zie worker/README.md) |
 | Waardering: koers-winstverhouding en dividendrendement tegenover de eigen geschiedenis en de sector | Financial Modeling Prep | gratis sleutel (`FMP_KEY`); zonder waarderingsdata rekent de site de K/W uit SEC-cijfers |
 | Nieuwspagina met marktnieuws, analisten per bedrijf, betrouwbaarheid van analisten en suggesties, insiderhandel | Finnhub | gratis sleutel (`FINNHUB_KEY`) |
 | Suggesties om te volgen | FMP (vergelijkbare bedrijven) en de samenstelling van je indexfondsen | gratis sleutel (`FMP_KEY`) of een fondsbestand |
@@ -63,8 +74,9 @@ Zet ze aan op de website onder *Instellingen → Koppelingen en functies*. Sleut
   - **Bedrijfspagina** (`#bedrijf/TICKER`): grafiek, positie, valuta-effect, transacties, historie, agenda, nieuws, analisten, insiderhandel, bedrijfscijfers, sector en vergelijkbare bedrijven, patronen.
   - **Bedrijven** heeft ook een knop om twee aandelen te vergelijken, een waarderingstabel en suggesties om te volgen.
   - **Nieuws**: nieuws over je posities, volglijst en de markt, analisten per bedrijf met betrouwbaarheid, suggesties volgens analisten en insiderhandel.
+  - **Analyse** (`#analyse`; op de telefoon het tabblad Analyse): rendement en risico, marktoverzicht, economische agenda, screener, ETF-zoeker, SEC-deponeringen, 13F, alle transacties en begrippen.
   - **Plannen**: streefverdeling, inleg-assistent, vooruitblik, scenario's, dividendkalender, belastinghulp box 3, kostenoverzicht, aankoopdagboek, overlap met fondsen, werkelijke spreiding, andere rekeningen, weekoverzicht delen, export naar CSV.
-  - **Instellingen**: thema, animaties (automatisch, aan of uit; "automatisch" volgt "minder beweging" van je apparaat), taal (Nederlands of Engels), installeren als app en controleren op updates.
+  - **Instellingen**: thema, animaties (automatisch, aan of uit; "automatisch" volgt "minder beweging" van je apparaat), taal (Nederlands, Engels, Duits of Frans), leesbaarheid (compact, grotere tekst, kleurenblindvriendelijk), rondleiding en sneltoetsen, installeren als app en controleren op updates.
   - Eigen indeling op de telefoon, installeerbaar als app, en zonder verbinding de laatst geladen stand.
 - `apps-script/`: de oudere versie als Google Sheet (optioneel). Via de website kun je die geschiedenis eenmalig overnemen in de Worker.
 
