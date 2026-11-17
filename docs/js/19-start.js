@@ -28,6 +28,7 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
 
 // ---------- Controle voor installeren: wat de browser op dit apparaat over de app zegt ----------
 // Geen gegevens van je portefeuille; alleen browser, service worker, manifest en meldingen, om te kunnen zien waarom installeren niet lukt.
+let installCheckText = '';
 async function installCheck() {
   const rows = [];
   const add = (k, v, ok) => rows.push([k, v, ok == null ? '' : ok ? 'gain' : 'loss']);
@@ -41,7 +42,7 @@ async function installCheck() {
     add('Service worker', !reg ? 'niet geregistreerd' : (reg.active ? 'actief' : 'nog niet actief') + (reg.waiting ? ', update wacht' : '') + (navigator.serviceWorker.controller ? ', bestuurt deze pagina' : ', bestuurt deze pagina nog niet'), !!(reg && reg.active));
   } catch (e) { add('Service worker', 'fout: ' + e.message, false); }
   try {
-    const href = document.querySelector('link[rel="manifest"]').href;
+    const href = /** @type {HTMLLinkElement} */ (document.querySelector('link[rel="manifest"]')).href;
     const m = await (await fetch(href, { cache: 'no-store' })).json();
     const icons = (m.icons || []).map((i) => i.sizes + (i.purpose && i.purpose !== 'any' ? ' ' + i.purpose : ''));
     const okIcons = (m.icons || []).some((i) => /192/.test(i.sizes)) && (m.icons || []).some((i) => /512/.test(i.sizes));
@@ -55,15 +56,16 @@ async function installCheck() {
   add('Versie van de site', VERSION, null);
   const host = $('install-check-body');
   if (host) host.innerHTML = kvList(rows) + '<p class="muted small" style="margin-top:6px">Ziet alles er groen uit en zegt Chrome toch "kan niet worden geïnstalleerd", dan ligt het aan de telefoon: Chrome bijwerken, Google Play-services, of toestemming voor Chrome om apps te installeren.</p>';
-  installCheck.text = rows.map((r) => r[0] + ': ' + r[1]).join('\n');
+  installCheckText = rows.map((r) => r[0] + ': ' + r[1]).join('\n');
 }
-const ic = $('install-check');
+const ic = /** @type {HTMLDetailsElement} */ ($('install-check'));
 if (ic) ic.addEventListener('toggle', () => { if (ic.open) installCheck(); });
 document.addEventListener('click', async (e) => {
-  const b = e.target.closest && e.target.closest('[data-install-copy]');
+  const t = /** @type {Element} */ (e.target);
+  const b = t.closest && t.closest('[data-install-copy]');
   if (!b) return;
-  if (!installCheck.text) await installCheck();
-  try { await navigator.clipboard.writeText(installCheck.text); b.textContent = 'Gekopieerd'; } catch (err) { b.textContent = 'Kopiëren lukte niet'; }
+  if (!installCheckText) await installCheck();
+  try { await navigator.clipboard.writeText(installCheckText); b.textContent = 'Gekopieerd'; } catch (err) { b.textContent = 'Kopiëren lukte niet'; }
 });
 
 // ---------- Start ----------
