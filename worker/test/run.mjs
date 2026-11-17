@@ -517,5 +517,28 @@ await test('kopen en verkopen: uit, grenzen, dubbel, verkopen, sleutelrecht, ann
   await req('/api/features', { method: 'POST', body: { features: { trading: false } } });
 });
 
+await test('Trading 212-sleutel vervangen terwijl hij als Cloudflare-geheim staat', async () => {
+  setKv('keys', {}); setKv('login_fail', {});
+  // env heeft T212_KEY en T212_SECRET als 'geheim'; via de site een nieuwe sleutel opslaan
+  let r = await jsonOf(await req('/api/keys', { method: 'POST', body: { name: 'T212_KEY', value: 'nieuwe-sleutel-123456' } }));
+  assert.equal(r.ok, true, JSON.stringify(r));
+  r = await jsonOf(await req('/api/keys', { method: 'POST', body: { name: 'T212_SECRET', value: 'nieuw-secret-1234567' } }));
+  assert.equal(r.features.keys.T212_KEY, 'override');
+  // Inloggen werkt nu met de nieuwe sleutel, niet meer met de oude
+  const login = (key, secret) => W.fetch(new Request('https://worker.test/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': '10.9.9.9' }, body: JSON.stringify({ key, secret }) }), env);
+  assert.equal((await jsonOf(await login('nieuwe-sleutel-123456', 'nieuw-secret-1234567'))).ok, true);
+  assert.equal((await jsonOf(await login(env.T212_KEY, env.T212_SECRET))).ok, false);
+  // De metingen gebruiken de nieuwe sleutel
+  const seen = [];
+  routes = t212Routes().map(([re, fn]) => [re, (u, init) => { seen.push(init && init.headers && init.headers.Authorization); return typeof fn === 'function' ? fn(u, init) : fn.clone(); }]);
+  await req('/api/run', { method: 'POST' });
+  assert.ok(seen.length && seen.every((a) => a === 'Basic ' + btoa('nieuwe-sleutel-123456:nieuw-secret-1234567')), JSON.stringify(seen.slice(0, 2)));
+  // Wissen: terug naar het geheim
+  await req('/api/keys', { method: 'POST', body: { name: 'T212_KEY', value: '' } });
+  r = await jsonOf(await req('/api/keys', { method: 'POST', body: { name: 'T212_SECRET', value: '' } }));
+  assert.equal(r.features.keys.T212_KEY, 'cloudflare');
+  setKv('login_fail', {});
+});
+
 console.log((failed ? failed + ' fout, ' : '') + passed + ' geslaagd');
 process.exit(failed ? 1 : 0);

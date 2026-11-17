@@ -174,9 +174,10 @@ function renderLinks(msg) {
         (L.keys || []).map(([k, lbl]) => {
           const where = F.keys[k];
           return '<div class="key-row"><label class="small" for="key-' + k + '">' + esc(lbl) + '</label>' +
-            (where === 'cloudflare' ? '<span class="small muted">Ingesteld als geheim bij Cloudflare.</span>'
-              : '<span class="key-in"><input id="key-' + k + '" data-key="' + k + '" type="' + (/SEC_CONTACT|MAIL_/.test(k) ? 'email' : 'password') + '" autocomplete="off" spellcheck="false" placeholder="' + (where ? 'Ingesteld; vul in om te vervangen' : 'Niet ingesteld') + '">' +
-                '<button type="button" class="btn ghost" data-savekey="' + k + '">Opslaan</button>' + (where ? '<button type="button" class="btn ghost danger" data-delkey="' + k + '">Wissen</button>' : '') + '</span>') + '</div>';
+            (where === 'cloudflare' ? '<span class="small muted">Ingesteld als geheim bij Cloudflare. Vul hieronder in om hem via de site te vervangen.</span>' : '') +
+            (where === 'override' ? '<span class="small muted">Vervangen via de site; het geheim bij Cloudflare wordt niet gebruikt. Met Terug naar Cloudflare geldt het geheim weer.</span>' : '') +
+              '<span class="key-in"><input id="key-' + k + '" data-key="' + k + '" type="' + (/SEC_CONTACT|MAIL_/.test(k) ? 'email' : 'password') + '" autocomplete="off" spellcheck="false" placeholder="' + (where ? 'Ingesteld; vul in om te vervangen' : 'Niet ingesteld') + '">' +
+                '<button type="button" class="btn ghost" data-savekey="' + k + '">Opslaan</button>' + (where === 'site' || where === 'override' ? '<button type="button" class="btn ghost danger" data-delkey="' + k + '">' + (where === 'override' ? 'Terug naar Cloudflare' : 'Wissen') + '</button>' : '') + '</span></div>';
         }).join('') +
         (L.flag ? '<label class="check small"><input type="checkbox" data-flag="' + L.flag + '"' + (F.flags[L.flag] ? ' checked' : '') + '> Gebruiken</label>' : '') +
         (L.id === 'trading' && F.flags.trading ? tradeLimitsRow() : '') +

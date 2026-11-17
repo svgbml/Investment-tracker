@@ -400,13 +400,14 @@ async function withKeys(env) {
   let stored = {};
   try { stored = JSON.parse((await getKv(env, 'keys')) || '{}'); } catch (e) { stored = {}; }
   const e = Object.create(env);
-  KEY_NAMES.forEach((k) => { if (!env[k] && stored[k]) e[k] = stored[k]; });
+  // Een sleutel die via de site is opgeslagen gaat voor een geheim bij Cloudflare (zo kun je hem vervangen
+  // zonder het Cloudflare-dashboard); wis je hem op de site, dan geldt het geheim weer
+  KEY_NAMES.forEach((k) => { if (stored[k]) e[k] = stored[k]; });
   return e;
 }
 
 async function saveKey(env, name, value) {
   if (!KEY_NAMES.includes(name)) throw new Error('Onbekende sleutel.');
-  if (env[name]) throw new Error(name + ' staat als geheim bij Cloudflare; pas hem daar aan.');
   const v = typeof value === 'string' ? value.trim() : '';
   if (v.length > 300) throw new Error('Deze waarde is te lang.');
   if (name === 'SEC_CONTACT' && v && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) throw new Error('Vul een e-mailadres in; de SEC vraagt dat als contact.');
@@ -429,7 +430,7 @@ async function featureStatus(env, raw) {
   const f = await featureFlags(env);
   let stored = {};
   try { stored = JSON.parse((await getKv(env, 'keys')) || '{}'); } catch (e) { stored = {}; }
-  const where = (k) => (raw[k] ? 'cloudflare' : stored[k] ? 'site' : null);
+  const where = (k) => (stored[k] ? (raw[k] ? 'override' : 'site') : raw[k] ? 'cloudflare' : null);
   const errs = JSON.parse((await getKv(env, 'ext_errors')) || '{}');
   return {
     keys: Object.fromEntries(KEY_NAMES.map((k) => [k, where(k)])),
