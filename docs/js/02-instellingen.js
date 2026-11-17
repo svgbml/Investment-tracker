@@ -367,7 +367,7 @@ async function load() {
   clearTimeout(refreshTimer);
   showError('');
   if (sharedView) {
-    $('.btn-refresh').forEach((b) => b.classList.add('busy'));
+    $$('.btn-refresh').forEach((b) => b.classList.add('busy'));
     try {
       const res = await fetch(sharedView.origin + '/share/' + sharedView.token, { cache: 'no-store' });
       const json = await res.json().catch(() => null);
@@ -378,7 +378,7 @@ async function load() {
       render();
       refreshTimer = setTimeout(load, 15 * 60000);
     } catch (err) { showError('Deze gedeelde weergave kon niet worden geladen: ' + err.message + '.'); }
-    finally { $('.btn-refresh').forEach((b) => b.classList.remove('busy')); }
+    finally { $$('.btn-refresh').forEach((b) => b.classList.remove('busy')); }
     return;
   }
   if (demo) {
@@ -397,7 +397,7 @@ async function load() {
       if (last.tags && last.tags.core) { dataParts.core = last.data; dataParts.extra = {}; dataParts.tags = { core: last.tags.core }; if (last.tags.extra) { dataParts.extra = last.data; dataParts.tags.extra = last.tags.extra; } }
     }
   }
-  $('.btn-refresh').forEach((b) => b.classList.add('busy'));
+  $$('.btn-refresh').forEach((b) => b.classList.add('busy'));
   try {
     let json;
     if (isWorker()) {
@@ -415,7 +415,7 @@ async function load() {
       render();
     } else if (data) {
       // Niets veranderd: alleen de tijd bijwerken
-      $('.updated').forEach((e) => { e.textContent = (mode === 'm' ? '' : 'Bijgewerkt ') + fDT.format(new Date()); });
+      $$('.updated').forEach((e) => { e.textContent = (mode === 'm' ? '' : 'Bijgewerkt ') + fDT.format(new Date()); });
     }
     refreshTimer = setTimeout(load, (Number(CFG.refreshMinutes) || 5) * 60000);
   } catch (err) {
