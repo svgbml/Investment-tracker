@@ -1069,3 +1069,18 @@ kbd { font: 600 12px/1 ui-monospace, monospace; padding: 3px 6px; border: 1px so
 }
 @media (max-width: 1120px) and (min-width: 761px) { .topbar .updated { display: none; } }
 @media (max-width: 960px) and (min-width: 761px) { .brand { font-size: 0; } .pillnav a { padding: 10px 12px; } }
+/* Telefoon: keuzebalken op één regel. Passen ze, dan vullen de knoppen de breedte; anders schuif je opzij.
+   Zo ontstaat er geen tweede regel met één losse knop. */
+@media (max-width: 700px) {
+  .seg, .seg.wrap { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(max-content, 1fr); flex-wrap: nowrap;
+    overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; border-radius: 999px; }
+  .seg::-webkit-scrollbar { display: none; }
+  .seg { gap: 2px; }
+  .seg button { padding: 0 10px; min-width: 0; white-space: nowrap; font-size: 13.5px; }
+  .seg.scrolls { -webkit-mask-image: linear-gradient(90deg, #000 85%, transparent); mask-image: linear-gradient(90deg, #000 85%, transparent); }
+  .seg.scrolls.at-end { -webkit-mask-image: none; mask-image: none; }
+  /* Grafiekperiodes (zes knoppen): twee gelijke rijen van drie */
+  .m-seg { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .plan-head { flex-wrap: wrap; gap: 8px; }
+  .plan-head > .seg, .plan-head > .plan-actions { max-width: 100%; }
+}

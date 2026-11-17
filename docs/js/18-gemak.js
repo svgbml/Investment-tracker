@@ -492,3 +492,22 @@ document.addEventListener('click', (e) => {
   a.href = URL.createObjectURL(blob); a.download = name; a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 4000);
 });
+
+// ---------- Telefoon: schuifbare keuzebalken ----------
+// Een balk die niet past, krijgt een vervaagde rand (zodat je ziet dat er meer is) en schuift de gekozen knop in beeld.
+function segFit(root) {
+  if (mode !== 'm') return;
+  (root || document).querySelectorAll('.seg').forEach((s) => {
+    const over = s.scrollWidth > s.clientWidth + 2;
+    s.classList.toggle('scrolls', over);
+    if (!over) return;
+    const on = s.querySelector('[aria-pressed="true"]');
+    if (on && !s.dataset.fitted) { s.scrollLeft = Math.max(0, on.offsetLeft - 16); s.dataset.fitted = '1'; }
+    s.classList.toggle('at-end', s.scrollLeft + s.clientWidth >= s.scrollWidth - 2);
+    if (!s.dataset.segScroll) { s.dataset.segScroll = '1'; s.addEventListener('scroll', () => s.classList.toggle('at-end', s.scrollLeft + s.clientWidth >= s.scrollWidth - 2), { passive: true }); }
+  });
+}
+let segTimer = 0;
+new MutationObserver(() => { clearTimeout(segTimer); segTimer = setTimeout(() => segFit(), 120); }).observe(document.body, { childList: true, subtree: true });
+window.addEventListener('resize', () => segFit());
+window.addEventListener('scroll', () => { clearTimeout(segTimer); segTimer = setTimeout(() => segFit(), 200); }, { passive: true });

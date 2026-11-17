@@ -26,7 +26,7 @@ const DAY = 864e5;
 // Taal: Nederlands (standaard), Engels, Duits of Frans; getallen en datums volgen de gekozen taal
 const LANG = (() => { try { const l = localStorage.getItem('tracker.lang'); return ['en', 'de', 'fr'].includes(l) ? l : 'nl'; } catch (e) { return 'nl'; } })();
 const LOCALE = { en: 'en-GB', de: 'de-DE', fr: 'fr-FR' }[LANG] || 'nl-NL';
-const VERSION = 'v46';
+const VERSION = 'v47';
 const nf = (o) => new Intl.NumberFormat(LOCALE, o);
 const EUR = nf({ style: 'currency', currency: 'EUR' });
 const P2 = nf({ style: 'percent', minimumFractionDigits: 2, maximumFractionDigits: 2 });
