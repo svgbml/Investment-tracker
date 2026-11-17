@@ -139,7 +139,9 @@ function secTabs(key) {
   if (!host || !bar) return;
   const groups = mode !== 'm' ? [] : [...host.querySelectorAll('.section-head')].map((h) => {
     const w = h.closest('.dash-sec');
-    return { title: (h.querySelector('h2') || h).textContent.trim(), els: w ? [w] : [h, h.nextElementSibling].filter(Boolean) };
+    /** @type {HTMLElement[]} */
+    const els = /** @type {any[]} */ (w ? [w] : [h, h.nextElementSibling].filter(Boolean));
+    return { title: (h.querySelector('h2') || h).textContent.trim(), els };
   }).filter((g) => g.title);
   if (groups.length < 2) { bar.hidden = true; groups.forEach((g) => g.els.forEach((el) => { el.hidden = false; })); return; }
   let cur = secPick[key];
@@ -148,10 +150,10 @@ function secTabs(key) {
   bar.hidden = false;
   bar.innerHTML = groups.map((g) => '<button type="button" data-sectab="' + esc(g.title) + '" aria-pressed="' + (g.title === cur) + '">' + esc(SEC_SHORT[g.title] || g.title) + '</button>').join('');
   groups.forEach((g) => g.els.forEach((el) => { el.hidden = g.title !== cur; }));
-  const on = bar.querySelector('[aria-pressed="true"]');
+  const on = /** @type {HTMLElement|null} */ (bar.querySelector('[aria-pressed="true"]'));
   if (on) bar.scrollLeft = Math.max(0, on.offsetLeft - 16);
   bar.onclick = (e) => {
-    const b = e.target.closest('[data-sectab]');
+    const b = /** @type {HTMLElement|null} */ (/** @type {Element} */ (e.target).closest('[data-sectab]'));
     if (!b) return;
     secPick[key] = b.dataset.sectab;
     window.scrollTo(0, 0);

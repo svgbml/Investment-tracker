@@ -219,11 +219,11 @@ function renderMList() {
   $('m-list-sub').textContent = listSummary();
   const wn = watchSyms().length;
   $$('#m-list-tabs [data-lpane]').forEach((b) => {
-    const k = b.dataset.lpane;
+    const k = /** @type {HTMLElement} */ (b).dataset.lpane;
     b.textContent = k === 'pos' ? 'Posities ' + M.companies.length : k === 'watch' ? 'Volglijst ' + wn : 'Waardering';
     b.setAttribute('aria-pressed', String(k === ui.listPane));
   });
-  $$('#m-list [data-lpane-body]').forEach((el) => { el.hidden = el.dataset.lpaneBody !== ui.listPane; });
+  $$('#m-list [data-lpane-body]').forEach((el) => { const s = /** @type {HTMLElement} */ (el); s.hidden = s.dataset.lpaneBody !== ui.listPane; });
   const chips = $('m-chips');
   chips.innerHTML = M_CHIPS.map((ch) => {
     if (ch[0] === 'label') return '<span class="lbl">' + esc(ch[1]) + '</span>';
@@ -266,7 +266,7 @@ function renderMList() {
   } else body = items.map(row);
   fill('m-list-rows', ['<div class="m-thead">' + head('name', 'Bedrijf', true) + '<span></span>' + head('value', 'Waarde') + head('move', midLabel) + head('result', 'Totaal') + '</div>'].concat(body));
   $('m-list-rows').onclick = (e) => {
-    const b = e.target.closest('[data-sortcol]');
+    const b = /** @type {HTMLElement|null} */ (/** @type {Element} */ (e.target).closest('[data-sortcol]'));
     if (!b) return;
     const k = b.dataset.sortcol;
     if (ui.listSort === k) ui.listDir = ui.listDir === 'asc' ? 'desc' : 'asc';
@@ -276,7 +276,8 @@ function renderMList() {
   $('m-list-note').textContent = 'Tik op een kolomkop om te sorteren; nog een keer draait de volgorde om. Grafiekje en middelste kolom: ' + (ui.listSpan === 'today' ? M.dayWord : ui.listSpan === '1m' ? 'laatste 30 dagen' : 'alles') + '.';
 }
 document.addEventListener('click', (e) => {
-  const b = e.target.closest && e.target.closest('#m-list-tabs [data-lpane]');
+  const t = /** @type {Element} */ (e.target);
+  const b = /** @type {HTMLElement|null} */ (t && t.closest ? t.closest('#m-list-tabs [data-lpane]') : null);
   if (!b) return;
   ui.listPane = b.dataset.lpane;
   renderMList();

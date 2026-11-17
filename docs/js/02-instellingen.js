@@ -50,8 +50,8 @@ function openSettings(showImport) {
 let setCur = null;
 function setGo(k) {
   setCur = k;
-  $$('#form-settings .set-sec').forEach((el) => { el.hidden = el.dataset.set !== k; });
-  $$('#form-settings [data-set-go]').forEach((b) => b.setAttribute('aria-current', String(b.dataset.setGo === k)));
+  $$('#form-settings .set-sec').forEach((el) => { const s = /** @type {HTMLElement} */ (el); s.hidden = s.dataset.set !== k; });
+  $$('#form-settings [data-set-go]').forEach((b) => b.setAttribute('aria-current', String(/** @type {HTMLElement} */ (b).dataset.setGo === k)));
   $('form-settings').dataset.view = 'sec';
   $('dlg-settings').scrollTop = 0;
   setSums();
@@ -65,7 +65,7 @@ function setSums() {
   const put = (k, t) => { const el = document.querySelector('[data-set-sum="' + k + '"]'); if (el) el.textContent = t; };
   const th = (() => { try { return localStorage.getItem('tracker.theme') || 'auto'; } catch (e) { return 'auto'; } })();
   const L = linkState;
-  const on = L ? LINKS.filter((x) => { const ks = (x.keys || []).filter((k) => !k[2]).map(([k]) => L.keys[k]); return x.flag ? L.flags[x.flag] !== false && (!x.keys || x.optKeys || ks.every(Boolean)) : ks.every(Boolean); }).length : null;
+  const on = L ? LINKS.filter((x) => { const ks = (x.keys || []).filter((k) => !k[2]).map((k) => L.keys[String(k[0])]); return x.flag ? L.flags[String(x.flag)] !== false && (!x.keys || x.optKeys || ks.every(Boolean)) : ks.every(Boolean); }).length : null;
   put('links', demo ? 'alles aan met voorbeeldgegevens' : on == null ? 'je bronnen en extra functies' : on + ' van ' + LINKS.length + ' aan');
   put('account', getToken() ? 'gekoppeld · code in deze browser' : 'nog niet gekoppeld');
   put('view', ({ light: 'Licht', dark: 'Donker', auto: 'Automatisch' })[th] + ' · ' + ({ nl: 'Nederlands', en: 'English', de: 'Deutsch', fr: 'Français' })[LANG]);
@@ -77,11 +77,12 @@ function setSums() {
   put('import', 'optioneel, eenmalig');
 }
 document.addEventListener('click', (e) => {
-  if (!e.target.closest) return;
-  const go = e.target.closest('[data-set-go]');
+  const t = /** @type {Element} */ (e.target);
+  if (!t || !t.closest) return;
+  const go = /** @type {HTMLElement|null} */ (t.closest('[data-set-go]'));
   if (go) { setGo(go.dataset.setGo); return; }
-  if (e.target.closest('[data-set-back]')) { setList(); return; }
-  if (e.target.closest('[data-set-close]')) $('dlg-settings').close();
+  if (t.closest('[data-set-back]')) { setList(); return; }
+  if (t.closest('[data-set-close]')) /** @type {HTMLDialogElement} */ ($('dlg-settings')).close();
 });
 
 $('form-settings').addEventListener('submit', (e) => {
