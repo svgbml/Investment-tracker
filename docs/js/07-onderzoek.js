@@ -318,7 +318,7 @@ function drawWatchChart(root) {
   const sym = host.dataset.sym;
   const pts = M.mk.ok ? M.mk.prices(sym).map((x) => ({ t: x.t, v: x.v })) : [];
   const cur = ((M.mk.ok && M.mk.prof(sym)) || {}).currency || 'USD';
-  lineChart(host, [{ pts, color: C.accent, area: true, width: 3, fmt: (v) => money(v, cur) }], {
+  lineChart(host, [{ pts, color: C.accent, width: 2.5, fmt: (v) => money(v, cur) }], {
     animate: true, xl: root.querySelector('[data-x="watch"]'), xcount: 4, xfmt: (t) => fDM.format(t), tfmt: (t) => fD.format(t),
     empty: 'Nog geen koershistorie. Het gratis FMP-abonnement geeft die alleen voor een deel van de aandelen; anders bouwt de tracker hem dag voor dag op.',
   });

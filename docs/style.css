@@ -1294,3 +1294,4 @@ body.welcoming #mshell { padding-bottom: 0; }
   #form-settings[data-view="sec"] .set-top h2 { position: absolute; left: -9999px; }
   .set-sec { padding: 18px 16px; }
 }
+.m-nav button { background: var(--surface); border: 1px solid var(--rule); color: var(--ink); }

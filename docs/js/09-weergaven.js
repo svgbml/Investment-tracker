@@ -874,7 +874,7 @@ function renderDetailChart(animate) {
     const a = mine.length ? mine[mine.length - 1].v : null, b = port.length ? port[port.length - 1].v : null;
     legend.innerHTML = '<div class="legend chart-legend"><span><i style="background:' + C.accent + '"></i>' + esc(c.tk) + ' ' + esc(spct(a)) + '</span><span><i class="dash"></i>Portefeuille ' + esc(spct(b)) + '</span></div>';
   } else {
-    lineChart($('d-chart'), [{ pts, color: C.accent, area: true, width: 3 }], {
+    lineChart($('d-chart'), [{ pts, color: C.accent, width: 2.5 }], {
       animate, markers: heroMarkers(pts, 'detail').concat(tradeMarkers(c.tk, pts)).filter((mk, i, all) => all.findIndex((o) => o.i === mk.i) === i), xl: $('d-x'), xfmt: xFmt(r, pts), tfmt: tFmt(r, pts),
     });
     legend.innerHTML = '';
