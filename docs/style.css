@@ -1084,3 +1084,13 @@ kbd { font: 600 12px/1 ui-monospace, monospace; padding: 3px 6px; border: 1px so
   .plan-head { flex-wrap: wrap; gap: 8px; }
   .plan-head > .seg, .plan-head > .plan-actions { max-width: 100%; }
 }
+/* Dialogen boven de tabbalk; op de telefoon passend in het scherm */
+.overlay-dlg { z-index: 200; }
+@media (max-width: 700px) {
+  .overlay-dlg { padding: 12px; align-items: center; }
+  .dlg-card { max-height: calc(100dvh - 24px); padding: 16px; }
+}
+.trade-dlg .plan-inputs > label > input { font: inherit; font-size: 15px; padding: 8px 10px; border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); color: var(--ink); width: 120px; }
+.trade-dlg .plan-inputs { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+.trade-dlg .plan-inputs > label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--ink-2); }
+.btn:disabled, .btn[disabled] { opacity: .45; cursor: not-allowed; }

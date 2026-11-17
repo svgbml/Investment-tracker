@@ -567,7 +567,7 @@ function companyInfo(c) {
     ['Ingelegd', eur(c.cost)],
     ['Ongerealiseerd', isNum(c.unreal) ? seur(c.unreal) + ' (' + spct1(c.resultPct) + ')' : '–', tone(c.unreal)],
     ['Bijdrage aan dagresultaat', contrib, tone(c.change)],
-  ]) + '</section>';
+  ]) + tradeButtons(c) + '</section>';
   const histTile = '<section class="tile pad"><h3>Historie</h3>' + kvList([
     ['Gemeten dagen', S.n ? S.n + ' sinds ' + fDM.format(S.returns[0].t) : '–'],
     ['Gestegen en gedaald', S.n ? S.up + ' en ' + days(S.down) : '–'],

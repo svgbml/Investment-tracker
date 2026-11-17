@@ -123,7 +123,7 @@ function renderAnalyse() {
   host.innerHTML =
     sec('an-ret', 'Rendement', 'Wat je echt verdiende, tegenover een maatstaf, en met welk risico', [returnsTile(), benchTile(), ratiosTile(), drawdownTile(), contribTile(), concTile(), periodCmpTile(), yearHeatTile(), realUnrealTile(), fxFeeTile(), piesTile(), wrappedTile()]) +
     sec('an-mkt', 'Markt en onderzoek', 'Indexen, rentes, agenda, en wat insiders en grote beleggers doen', [mkOverviewTile(), econTile(), insiderClusterTile(), earningsMoveTile(), filingsTile(), screenerTile(), etfFinderTile(), f13Tile()]) +
-    sec('an-tx', 'Transacties en begrippen', 'Alles wat er op je rekening gebeurde, en uitleg van de termen', [ledgerTile(), glossaryTile()]) +
+    sec('an-tx', 'Transacties en begrippen', 'Alles wat er op je rekening gebeurde, en uitleg van de termen', [openOrdersTile(), ledgerTile(), glossaryTile()]) +
     '<div class="dash-foot"><button type="button" class="btn ghost" data-dash-edit="analyse">Pagina aanpassen</button></div>';
   dashApply(host, 'analyse');
   drawBench(host); drawDrawdown(host); drawPeriodCmp(host); mountLedger(host);

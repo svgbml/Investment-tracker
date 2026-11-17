@@ -462,5 +462,60 @@ await test('foutmeldingen van de site op de statuspagina', async () => {
   assert.equal(noTok.status, 401);
 });
 
+await test('kopen en verkopen: uit, grenzen, dubbel, verkopen, sleutelrecht, annuleren', async () => {
+  // Uit: niets naar Trading 212
+  setKv('settings', {});
+  routes = [];
+  let r = await jsonOf(await req('/api/trade/order', { method: 'POST', body: { side: 'BUY', type: 'market', ticker: 'AAPL_US_EQ', quantity: 1, estEur: 200, clientId: 'abcdefgh-1' } }));
+  assert.equal(r.ok, false); assert.match(r.error, /staat uit/);
+  assert.equal(calls.length, 0);
+  await req('/api/features', { method: 'POST', body: { features: { trading: true } } });
+  await req('/api/settings', { method: 'POST', body: { tradeLimits: { perOrder: 300, perDay: 400 } } });
+  setKv('pos_extra', { AAPL: { t212: 'AAPL_US_EQ', cur: 'USD', price: 230 } });
+  setKv('trade_day', {}); setKv('trade_ids', {}); setKv('trade_log', []);
+  const sent = [];
+  routes = [[/t212\.test\/api\/v0\/equity\/orders\/market/, async (u, init) => { sent.push(JSON.parse(init.body)); return reply({ id: 9001, status: 'NEW', ticker: 'AAPL_US_EQ' }); }],
+    [/t212\.test\/api\/v0\/equity\/orders\/limit/, async (u, init) => { sent.push(JSON.parse(init.body)); return reply({ id: 9002, status: 'NEW' }); }],
+    [/t212\.test\/api\/v0\/equity\/orders\/9002$/, (u, init) => { assert.equal(init.method, 'DELETE'); return reply('', 200); }],
+    [/t212\.test\/api\/v0\/equity\/orders$/, reply([{ id: 9002, ticker: 'AAPL_US_EQ', type: 'LIMIT', status: 'NEW', quantity: 1, limitPrice: 200 }])]];
+  // Boven de grens per order
+  r = await jsonOf(await req('/api/trade/order', { method: 'POST', body: { side: 'BUY', type: 'market', ticker: 'AAPL_US_EQ', quantity: 2, estEur: 350, clientId: 'abcdefgh-2' } }));
+  assert.equal(r.ok, false); assert.match(r.error, /grens per order/);
+  // Goed: koop
+  r = await jsonOf(await req('/api/trade/order', { method: 'POST', body: { side: 'BUY', type: 'market', ticker: 'AAPL_US_EQ', quantity: 1, estEur: 200, clientId: 'abcdefgh-3' } }));
+  assert.equal(r.ok, true, JSON.stringify(r)); assert.equal(r.order.id, 9001);
+  assert.deepEqual(sent[0], { ticker: 'AAPL_US_EQ', quantity: 1 });
+  // Hetzelfde id nog eens: geweigerd zonder te versturen
+  r = await jsonOf(await req('/api/trade/order', { method: 'POST', body: { side: 'BUY', type: 'market', ticker: 'AAPL_US_EQ', quantity: 1, estEur: 200, clientId: 'abcdefgh-3' } }));
+  assert.equal(r.ok, false); assert.match(r.error, /al verstuurd/); assert.equal(sent.length, 1);
+  // Boven de grens per dag (200 al gebruikt, grens 400)
+  r = await jsonOf(await req('/api/trade/order', { method: 'POST', body: { side: 'BUY', type: 'market', ticker: 'AAPL_US_EQ', quantity: 1, estEur: 250, clientId: 'abcdefgh-4' } }));
+  assert.equal(r.ok, false); assert.match(r.error, /per dag/);
+  // Verkopen: meer dan je hebt, en een limietorder (negatief aantal)
+  const held = DB.db.prepare("SELECT qty FROM intraday WHERE ticker = 'AAPL' ORDER BY ts DESC LIMIT 1").get();
+  r = await jsonOf(await req('/api/trade/order', { method: 'POST', body: { side: 'SELL', type: 'market', ticker: 'AAPL_US_EQ', quantity: (held ? held.qty : 0) + 5, estEur: 50, clientId: 'abcdefgh-5' } }));
+  assert.equal(r.ok, false); assert.match(r.error, /maar|niet/);
+  setKv('trade_day', {});
+  r = await jsonOf(await req('/api/trade/order', { method: 'POST', body: { side: 'SELL', type: 'limit', ticker: 'AAPL_US_EQ', quantity: 0.5, limitPrice: 250, validity: 'GTC', estEur: 100, clientId: 'abcdefgh-6' } }));
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.deepEqual(sent[1], { ticker: 'AAPL_US_EQ', quantity: -0.5, limitPrice: 250, timeValidity: 'GOOD_TILL_CANCEL' });
+  // Openstaande orders en annuleren
+  const o = await jsonOf(await req('/api/trade/orders'));
+  assert.equal(o.open[0].id, 9002); assert.ok(o.log.length >= 2);
+  r = await jsonOf(await req('/api/trade/cancel', { method: 'POST', body: { id: 9002 } }));
+  assert.equal(r.ok, true, JSON.stringify(r));
+  // Sleutel zonder orderrecht: duidelijke uitleg
+  routes = [[/t212\.test\/api\/v0\/equity\/orders\/market/, reply({ code: 'Forbidden' }, 403)]];
+  setKv('trade_day', {});
+  r = await jsonOf(await req('/api/trade/order', { method: 'POST', body: { side: 'BUY', type: 'market', ticker: 'AAPL_US_EQ', quantity: 0.1, estEur: 20, clientId: 'abcdefgh-7' } }));
+  assert.equal(r.ok, false); assert.match(r.error, /recht om orders/);
+  // Instrumenten zoeken
+  routes = [[/t212\.test\/api\/v0\/equity\/metadata\/instruments/, reply([{ ticker: 'NVDA_US_EQ', shortName: 'NVDA', name: 'Nvidia', currencyCode: 'USD', type: 'STOCK' }, { ticker: 'VUAGl_EQ', shortName: 'VUAG', name: 'Vanguard S&P 500 (Acc)', currencyCode: 'GBP', type: 'ETF' }])]];
+  setKv('instruments', 'null');
+  const f = await jsonOf(await req('/api/trade/instruments?q=nvda'));
+  assert.equal(f.results[0].ticker, 'NVDA_US_EQ');
+  await req('/api/features', { method: 'POST', body: { features: { trading: false } } });
+});
+
 console.log((failed ? failed + ' fout, ' : '') + passed + ' geslaagd');
 process.exit(failed ? 1 : 0);

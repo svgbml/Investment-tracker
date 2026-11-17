@@ -33,6 +33,10 @@ Alle adressen vragen je toegangscode, als `?token=…` of als header `Authorizat
 | Reservekopie (zonder sleutels of toegangscodes), per tabel in pagina's van 2000 rijen; zonder `table` het overzicht | `GET /api/backup?table=weeks&offset=0` |
 | Reservekopie terugzetten, per pagina; `done: true` bij de laatste pagina bouwt de gegevens opnieuw op | `POST /api/restore` met `{"table": "weeks", "rows": [[…]], "done": false}` |
 | Bedrijf zoeken op naam of symbool (SEC-lijst, ETF's, Finnhub) | `GET /api/search?q=apple` |
+| Order plaatsen (alleen als *Kopen en verkopen* aanstaat): markt of limiet, met eigen id tegen dubbel versturen; de Worker controleert je grens per order en per dag en of je genoeg stuks hebt om te verkopen | `POST /api/trade/order` met `{"side": "BUY" \| "SELL", "type": "market" \| "limit", "ticker": "AAPL_US_EQ", "quantity": 0.5, "limitPrice": 210, "validity": "DAY" \| "GTC", "estEur": 100, "clientId": "…"}` |
+| Openstaande orders, de laatste orders via de app en je gebruik van vandaag | `GET /api/trade/orders` |
+| Openstaande order annuleren | `POST /api/trade/cancel` met `{"id": 123}` |
+| Instrument van Trading 212 zoeken (voor aandelen die je nog niet hebt) | `GET /api/trade/instruments?q=nvda` |
 | Fout op de website melden (de site doet dit zelf; hoogstens 30 bewaard, zonder bedragen) | `POST /api/log` met `{"msg": "…", "src": "js/16-analyse.js", "line": 12, "ver": "v41"}` |
 | Nu een meting doen (test) | `POST /api/run` |
 | Nu een weeksnapshot maken | `POST /api/snapshot` |
@@ -127,6 +131,15 @@ Na de agenda zet de Worker elke ochtend taken klaar die hij buiten de meettijden
 ## Risico-indicatie
 
 De site rekent de indicatie zelf uit. De indeling volgt de Europese SRRI-klassen (1 tot 7) op basis van de jaarlijkse beweeglijkheid (volatiliteit): onder 0,5%, 2%, 5%, 10%, 15% en 25% en daarboven. Gebruikt worden de dagrendementen in euro van je huidige verdeling over het laatste jaar (koersen van FMP, FRED voor indexfondsen, anders je eigen metingen); is er voor minder dan 60% van je waarde koershistorie, dan je eigen weekrendementen. Het is een indicatie, geen officiële SRRI (die gebruikt 5 jaar weekrendementen).
+
+## Kopen en verkopen (optioneel)
+
+Staat standaard uit. Zet het aan bij *Instellingen, Koppelingen, Kopen en verkopen* en stel daar je grens per order en per dag in (standaard € 500 en € 1.000). Je Trading 212-sleutel moet het recht hebben om orders te plaatsen; maak daarvoor in de Trading 212-app een nieuwe sleutel en sla die op bij Koppelingen.
+
+- Elke order zie je eerst met aantal, geschatte prijs en wisselkosten, en je bevestigt hem zelf. Er zijn geen automatische orders.
+- De Worker verstuurt een order nooit twee keer (eigen id per order, geen automatische nieuwe poging bij een fout) en logt elke order (laatste 50).
+- Volgens de documentatie van Trading 212 ondersteunt de echte omgeving via de API mogelijk alleen marktorders; een limietorder geeft dan een foutmelding van Trading 212.
+- Oefenen kan met een sleutel van de oefenomgeving en `T212_BASE = "https://demo.trading212.com"` in `wrangler.toml` (dan meet de tracker ook die oefenrekening).
 
 ## Reservekopie naar Cloudflare R2 (optioneel)
 

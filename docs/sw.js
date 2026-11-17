@@ -3,10 +3,10 @@
  * Eerst het netwerk (zodat updates direct binnenkomen), bij geen verbinding de bewaarde versie.
  * Gegevens van de Worker gaan hier niet doorheen; de laatste stand bewaart de site zelf in de browser.
  */
-const CACHE = 'tracker-v47';
-const FILES = ['./', './index.html', './style.css?v=47', './config.js?v=47', './manifest.webmanifest',
-  './js/00-kern.js?v=47', './js/01-basis.js?v=47', './js/02-instellingen.js?v=47', './js/03-model.js?v=47', './js/04-grafieken.js?v=47', './js/05-portefeuille.js?v=47', './js/06-plannen.js?v=47', './js/07-onderzoek.js?v=47', './js/08-risico.js?v=47', './js/09-weergaven.js?v=47', './js/10-navigatie.js?v=47', './js/11-uitbreidingen.js?v=47', './js/12-nieuws.js?v=47', './js/13-app.js?v=47', './js/14-demo.js?v=47', './js/16-analyse.js?v=47', './js/17-markt.js?v=47', './js/18-gemak.js?v=47', './js/19-start.js?v=47',
-  './js/nieuws-preact.js?v=47', './js/plannen-preact.js?v=47', './vendor/preact-htm.js',
+const CACHE = 'tracker-v48';
+const FILES = ['./', './index.html', './style.css?v=48', './config.js?v=48', './manifest.webmanifest',
+  './js/00-kern.js?v=48', './js/01-basis.js?v=48', './js/02-instellingen.js?v=48', './js/03-model.js?v=48', './js/04-grafieken.js?v=48', './js/05-portefeuille.js?v=48', './js/06-plannen.js?v=48', './js/07-onderzoek.js?v=48', './js/08-risico.js?v=48', './js/09-weergaven.js?v=48', './js/10-navigatie.js?v=48', './js/11-uitbreidingen.js?v=48', './js/12-nieuws.js?v=48', './js/13-app.js?v=48', './js/14-demo.js?v=48', './js/16-analyse.js?v=48', './js/17-markt.js?v=48', './js/18-gemak.js?v=48', './js/20-handel.js?v=48', './js/19-start.js?v=48',
+  './js/nieuws-preact.js?v=48', './js/plannen-preact.js?v=48', './vendor/preact-htm.js',
   './icon-192.png', './icon-512.png', './icon-maskable-512.png', './icon-monochrome-512.png', './apple-touch-icon.png', './favicon.png'];
 
 // Een nieuwe versie wacht tot de gebruiker op de site "Nu bijwerken" kiest (of alle vensters sluit)

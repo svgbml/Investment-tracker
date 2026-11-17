@@ -171,6 +171,22 @@ export default {
         await flushCalls(env);
         return json({ ok: true, results }, 200, cors);
       }
+      if (url.pathname === '/api/trade/order' && request.method === 'POST') {
+        try { return json(Object.assign({ ok: true }, await placeOrder(env, await request.json().catch(() => ({})))), 200, cors); }
+        catch (e) { return json({ ok: false, error: String(e && e.message || e) }, 400, cors); }
+      }
+      if (url.pathname === '/api/trade/orders' && request.method === 'GET') {
+        try { return json(Object.assign({ ok: true }, await openOrders(env)), 200, cors); }
+        catch (e) { return json({ ok: false, error: String(e && e.message || e) }, 400, cors); }
+      }
+      if (url.pathname === '/api/trade/cancel' && request.method === 'POST') {
+        try { const b = await request.json().catch(() => ({})); return json(Object.assign({ ok: true }, await cancelOrder(env, b.id)), 200, cors); }
+        catch (e) { return json({ ok: false, error: String(e && e.message || e) }, 400, cors); }
+      }
+      if (url.pathname === '/api/trade/instruments' && request.method === 'GET') {
+        try { return json({ ok: true, results: await searchInstruments(env, url.searchParams.get('q')) }, 200, cors); }
+        catch (e) { return json({ ok: false, error: String(e && e.message || e) }, 400, cors); }
+      }
       if (url.pathname === '/api/log' && request.method === 'POST') {
         return json({ ok: true, kept: await logSiteError(env, await request.json().catch(() => ({}))) }, 200, cors);
       }
@@ -403,7 +419,7 @@ async function saveKey(env, name, value) {
 }
 
 // weeklyMail staat standaard uit: het weekoverzicht per e-mail is optioneel
-const FEATURE_DEFAULTS = { fx: true, inflation: true, sec: true, etfAuto: true, indices: true, weeklyMail: false };
+const FEATURE_DEFAULTS = { fx: true, inflation: true, sec: true, etfAuto: true, indices: true, weeklyMail: false, trading: false };
 async function featureFlags(env) {
   const s = await getSettings(env);
   return Object.assign({}, FEATURE_DEFAULTS, (s && s.features) || {});
@@ -731,7 +747,7 @@ function posExtra(positions) {
     out[shortTicker(p.instrument.ticker)] = {
       avg: numOrNull(p.averagePricePaid), price: numOrNull(p.currentPrice), cur: p.instrument.currency || null,
       fx: numOrNull(p.walletImpact && p.walletImpact.fxImpact), cost: numOrNull(p.walletImpact && p.walletImpact.totalCost),
-      isin: p.instrument.isin || null, since: p.createdAt || null,
+      isin: p.instrument.isin || null, since: p.createdAt || null, t212: p.instrument.ticker || null,
     };
   });
   return out;
@@ -1301,6 +1317,11 @@ async function saveSettings(env, body) {
   }
   if (body && typeof body.mailAmounts === 'boolean') clean.mailAmounts = body.mailAmounts;
   if (body && typeof body.depositReminder === 'boolean') clean.depositReminder = body.depositReminder;
+  // Grenzen voor kopen en verkopen (euro per order en per dag)
+  if (body && body.tradeLimits && typeof body.tradeLimits === 'object') {
+    const n = (x, d) => { const v = Number(x); return isFinite(v) && v > 0 && v <= 1e6 ? Math.round(v * 100) / 100 : d; };
+    clean.tradeLimits = { perOrder: n(body.tradeLimits.perOrder, TRADE_DEFAULTS.perOrder), perDay: n(body.tradeLimits.perDay, TRADE_DEFAULTS.perDay) };
+  }
   // Maatstaf om mee te vergelijken: een beurssymbool (koersen via dezelfde weg als de volglijst), leeg = geen
   if (body && typeof body.benchmark === 'string') {
     const b = body.benchmark.trim().toUpperCase();
@@ -1559,6 +1580,7 @@ async function externalTask(env, kind, arg) {
   if (kind === 'f13') return fetch13F(env);
   if (kind === 'econ') return econCalendar(env);
   if (kind === 'pies') return fetchPies(env);
+  if (kind === 'instr') return fetchInstruments(env);
   if (kind === 'fhnews') {
     // Algemeen marktnieuws van Finnhub (gratis sleutel), voor de nieuwspagina
     if (!env.FINNHUB_KEY) return 0;
@@ -1981,6 +2003,11 @@ async function planMarket(env) {
   // Economische agenda (FRED, met sleutel) en Trading 212-pies, één keer per dag
   if (env.FRED_KEY) tasks.push('econ');
   if (env.T212_KEY && env.T212_SECRET) tasks.push('pies');
+  if (flags.trading && env.T212_KEY && env.T212_SECRET) {
+    let ins = null;
+    try { ins = JSON.parse((await getKv(env, 'instruments')) || 'null'); } catch (e) { ins = null; }
+    if (!ins || (ins.updated || '') < new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10)) tasks.push('instr');
+  }
   if (env.TWELVEDATA_KEY || env.ALPHAVANTAGE_KEY) {
     // Symbolen waarvoor FMP geen koershistorie geeft (gratis abonnement): via Twelve Data of Alpha Vantage
     await ensureMarketTables(env);
@@ -2096,7 +2123,7 @@ async function marketStep(env) {
     const ci = task.indexOf(':');
     const kind = ci < 0 ? task : task.slice(0, ci), arg = ci < 0 ? '' : task.slice(ci + 1);
     try {
-      if (kind === 'fx' || kind === 'hicp' || kind === 'idx' || kind === 'fh' || kind === 'fhnews' || kind === 'sec' || kind === 'av' || kind === 'companies' || kind === 'filings' || kind === 'f13' || kind === 'econ' || kind === 'pies') {
+      if (kind === 'fx' || kind === 'hicp' || kind === 'idx' || kind === 'fh' || kind === 'fhnews' || kind === 'sec' || kind === 'av' || kind === 'companies' || kind === 'filings' || kind === 'f13' || kind === 'econ' || kind === 'pies' || kind === 'instr') {
         calls += await externalTask(env, kind, arg);
       } else if (kind === 'eod2') {
         // Reserve voor koershistorie: Twelve Data (8 per minuut, dus hoogstens 6 per stap), anders Alpha Vantage
@@ -3137,3 +3164,134 @@ async function fetchPies(env) {
 let PIE_WAIT_MS = 5200;
 export function _setPieWait(ms) { PIE_WAIT_MS = ms; }
 export { parse13F };
+
+// =====================================================================
+// ---------- Kopen en verkopen (optioneel, staat standaard uit) ----------
+// Alleen met de schakelaar "trading" en een Trading 212-sleutel met het recht om orders te plaatsen.
+// Elke order: binnen je grens per order en per dag, met een eigen id tegen dubbel versturen, en in het logboek.
+const TRADE_DEFAULTS = { perOrder: 500, perDay: 1000 };
+const T212_TICKER = /^[A-Za-z0-9.\-]{1,20}(_[A-Z]{2,3})?_EQ$/;
+function tradeLimits(s) {
+  const t = (s && s.tradeLimits) || {};
+  return { perOrder: isFinite(Number(t.perOrder)) && Number(t.perOrder) > 0 ? Number(t.perOrder) : TRADE_DEFAULTS.perOrder,
+    perDay: isFinite(Number(t.perDay)) && Number(t.perDay) > 0 ? Number(t.perDay) : TRADE_DEFAULTS.perDay };
+}
+// Versturen naar Trading 212 zonder automatisch opnieuw proberen (een tweede poging kan een dubbele order geven)
+async function t212Send(env, method, path, body) {
+  const url = (env.T212_BASE || 'https://live.trading212.com') + path;
+  const res = await fetch(url, { method, headers: { Authorization: 'Basic ' + btoa(env.T212_KEY + ':' + env.T212_SECRET), 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+  const txt = await res.text().catch(() => '');
+  let j = null; try { j = txt ? JSON.parse(txt) : null; } catch (e) { j = null; }
+  return { ok: res.ok, status: res.status, body: j, text: txt.slice(0, 300) };
+}
+function t212Error(r) {
+  if (r.status === 401) return 'Trading 212-sleutel ongeldig (401).';
+  if (r.status === 403) return 'Je Trading 212-sleutel mag geen orders plaatsen (403). Maak in de Trading 212-app een sleutel met het recht om orders te plaatsen en sla die op bij Koppelingen.';
+  if (r.status === 429) return 'Trading 212 vraagt even te wachten (te veel verzoeken). Er is niets verstuurd; probeer het over een minuut opnieuw.';
+  const m = r.body && (r.body.message || r.body.code || r.body.error || (r.body.errors && JSON.stringify(r.body.errors)));
+  return 'Trading 212 gaf ' + r.status + (m ? ': ' + String(m).slice(0, 200) : '') + '.';
+}
+async function tradeGuard(env) {
+  if (!(await featureFlags(env)).trading) throw new Error('Kopen en verkopen staat uit. Zet het aan bij Instellingen, Koppelingen.');
+  if (!env.T212_KEY || !env.T212_SECRET) throw new Error('De Trading 212-sleutel is nog niet ingesteld.');
+}
+async function tradeLog(env, entry) {
+  let log = [];
+  try { log = JSON.parse((await getKv(env, 'trade_log')) || '[]'); } catch (e) { log = []; }
+  log.push(entry);
+  await setKv(env, 'trade_log', JSON.stringify(log.slice(-50)));
+}
+async function placeOrder(env, b) {
+  await tradeGuard(env);
+  const L = tradeLimits(await getSettings(env));
+  const side = b && b.side === 'SELL' ? 'SELL' : b && b.side === 'BUY' ? 'BUY' : null;
+  if (!side) throw new Error('Kies kopen of verkopen.');
+  const type = b.type === 'limit' ? 'limit' : 'market';
+  const qty = Number(b.quantity);
+  if (!(qty > 0) || qty > 1e6) throw new Error('Ongeldig aantal.');
+  const ticker = String(b.ticker || '');
+  if (!T212_TICKER.test(ticker)) throw new Error('Onbekend instrument (' + ticker.slice(0, 30) + ').');
+  const clientId = String(b.clientId || '');
+  if (!/^[A-Za-z0-9-]{8,40}$/.test(clientId)) throw new Error('Order-id ontbreekt; open het orderscherm opnieuw.');
+  const limitPrice = Number(b.limitPrice);
+  if (type === 'limit' && !(limitPrice > 0)) throw new Error('Vul een limietprijs in.');
+  // Wat de positie nu is (voor verkopen en een eigen schatting van het bedrag)
+  let pe = {};
+  try { pe = JSON.parse((await getKv(env, 'pos_extra')) || '{}'); } catch (e) { pe = {}; }
+  const short = Object.keys(pe).find((k) => pe[k] && pe[k].t212 === ticker) || null;
+  let held = null;
+  if (short) held = await env.DB.prepare('SELECT value, qty FROM intraday WHERE ticker = ? ORDER BY ts DESC LIMIT 1').bind(short).first().catch(() => null);
+  if (side === 'SELL') {
+    if (!held || !(held.qty > 0)) throw new Error('Je hebt dit aandeel niet; verkopen kan niet.');
+    if (qty > held.qty * 1.000001) throw new Error('Je hebt maar ' + held.qty + ' stuks.');
+  }
+  const est = Number(b.estEur);
+  const serverEst = held && held.qty > 0 ? held.value / held.qty * qty : null;
+  const eur = Math.max(isFinite(est) && est > 0 ? est : 0, serverEst || 0);
+  if (!(eur > 0)) throw new Error('Het geschatte bedrag ontbreekt.');
+  if (eur > L.perOrder) throw new Error('Deze order (± €' + eur.toFixed(2) + ') is groter dan je grens per order (€' + L.perOrder + '). Pas de grens aan bij Koppelingen als dat de bedoeling is.');
+  const day = parts(new Date()).day;
+  let td = {};
+  try { td = JSON.parse((await getKv(env, 'trade_day')) || '{}'); } catch (e) { td = {}; }
+  const used = td.day === day ? Number(td.eur) || 0 : 0;
+  if (used + eur > L.perDay) throw new Error('Hiermee kom je boven je grens per dag (€' + L.perDay + '; vandaag al ± €' + used.toFixed(2) + ').');
+  // Dezelfde order nooit twee keer: het id wordt bewaard vóór het versturen
+  let ids = {};
+  try { ids = JSON.parse((await getKv(env, 'trade_ids')) || '{}'); } catch (e) { ids = {}; }
+  if (ids[clientId]) throw new Error('Deze order is al verstuurd.');
+  ids[clientId] = Date.now();
+  Object.keys(ids).forEach((k) => { if (ids[k] < Date.now() - 3 * 864e5) delete ids[k]; });
+  await setKv(env, 'trade_ids', JSON.stringify(ids));
+  const signed = side === 'SELL' ? -qty : qty;
+  const body = type === 'limit'
+    ? { ticker, quantity: signed, limitPrice, timeValidity: b.validity === 'GTC' ? 'GOOD_TILL_CANCEL' : 'DAY' }
+    : { ticker, quantity: signed };
+  const r = await t212Send(env, 'POST', '/api/v0/equity/orders/' + type, body);
+  const entry = { t: isoLocal(Date.now()), clientId, ticker, side, type, qty, limitPrice: type === 'limit' ? limitPrice : null, estEur: Math.round(eur * 100) / 100,
+    ok: r.ok, id: r.body && r.body.id != null ? r.body.id : null, status: r.body && r.body.status ? r.body.status : null, error: r.ok ? null : t212Error(r) };
+  await tradeLog(env, entry);
+  if (!r.ok) throw new Error(entry.error);
+  await setKv(env, 'trade_day', JSON.stringify({ day, eur: used + eur }));
+  return { order: r.body, entry };
+}
+async function openOrders(env) {
+  await tradeGuard(env);
+  const r = await t212Send(env, 'GET', '/api/v0/equity/orders');
+  if (!r.ok) throw new Error(t212Error(r));
+  let log = [];
+  try { log = JSON.parse((await getKv(env, 'trade_log')) || '[]'); } catch (e) { log = []; }
+  const L = tradeLimits(await getSettings(env));
+  let td = {};
+  try { td = JSON.parse((await getKv(env, 'trade_day')) || '{}'); } catch (e) { td = {}; }
+  const open = (Array.isArray(r.body) ? r.body : []).map((o) => ({ id: o.id, ticker: o.ticker, type: o.type, status: o.status, quantity: o.quantity, filled: o.filledQuantity, limitPrice: o.limitPrice, stopPrice: o.stopPrice, created: o.creationTime }));
+  return { open, log: log.slice(-20).reverse(), limits: L, today: td.day === parts(new Date()).day ? Number(td.eur) || 0 : 0 };
+}
+async function cancelOrder(env, id) {
+  await tradeGuard(env);
+  if (!/^\d{1,20}$/.test(String(id))) throw new Error('Ongeldig order-id.');
+  const r = await t212Send(env, 'DELETE', '/api/v0/equity/orders/' + id);
+  await tradeLog(env, { t: isoLocal(Date.now()), cancel: String(id), ok: r.ok, error: r.ok ? null : t212Error(r) });
+  if (!r.ok) throw new Error(t212Error(r));
+  return { cancelled: String(id) };
+}
+// Lijst van verhandelbare instrumenten (één keer per week), om een Trading 212-ticker bij een symbool te vinden
+async function fetchInstruments(env) {
+  if (!(await featureFlags(env)).trading) return 0;
+  let list;
+  try { list = await t212(env, '/api/v0/equity/metadata/instruments'); } catch (e) { await noteExtError(env, 'trading', String(e && e.message || e).slice(0, 120)); return 1; }
+  const rows = (Array.isArray(list) ? list : []).filter((x) => x && x.ticker && /STOCK|ETF/i.test(x.type || 'STOCK'))
+    .map((x) => [x.ticker, String(x.shortName || '').toUpperCase(), String(x.name || '').slice(0, 60), x.currencyCode || '', /ETF/i.test(x.type || '') ? 'ETF' : 'STOCK']);
+  await setKv(env, 'instruments', JSON.stringify({ updated: parts(new Date()).day, rows }));
+  return 1;
+}
+async function searchInstruments(env, q) {
+  await tradeGuard(env);
+  const Q = String(q || '').trim().toUpperCase().slice(0, 40);
+  if (!Q) return [];
+  let I = null;
+  try { I = JSON.parse((await getKv(env, 'instruments')) || 'null'); } catch (e) { I = null; }
+  if (!I) { await fetchInstruments(env); try { I = JSON.parse((await getKv(env, 'instruments')) || 'null'); } catch (e) { I = null; } }
+  const rows = (I && I.rows) || [];
+  const exact = rows.filter((r) => r[1] === Q), starts = rows.filter((r) => r[1] !== Q && r[1].startsWith(Q)), named = rows.filter((r) => !r[1].startsWith(Q) && r[2].toUpperCase().includes(Q));
+  return exact.concat(starts.slice(0, 6), named.slice(0, 6)).slice(0, 12).map((r) => ({ ticker: r[0], short: r[1], name: r[2], cur: r[3], kind: r[4] }));
+}

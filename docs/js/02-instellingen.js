@@ -110,7 +110,7 @@ $('btn-import').addEventListener('click', async () => {
 
 // ---------- Koppelingen en functies (sleutels voor extra bronnen) ----------
 const LINKS = [
-  { id: 't212', title: 'Trading 212', need: 'vereist', what: 'Je posities, orders, dividenden en saldo. Alleen-lezen sleutel aanmaken in de Trading 212-app: Instellingen > API.',
+  { id: 't212', title: 'Trading 212', need: 'vereist', what: 'Je posities, orders, dividenden en saldo. Sleutel aanmaken in de Trading 212-app: Instellingen > API. Alleen-lezen is genoeg, tenzij je ook wilt kopen en verkopen via de app (dan ook het recht om orders te plaatsen).',
     keys: [['T212_KEY', 'API-sleutel'], ['T212_SECRET', 'API-secret']], href: 'https://docs.trading212.com/api' },
   { id: 'fmp', title: 'Financial Modeling Prep', need: 'gratis sleutel', what: 'Agenda (kwartaalcijfers, dividenden), sector en branche, vergelijkbare bedrijven.',
     keys: [['FMP_KEY', 'API-sleutel']], href: 'https://site.financialmodelingprep.com/register' },
@@ -129,6 +129,7 @@ const LINKS = [
     keys: [['TWELVEDATA_KEY', 'API-sleutel']], href: 'https://twelvedata.com/register' },
   { id: 'mail', title: 'Weekoverzicht per e-mail (optioneel)', need: 'gratis sleutel', what: 'Elke zaterdag na de weekmeting een korte mail met je weekrendement en de grootste stijgers en dalers, via Resend (gratis tot 3000 mails per maand). Zonder eigen domein kan Resend alleen mailen naar het adres van je Resend-account. Lukt mailen niet, dan komt het overzicht als melding (als meldingen aanstaan).',
     keys: [['RESEND_KEY', 'Resend API-sleutel'], ['MAIL_TO', 'Naar (je e-mailadres)'], ['MAIL_FROM', 'Afzender (optioneel, met eigen domein)', true]], flag: 'weeklyMail', href: 'https://resend.com/signup' },
+  { id: 'trading', title: 'Kopen en verkopen (optioneel)', need: 'sleutel met orderrecht', what: 'Orders plaatsen vanuit de app: markt- en limietorders voor je posities en je volglijst. Elke order zie je eerst en bevestig je zelf; de Worker houdt je grens per order en per dag aan en verstuurt dezelfde order nooit twee keer. Je Trading 212-sleutel moet orders mogen plaatsen. Staat standaard uit.', flag: 'trading', href: 'https://docs.trading212.com/api/equity-orders' },
 ];
 // Welke bronnen bij een koppeling horen (voor de melding "reserve in gebruik")
 const LINK_SOURCES = { twelvedata: ['twelvedata'], fmp: ['fmp'], finnhub: ['finnhub'], fx: ['frankfurter'], inflation: ['ecb_hicp'], indices: ['fred'], mail: ['resend'] };
@@ -178,6 +179,7 @@ function renderLinks(msg) {
                 '<button type="button" class="btn ghost" data-savekey="' + k + '">Opslaan</button>' + (where ? '<button type="button" class="btn ghost danger" data-delkey="' + k + '">Wissen</button>' : '') + '</span>') + '</div>';
         }).join('') +
         (L.flag ? '<label class="check small"><input type="checkbox" data-flag="' + L.flag + '"' + (F.flags[L.flag] ? ' checked' : '') + '> Gebruiken</label>' : '') +
+        (L.id === 'trading' && F.flags.trading ? tradeLimitsRow() : '') +
         (L.id === 'mail' ? '<label class="check small"><input type="checkbox" data-mail-amounts' + (M && M.settings && M.settings.mailAmounts === false ? '' : ' checked') + '> Met bedragen</label> <button type="button" class="btn ghost" data-mail-test>Testmail sturen</button>' : '') + '</div>';
     }).join('') + calendarRow(calUrl || (() => { try { return localStorage.getItem('tracker.cal'); } catch (e) { return null; } })()) +
     '<p class="small plan-status" id="links-status" role="status">' + esc(msg || '') + '</p>';

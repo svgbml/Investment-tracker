@@ -303,11 +303,11 @@ function renderWatchDetail(sym) {
   if (mode === 'm') {
     return '<div class="md"><div class="m-dtop"><button type="button" class="m-back" data-act="back">‹ Terug</button><span class="t">' + esc(sym) + '</span><span></span></div>' +
       '<div class="m-hero"><div class="m-swipe">' + head + '</div>' + chart + '</div>' +
-      '<div class="m-body"><div class="m-stack">' + agenda + priceAlertTile(sym, p && p.price, (p && p.currency) || 'USD') + watchMetaTile(sym, p) + research.join('') + market.tiles.join('') + market.table + '<div style="padding:8px 0">' + remove + '</div></div></div></div>';
+      '<div class="m-body"><div class="m-stack">' + agenda + priceAlertTile(sym, p && p.price, (p && p.currency) || 'USD') + watchMetaTile(sym, p) + watchTradeTile(sym, p) + research.join('') + market.tiles.join('') + market.table + '<div style="padding:8px 0">' + remove + '</div></div></div></div>';
   }
   return '<div class="band"><div class="d-top"><button type="button" class="btn dark" data-act="back">← Terug</button>' + remove + '</div>' +
     '<div class="hero-head"><div>' + head + '</div></div>' + chart + '</div>' +
-    '<div class="wrap"><div class="grid wide">' + agenda + priceAlertTile(sym, p && p.price, (p && p.currency) || 'USD') + watchMetaTile(sym, p) + market.tiles.join('') + '</div>' +
+    '<div class="wrap"><div class="grid wide">' + agenda + priceAlertTile(sym, p && p.price, (p && p.currency) || 'USD') + watchMetaTile(sym, p) + watchTradeTile(sym, p) + market.tiles.join('') + '</div>' +
     '<div class="section-head"><h2>Nieuws, analisten en cijfers</h2></div><div class="grid wide">' + research.join('') + '</div>' +
     (market.table ? '<div style="margin-top:16px">' + market.table + '</div>' : '') + '</div>';
 }
