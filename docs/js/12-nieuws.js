@@ -1,0 +1,240 @@
+/* Investeringstracker – Nieuws, analisten, insiders, volgsuggesties en klikken voor de uitbreidingen
+ * Gewoon script (geen module): alle bestanden in docs/js/ delen één bereik en laden op volgorde (zie index.html). */
+'use strict';
+
+// ---------- Nieuws, analisten en insiders ----------
+// Betrouwbaarheid: hoe dicht winstverwachtingen bij de uitkomst lagen, hoeveel analisten, hoe eens ze zijn, spreiding van koersdoelen
+// en (zodra er genoeg geschiedenis is) of eerdere koersdoelen de goede kant op wezen.
+function targetHits(tk) {
+  const r = (data.research || {})[tk];
+  if (!r || !r.targetHist || !M.mk.ok) return null;
+  const sym = M.mk.sym(tk) || tk;
+  const pr = M.mk.prices(watchSyms().includes(tk) ? tk : sym);
+  if (pr.length < 60) return null;
+  const now = pr[pr.length - 1].v;
+  let n = 0, hit = 0;
+  r.targetHist.forEach((h) => {
+    const t = ymd(h.d); if (t == null || Date.now() - t < 90 * DAY) return;
+    const p0 = priceOn(pr, t); if (!p0 || !(p0.v > 0)) return;
+    n++; if (Math.sign(h.mean - p0.v) === Math.sign(now - p0.v)) hit++;
+  });
+  return n ? { n, rate: hit / n } : null;
+}
+function analystReliability(tk) {
+  const r = (data.research || {})[tk];
+  if (!r) return null;
+  const rc = recOf(tk), T = r.target, eps = (r.eps || []).filter((x) => isNum(x.pct));
+  let score = 0, max = 0; const why = [];
+  if (eps.length >= 2) {
+    max += 3; const m = mean(eps.map((x) => Math.abs(x.pct)));
+    score += m < 3 ? 3 : m < 7 ? 2 : m < 15 ? 1 : 0;
+    why.push('winstverwachting gemiddeld ' + N1.format(m) + '% naast de uitkomst (' + eps.length + ' kwartalen)');
+  }
+  if (rc) {
+    max += 4; score += rc.tot >= 20 ? 2 : rc.tot >= 8 ? 1 : 0;
+    const rec = rc.rec; const camps = [(rec.sb || 0) + (rec.b || 0), rec.h || 0, (rec.s || 0) + (rec.ss || 0)]; const dom = Math.max(...camps) / rc.tot;
+    score += dom >= 0.75 ? 2 : dom >= 0.55 ? 1 : 0;
+    why.push(rc.tot + ' analisten, ' + P1.format(dom) + ' in hetzelfde kamp');
+  }
+  if (T && isNum(T.high) && isNum(T.low) && T.mean > 0) {
+    max += 2; const sp = (T.high - T.low) / T.mean; score += sp <= 0.5 ? 2 : sp <= 1 ? 1 : 0;
+    why.push('koersdoelen liggen ' + P1.format(sp) + ' uit elkaar');
+  }
+  const h = targetHits(tk);
+  if (h && h.n >= 3) { max += 3; score += Math.round(3 * h.rate); why.push('eerdere koersdoelen wezen ' + h.n + ' keer de ' + (h.rate >= 0.5 ? 'goede' : 'verkeerde') + ' kant op (' + P1.format(h.rate) + ' raak)'); }
+  if (!max) return null;
+  const s10 = Math.round(score / max * 10);
+  return { score: s10, word: s10 >= 7 ? 'hoog' : s10 >= 4 ? 'gemiddeld' : 'laag', why, hits: h };
+}
+function analystRows() {
+  const keys = M.companies.filter((c) => !isFundC(c)).map((c) => ({ o: c, held: true })).concat(watchSyms().map((s) => ({ o: watchPseudo(s), held: false })));
+  return keys.map(({ o, held }) => {
+    const rc = recOf(o.tk); const r = (data.research || {})[o.tk];
+    if (!rc && !(r && r.target)) return null;
+    return { o, held, rc, up: upsideOf(o), rel: analystReliability(o.tk), sent: r && r.sent };
+  }).filter(Boolean);
+}
+function analystSuggestions() {
+  const rows = analystRows();
+  const sc = (x) => (x.rc ? x.rc.buy : 0.5) + Math.max(-0.3, Math.min(0.5, x.up || 0)) + (x.rel ? x.rel.score / 20 : 0);
+  const pos = rows.filter((x) => x.rc && x.rc.buy >= 0.6 && (!isNum(x.up) || x.up > 0.05) && (!x.rel || x.rel.score >= 5)).sort((a, b) => sc(b) - sc(a)).slice(0, 5);
+  const warn = rows.filter((x) => x.held && ((x.rc && (x.rc.buy < 0.4 || x.rc.sell >= 0.2 || (isNum(x.rc.trend) && x.rc.trend <= -0.1))) || (isNum(x.up) && x.up < -0.05))).slice(0, 5);
+  return { pos, warn };
+}
+function analystLine(x) {
+  return (x.rc ? P1.format(x.rc.buy) + ' kopen (' + x.rc.tot + ' analisten' + (isNum(x.rc.trend) && Math.abs(x.rc.trend) >= 0.01 ? ', ' + (x.rc.trend > 0 ? 'stijgend' : 'dalend') : '') + ')' : 'geen aanbevelingen') +
+    (isNum(x.up) ? ', koersdoel ' + spct1(x.up) : '') + (x.rel ? ', betrouwbaarheid ' + x.rel.word : '');
+}
+function suggestTile() {
+  const S = analystSuggestions();
+  const item = (x, warn) => '<button type="button" class="alt" data-ticker="' + esc(x.held ? x.o.tk : '~' + x.o.tk) + '"><b>' + esc(x.o.tk) + ' <span class="muted small">' + esc(x.o.name) + '</span></b>' +
+    '<span class="small">' + esc(analystLine(x)) + '</span><span class="small ' + (warn ? 'loss' : 'muted') + '">' + esc(warn ? 'In bezit: analisten zijn hier minder positief' : x.held ? 'In bezit, ' + P1.format(x.o.weight || 0) + ' van je beleggingen' : 'Op je volglijst') + '</span></button>';
+  return '<section class="tile pad"><h3>Suggesties volgens analisten</h3>' +
+    (S.pos.length ? '<p class="small" style="margin-top:4px"><b>Meest positief, met redelijke betrouwbaarheid</b></p><div class="alt-list">' + S.pos.map((x) => item(x, false)).join('') + '</div>' : '<p class="muted">Geen aandelen waar analisten duidelijk positief over zijn met voldoende betrouwbaarheid.</p>') +
+    (S.warn.length ? '<p class="small" style="margin-top:12px"><b>Om op te letten</b></p><div class="alt-list">' + S.warn.map((x) => item(x, true)).join('') + '</div>' : '') +
+    '<p class="sub" style="margin-top:8px">Gekozen uit je posities en volglijst: veel analisten positief, koersdoel boven de koers en een redelijke betrouwbaarheid. Analisten zitten er vaak naast; dit is geen beleggingsadvies.</p></section>';
+}
+function newsItems() {
+  const held = new Set(M.companies.map((c) => c.tk)), watch = new Set(watchSyms()), out = [], seen = new Set();
+  Object.entries(data.research || {}).forEach(([tk, r]) => (r.news || []).forEach((n) => { const kind = held.has(tk) ? 'mine' : watch.has(tk) ? 'watch' : null; if (kind) out.push(Object.assign({ tk, kind }, n)); }));
+  ((data.marketNews && data.marketNews.items) || []).forEach((n) => out.push(Object.assign({ tk: null, kind: 'market' }, n)));
+  return out.filter((n) => { const k = (n.url && n.url !== '#' ? n.url : n.headline) + '|' + n.tk; if (seen.has(k)) return false; seen.add(k); return true; }).sort((a, b) => b.t - a.t);
+}
+// Toon van een artikel, geschat uit woorden in kop en samenvatting (Engels en Nederlands); geen oordeel van de bron
+const NEWS_POS = /\b(beat|beats|surge|surges|soar|soars|jump|jumps|rall(y|ies)|gain|gains|rise|rises|record|upgrade[sd]?|outperform|strong|growth|profit|tops|raises?|boost|bullish|buy rating|approv(al|ed)|wins?|expands?|stijg\w*|winst|record|sterk\w*|groei\w*|verhoog\w*|opwaarder\w*|positief|herstel\w*)\b/gi;
+const NEWS_NEG = /\b(miss|misses|plunge[sd]?|plunges|sink|sinks|tumble[sd]?|drops?|fall|falls|slump\w*|loss|losses|downgrade[sd]?|cut|cuts|weak|warns?|warning|lawsuit|probe|investigation|recall|layoffs?|bearish|sell rating|fraud|decline[sd]?|crash\w*|daal\w*|daling|verlies\w*|zwak\w*|verlaag\w*|afwaarder\w*|negatief|ontslag\w*|rechtszaak|onderzoek naar|waarschuw\w*|onder druk|pressure|tariffs?|heffing\w*)\b/gi;
+function newsTone(n) {
+  const txt = (n.headline || '') + ' ' + (n.summary || '');
+  const p = (txt.match(NEWS_POS) || []).length, m = (txt.match(NEWS_NEG) || []).length;
+  return p > m ? 'pos' : m > p ? 'neg' : 'neu';
+}
+const toneTag = (n) => { const t = newsTone(n); return '<span class="ntone ' + t + '" title="Geschat uit de woorden in de kop">' + (t === 'pos' ? '▲ Positief' : t === 'neg' ? '▼ Negatief' : '● Neutraal') + '</span>'; };
+function newsListTile() {
+  const f = xs.newsF;
+  const items = newsItems().filter((n) => f === 'all' || n.kind === f).slice(0, 40);
+  const tag = (n) => (n.tk ? '<span class="tag' + (n.kind === 'watch' ? '' : ' gain') + '">' + esc(n.tk) + '</span> ' : '<span class="tag">Markt</span> ');
+  return '<section class="tile pad span-2 news-tile"><div class="plan-head"><h3>Nieuws</h3>' + segX('newsF', [['all', 'Alles'], ['mine', 'Mijn aandelen'], ['watch', 'Volglijst'], ['market', 'Markt']], f, 'Nieuws filteren') + '</div>' +
+    (items.length ? '<p class="small muted" style="margin:2px 0 6px">' + (() => { const c = { pos: 0, neg: 0, neu: 0 }; items.forEach((n) => { c[newsTone(n)]++; }); return esc(c.pos + ' positief, ' + c.neg + ' negatief, ' + c.neu + ' neutraal'); })() + '</p>' +
+      '<div class="news">' + items.map((n) => '<a class="news-i" href="' + esc(n.url) + '" target="_blank" rel="noopener"><span class="news-m">' + tag(n) + toneTag(n) + esc(fDT.format(n.t) + (n.source ? ', ' + n.source : '')) + '</span><span class="news-t">' + esc(n.headline) + '</span>' +
+      (n.summary ? '<span class="news-s">' + esc(n.summary) + '</span>' : '') + '</a>').join('') + '</div>'
+      : '<p class="muted">' + (f === 'market' && !data.marketNews ? 'Marktnieuws komt van Finnhub en wordt buiten de meettijden opgehaald.' : 'Geen nieuws in deze selectie.') + '</p>') +
+    '<p class="sub" style="margin-top:8px">Koppen en links van Finnhub: per aandeel de laatste tien dagen, en algemeen marktnieuws. Het artikel opent bij de bron. Positief of negatief is een schatting uit woorden in de kop en samenvatting (zoals "stijgt", "beats", "daalt", "downgrade"), geen oordeel van de bron; lees bij twijfel het artikel.</p></section>';
+}
+function analystTableTile() {
+  const rows = analystRows().sort((a, b) => (b.rc ? b.rc.buy : 0) - (a.rc ? a.rc.buy : 0));
+  if (!rows.length) return fullT('Analisten per bedrijf', '<p class="muted">Nog geen aanbevelingen van analisten opgehaald.</p>');
+  return '<section class="tile pad full"><h3>Analisten per bedrijf</h3><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Bedrijf</th><th>Aanbevelingen</th><th class="num">Kopen</th><th class="num">Trend</th><th class="num">Koersdoel</th><th class="num">Betrouwbaarheid</th><th class="num">Nieuws</th></tr></thead><tbody>' +
+    rows.map((x) => { const rec = x.rc && x.rc.rec;
+      const bar = rec ? '<div class="rec-bar mini">' + [[rec.sb, '#0B7A4B'], [rec.b, '#5FB58A'], [rec.h, '#C9CED6'], [rec.s, '#E3A79C'], [rec.ss, '#B4311F']].filter((p) => p[0]).map((p) => '<i style="flex:' + p[0] + ';background:' + p[1] + '"></i>').join('') + '</div>' : '–';
+      return '<tr class="rowlink" data-ticker="' + esc(x.held ? x.o.tk : '~' + x.o.tk) + '"><td class="co"><b>' + esc(x.o.tk) + '</b> ' + (x.held ? '' : '<span class="tag">Volglijst</span>') + '<span class="nm">' + esc(x.o.name) + '</span></td><td>' + bar + '</td>' +
+        '<td class="num">' + esc(x.rc ? P1.format(x.rc.buy) : '–') + (x.rc ? '<span class="sub">' + x.rc.tot + ' analisten</span>' : '') + '</td>' +
+        '<td class="num ' + tone(x.rc && x.rc.trend) + '">' + esc(x.rc && isNum(x.rc.trend) ? sgn(x.rc.trend * 100, N1) + ' pp' : '–') + '</td>' +
+        '<td class="num ' + tone(x.up) + '">' + esc(isNum(x.up) ? spct1(x.up) : '–') + '</td>' +
+        '<td class="num">' + (x.rel ? '<span class="lvl" style="--k:' + Math.max(1, Math.min(7, 8 - Math.round(x.rel.score * 0.7))) + '">' + x.rel.score + '</span><span class="sub">' + esc(x.rel.word) + '</span>' : '–') + '</td>' +
+        '<td class="num">' + esc(x.sent && isNum(x.sent.bull) ? P1.format(x.sent.bull) + ' positief' : '–') + '</td></tr>'; }).join('') +
+    '</tbody></table></div><p class="sub" style="margin-top:8px">Kopen: deel van de analisten met koop of sterk kopen. Trend: verschil met enkele maanden eerder. Koersdoel: gemiddeld koersdoel tegenover de koers nu. Betrouwbaarheid (0–10): zie de uitleg hiernaast.</p></section>';
+}
+function reliabilityTile() {
+  const rows = analystRows().filter((x) => x.rel).sort((a, b) => b.rel.score - a.rel.score);
+  return '<section class="tile pad"><h3>Hoe betrouwbaar zijn de analisten?</h3>' +
+    (rows.length ? '<div class="why-list">' + rows.slice(0, 8).map((x) => '<details class="why-d"><summary><span class="lvl" style="--k:' + Math.max(1, Math.min(7, 8 - Math.round(x.rel.score * 0.7))) + '">' + x.rel.score + '</span><span class="nm"><b>' + esc(x.o.tk) + '</b> ' + esc(x.rel.word) + '</span><span></span></summary>' +
+      '<div class="why-in"><ul class="why">' + x.rel.why.map((w) => '<li>' + esc(w) + '</li>').join('') + '</ul>' + (x.rel.hits ? '' : '<p class="sub" style="margin-top:6px">Of koersdoelen uitkomen, meet de tracker zodra er drie maanden koersdoelgeschiedenis is.</p>') + '</div></details>').join('') + '</div>' : '<p class="muted">Nog geen gegevens van analisten.</p>') +
+    '<p class="sub" style="margin-top:8px">Score van 0 tot 10 uit: hoe dicht de winstverwachtingen bij de werkelijke kwartaalcijfers lagen, hoeveel analisten het bedrijf volgen, hoe eens ze het zijn, hoe ver koersdoelen uiteenlopen en of eerdere koersdoelen de goede kant op wezen. Een hoge score betekent dat de verwachtingen goed onderbouwd lijken, niet dat ze uitkomen.</p></section>';
+}
+function insiderTile() {
+  const keys = M.companies.filter((c) => !isFundC(c)).map((c) => c.tk).concat(watchSyms());
+  const all = [];
+  const per = keys.map((tk) => {
+    const r = (data.research || {})[tk]; const ins = (r && r.insider) || [];
+    ins.forEach((x) => all.push(Object.assign({ tk }, x)));
+    const ps = ins.filter((x) => x.code === 'P' || x.code === 'S');
+    if (!ins.length) return null;
+    return { tk, net: sum(ps.map((x) => (x.change || 0) * (x.price || 0))), buys: ps.filter((x) => x.code === 'P').length, sells: ps.filter((x) => x.code === 'S').length, last: ins[0] };
+  }).filter(Boolean).sort((a, b) => b.net - a.net);
+  if (!per.length) return fullT('Insiderhandel', '<p class="muted">Nog geen meldingen van insiderhandel opgehaald (Finnhub, Amerikaanse bedrijven).</p>');
+  const mx = Math.max(1, ...per.map((x) => Math.abs(x.net)));
+  all.sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  return '<section class="tile pad full"><h3>Insiderhandel, laatste 6 maanden</h3><div class="ins-grid"><div class="hbars cmp">' + per.map((x) =>
+    '<button type="button" class="r" data-ticker="' + esc(M.byTk.has(x.tk) ? x.tk : '~' + x.tk) + '" data-tip="' + esc(x.tk + ': ' + x.buys + ' kopen, ' + x.sells + ' verkopen') + '"><span class="tk">' + esc(x.tk) + '</span><span class="track"><span class="mid"></span>' +
+    (x.net ? '<span class="' + (x.net < 0 ? 'neg' : 'pos') + '" style="width:' + (Math.abs(x.net) / mx * 50).toFixed(1) + '%"></span>' : '') + '</span><span class="' + tone(x.net) + '" style="text-align:right;font-weight:600">' + esc(x.net ? bigNum(x.net, 'USD') : '–') + '</span></button>').join('') + '</div>' +
+    '<div class="tx-list">' + all.slice(0, 10).map((x) => '<div class="tx"><span class="tag' + (x.code === 'P' ? ' gain' : x.code === 'S' ? ' loss' : '') + '">' + esc(INSIDER_CODES[x.code] || x.code || '?') + '</span><span class="tx-m"><b>' + esc(x.tk + ' · ' + (x.name || '')) + '</b><span class="sub">' + esc(x.date || '') + '</span></span>' +
+      '<span class="tx-v">' + esc(isNum(x.change) ? sgn(x.change, NI) + ' st.' : '') + '</span></div>').join('') + '</div></div>' +
+    '<p class="sub" style="margin-top:8px">Balk: waarde van aankopen min verkopen door bestuurders (in dollars). Verkopen gebeuren vaak volgens vaste plannen of voor belasting; kopen met eigen geld zegt meestal meer.</p></section>';
+}
+function renderNews() {
+  const host = mode === 'm' ? $('m-news-body') : $('news-body');
+  if (!host) return;
+  const F = FEAT();
+  const off = !F.has.finnhub && !F.has.av && !demo;
+  // Componentenversie (js/nieuws-preact.js) als die geladen is; anders deze HTML-versie
+  if (window.NewsView && window.NewsView.ok && !off) { window.NewsView.draw(host); return; }
+  if (window.NewsView && window.NewsView.ok) window.NewsView.clear(host);
+  if (off) { host.innerHTML = '<div class="grid wide">' + offTile('Nieuws en analisten', 'Zet Finnhub aan (gratis sleutel) bij Koppelingen voor nieuws per aandeel, marktnieuws, analisten en insiderhandel.') + '</div>'; return; }
+  host.innerHTML = '<div class="grid wide">' + newsListTile() + suggestTile() + '</div>' +
+    '<div class="section-head"><h2>Analisten</h2><p class="muted small">Aanbevelingen, koersdoelen en hoe betrouwbaar ze zijn</p></div><div class="grid wide">' + analystTableTile() + reliabilityTile() + '</div>' +
+    '<div class="section-head"><h2>Insiders</h2><p class="muted small">Kopen en verkopen bestuurders zelf?</p></div><div class="grid wide">' + insiderTile() + '</div>';
+}
+
+// ---------- Volglijst: suggesties om te volgen ----------
+function watchSuggestions() {
+  const have = new Set(M.companies.map((c) => normTk(c.tk)).concat(watchSyms(), M.mk.ok ? Object.values((data.market && data.market.symbols) || {}) : []));
+  const cand = new Map();
+  const add = (sym, why, w, name) => { if (!sym || have.has(sym) || !/^[A-Z0-9][A-Z0-9.\-]{0,11}$/.test(sym)) return; const o = cand.get(sym) || { sym, why: new Set(), w: 0, name: name || '' }; o.why.add(why); o.w += w; if (!o.name && name) o.name = name; cand.set(sym, o); };
+  if (M.mk.ok) M.companies.forEach((c) => M.mk.peersOf(c.tk).forEach((s) => { const p = M.mk.prof(s); add(s, 'lijkt op ' + c.tk, 2 + (c.weight || 0) * 5, p && p.name); }));
+  const O = overlapModel();
+  O.per.forEach((list, tk) => { const eurV = sum(list.map((x) => x.eur)); if (eurV > 0) add(tk, 'zit al voor ' + eur(eurV) + ' in je fondsen', eurV / Math.max(1, M.totalValue || 1) * 40, ''); });
+  (data.etf ? Object.values(data.etf) : []).forEach((E) => (E.rows || []).forEach((r) => { const k = normTk(r[0]); if (cand.has(k) && !cand.get(k).name) cand.get(k).name = String(r[1] || '').replace(/\b(INC|CORP|CLASS [A-C]|LTD)\b\.?/g, '').trim(); }));
+  return [...cand.values()].sort((a, b) => b.w - a.w).slice(0, 10);
+}
+function watchSuggestTile() {
+  if (!M) return '';
+  const L = watchSuggestions();
+  if (!L.length) return '';
+  const item = (o) => {
+    const p = M.mk.ok ? M.mk.prof(o.sym) : null;
+    return tpl`<div class="alt"><b>${o.sym} <span class="muted small">${(p && p.name) || o.name || ''}</span></b>
+      <span class="small muted">${[...o.why].slice(0, 2).join('; ')}</span>
+      ${p && isNum(p.change) ? tpl`<span class="small ${tone(p.change)}">${spct(p.change / 100)} laatste dag</span>` : null}
+      <button type="button" class="btn ghost" data-xa="watch-add" data-k="${o.sym}">Volgen</button></div>`;
+  };
+  return String(tpl`<section class="tile pad watch-sugg"><h3>Suggesties om te volgen</h3><div class="alt-list">${L.map(item)}</div>
+    <p class="sub" style="margin-top:8px">Vergelijkbare bedrijven van je posities (FMP) en de grootste bedrijven in je indexfondsen die je nog niet los volgt. Volgen is gratis en verandert niets aan je portefeuille.</p></section>`);
+}
+
+// ---------- Klikken en invoer voor de uitbreidingen ----------
+function rerenderAfterX() {
+  refresh('plan', 'news', 'valuation');
+  if (ui.detail && hasView(ui.detail)) renderDetail(false);
+}
+document.addEventListener('click', async (e) => {
+  if (!e.target.closest) return;
+  const seg = e.target.closest('[data-x] button[data-k]');
+  if (seg) {
+    const key = seg.parentElement.dataset.x, k = seg.dataset.k;
+    if (key === 'amt') plan.amount = Number(k); else if (key === 'taxYear') xs.taxYear = Number(k); else xs[key] = k;
+    markFresh(); rerenderAfterX(); return;
+  }
+  const b = e.target.closest('[data-xa]');
+  if (!b || b.tagName === 'INPUT') return;
+  const a = b.dataset.xa;
+  if (a === 'note-edit') { const box = b.closest('.note'); box.querySelector('.note-ed').hidden = false; b.hidden = true; box.querySelector('textarea').focus(); return; }
+  if (a === 'note-cancel') { const box = b.closest('.note'); box.querySelector('.note-ed').hidden = true; box.querySelector('[data-xa="note-edit"]').hidden = false; return; }
+  if (a === 'note-save') {
+    const box = b.closest('.note'); const st = box.querySelector('.note-st'); const txt = box.querySelector('textarea').value.trim().slice(0, 500);
+    const next = Object.assign({}, notesMap()); if (txt) next[b.dataset.k] = txt; else delete next[b.dataset.k];
+    st.textContent = 'Bezig met opslaan…';
+    try { await saveSettings({ notes: next }); rerenderAll(); } catch (err) { st.textContent = 'Opslaan is mislukt: ' + err.message + '.'; st.className = 'small note-st loss'; }
+    return;
+  }
+  if (a === 'box3-copy' || a === 'box3-csv') {
+    const B = box3Model(xs.taxYear); const st = $('box3-status');
+    if (a === 'box3-copy') { try { await navigator.clipboard.writeText(box3Text(B)); if (st) st.textContent = 'Gekopieerd.'; } catch (err) { if (st) st.textContent = 'Kopiëren lukte niet in deze browser.'; } }
+    else download('dividend-' + B.Y + '.csv', csvOf(['datum', 'ticker', 'netto_eur', 'bruto_eur', 'bronbelasting_eur', 'valuta', 'methode'], B.divs.map((x) => [x.d.date, x.d.ticker, x.d.amount, x.gross.toFixed(2), x.tax.toFixed(2), x.cur, x.how])));
+    return;
+  }
+  if (a === 'ws-share' || a === 'ws-png' || a === 'ws-mail') { shareWeek(a.slice(3), b); return; }
+  if (a === 'watch-add') { const list = watchSyms().slice(); if (!list.includes(b.dataset.k) && list.length < 20) { b.disabled = true; b.textContent = 'Bezig…'; list.push(b.dataset.k); setWatchlist(list, null, b.dataset.k + ' staat op je volglijst.'); } return; }
+  if (a === 'acct-add') { const id = Math.random().toString(36).slice(2, 10); saveAccounts(accts().concat([{ id, name: 'Nieuwe rekening', broker: '', cash: 0, updated: new Date().toISOString().slice(0, 10), holdings: [] }]), null); return; }
+  const f = b.closest('.acct-form');
+  if (!f) return;
+  const st = f.querySelector('.acct-st');
+  if (a === 'acct-addrow') { f.querySelector('.h-rows').insertAdjacentHTML('beforeend', hRow({})); f.querySelector('.h-rows .h-row:last-child input').focus(); }
+  else if (a === 'acct-rmrow') b.closest('.h-row').remove();
+  else if (a === 'acct-save') { const o = readAcctForm(f); saveAccounts(accts().map((x) => (x.id === o.id ? o : x)), st); }
+  else if (a === 'acct-del') { if (confirm('Deze rekening uit het overzicht verwijderen?')) saveAccounts(accts().filter((x) => x.id !== f.dataset.acct), st); }
+});
+document.addEventListener('change', async (e) => {
+  const el = e.target;
+  if (el.matches && el.matches('input[data-xa="ws-hide"]')) { xs.wsHide = el.checked; const h = el.closest('.wshare'); if (h) drawWeekShare(h.parentElement); return; }
+  if (el.matches && el.matches('input[type="file"][data-xa="acct-csv"]') && el.files[0]) {
+    const f = el.closest('.acct-form'); const st = f.querySelector('.acct-st');
+    try {
+      const P = parseAccountCsv(await el.files[0].text());
+      f.querySelector('.h-rows').innerHTML = P.holdings.map(hRow).join('');
+      if (P.cash) f.querySelector('[data-a="cash"]').value = Math.round(P.cash * 100) / 100;
+      f.querySelector('[data-a="updated"]').value = new Date().toISOString().slice(0, 10);
+      st.textContent = P.holdings.length + ' posities ingelezen. Controleer ze en kies Opslaan.'; st.className = 'small plan-status acct-st gain';
+    } catch (err) { st.textContent = 'Inlezen is mislukt: ' + err.message + '.'; st.className = 'small plan-status acct-st loss'; }
+    el.value = '';
+  }
+});

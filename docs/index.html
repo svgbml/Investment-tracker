@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=35">
+  <link rel="stylesheet" href="style.css?v=36">
 </head>
 <body data-page="home">
 
@@ -343,7 +343,24 @@
   <div id="tip" class="tip" role="status" hidden></div>
   <div id="print-area" aria-hidden="true"></div>
 
-  <script src="config.js?v=35"></script>
-  <script src="app.js?v=35"></script>
+  <script src="config.js?v=36"></script>
+  <!-- De site: gewone scripts op volgorde (één gedeeld bereik), daarna de Preact-componenten als module -->
+  <script src="js/00-kern.js?v=36"></script>
+  <script src="js/01-basis.js?v=36"></script>
+  <script src="js/02-instellingen.js?v=36"></script>
+  <script src="js/03-model.js?v=36"></script>
+  <script src="js/04-grafieken.js?v=36"></script>
+  <script src="js/05-portefeuille.js?v=36"></script>
+  <script src="js/06-plannen.js?v=36"></script>
+  <script src="js/07-onderzoek.js?v=36"></script>
+  <script src="js/08-risico.js?v=36"></script>
+  <script src="js/09-weergaven.js?v=36"></script>
+  <script src="js/10-navigatie.js?v=36"></script>
+  <script src="js/11-uitbreidingen.js?v=36"></script>
+  <script src="js/12-nieuws.js?v=36"></script>
+  <script src="js/13-app.js?v=36"></script>
+  <script src="js/14-demo.js?v=36"></script>
+  <script src="js/15-start.js?v=36"></script>
+  <script type="module" src="js/nieuws-preact.js?v=36"></script>
 </body>
 </html>
