@@ -1346,3 +1346,34 @@ body.welcoming #mshell { padding-bottom: 0; }
   .plan-tbl td:nth-child(4) { grid-area: diff; text-align: left; font-size: 13px; }
   .plan-tbl td:nth-child(4) .sub { display: inline; margin-left: 6px; }
 }
+
+
+/* ===================== Computer: menu als witte balk tussen grafiek en tegels, alles gecentreerd ===================== */
+.brand svg { display: none; }
+.topbar, body[data-page="home"] .topbar { grid-template-columns: 1fr auto; padding: 12px max(32px, calc((100% - 1216px) / 2)); }
+.pillnav, :root[data-theme="dark"] .pillnav { position: relative; display: flex; justify-content: center; gap: 4px; margin: 0; padding: 0 16px; border-radius: 0; background: var(--surface); border-bottom: 1px solid var(--rule); }
+.pillnav a, :root[data-theme="dark"] .pillnav a { min-width: 120px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 14px 18px 12px; border-radius: 0; color: var(--ink-2); font-size: 14px; font-weight: 600; }
+.pillnav a svg { width: 22px; height: 22px; }
+.pillnav a:hover { color: var(--ink); }
+.pillnav a[aria-current="page"], :root[data-theme="dark"] .pillnav a[aria-current="page"] { color: var(--ink); }
+.pill, :root[data-theme="dark"] .pill { top: 0; bottom: auto; height: 3px; border-radius: 0 0 3px 3px; background: var(--accent); }
+.band > .chart, .band > .xlabels, .band > .chart-note, .band > #d-legend { max-width: 1280px; margin-left: auto; margin-right: auto; }
+.chart.hero-chart { max-width: 1216px; margin: 12px auto 0; }
+.band .hero-head, .d-top { padding-left: 32px; padding-right: 32px; }
+.band > .xlabels { padding-left: 32px; padding-right: 32px; }
+.band > .chart-note { padding-left: 32px; padding-right: 32px; }
+.page > .wrap, .detail-inner > .wrap { max-width: 1280px; padding-left: 32px; padding-right: 32px; }
+@media (max-width: 1280px) and (min-width: 761px) { .pillnav a { min-width: 96px; padding: 12px 12px 10px; } }
+
+
+/* Stemmingskaart: leesbaarder */
+.mood-map { height: 320px; }
+@media (min-width: 761px) { .mood-map { height: 380px; } }
+.mood-dot.left { flex-direction: row-reverse; transform: translate(calc(-100% + 8px), -50%); }
+.mood-dot:not(.left) { transform: translate(-6px, -50%); }
+.mood-dot.nolab b { display: none; }
+.mood-dot.nolab:hover b, .mood-dot.nolab:focus-visible b { display: inline; position: absolute; left: 16px; padding: 1px 5px; border-radius: 6px; background: var(--surface); box-shadow: 0 1px 4px rgba(0,0,0,.15); z-index: 2; }
+.mood-dot b { font-size: 12px; padding: 0 2px; border-radius: 4px; background: color-mix(in srgb, var(--surface) 75%, transparent); }
+.mood-dot.on { z-index: 3; }
+
+.news-more { display: flex; justify-content: center; margin-top: 12px; }

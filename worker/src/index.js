@@ -166,6 +166,9 @@ export default {
       if (url.pathname === '/api/restore' && request.method === 'POST') {
         return json(Object.assign({ ok: true }, await restorePart(env, await request.json().catch(() => ({})))), 200, cors);
       }
+      if (url.pathname === '/api/news' && request.method === 'GET') {
+        return json(Object.assign({ ok: true }, await newsArchive(env, url.searchParams)), 200, cors);
+      }
       if (url.pathname === '/api/search' && request.method === 'GET') {
         const results = await searchCompanies(env, url.searchParams.get('q'), url);
         await flushCalls(env);
@@ -1595,6 +1598,7 @@ async function externalTask(env, kind, arg) {
   }
   if (kind === 'companies') return refreshCompanies(env);
   if (kind === 'fh') return finnhubTask(env, arg);
+  if (kind === 'fhhist') return newsHistTask(env, arg);
   if (kind === 'av') return avTask(env, arg);
   if (kind === 'sec') return secTask(env, arg);
   return 0;
@@ -1754,6 +1758,68 @@ async function avDaily(env, sym) {
   return Object.entries(ser).map(([d, o]) => [d, numOrNull(o['4. close'])]).filter((x) => x[1] != null).sort((a, b2) => a[0].localeCompare(b2[0]));
 }
 
+// ---------- Nieuwsarchief: berichten per aandeel bewaren en een jaar terug aanvullen (Finnhub) ----------
+const NEWS_KEEP_DAYS = 400;
+async function ensureNewsTable(env) {
+  if ((await getKv(env, 'news_schema')) === '1') return;
+  await env.DB.batch([
+    env.DB.prepare('CREATE TABLE IF NOT EXISTS news_hist (tk TEXT NOT NULL, t INTEGER NOT NULL, headline TEXT NOT NULL, source TEXT, url TEXT NOT NULL, summary TEXT, PRIMARY KEY (tk, url))'),
+    env.DB.prepare('CREATE INDEX IF NOT EXISTS news_hist_t ON news_hist (t)'),
+  ]);
+  await setKv(env, 'news_schema', '1');
+}
+// Hoogstens `cap` berichten, gelijkmatig over de periode verdeeld (drukke aandelen hebben honderden berichten per maand)
+function newsRows(list, cap) {
+  const ok = (Array.isArray(list) ? list : []).filter((n) => n && n.headline && /^https:\/\//.test(n.url || '') && n.datetime).sort((a, c) => c.datetime - a.datetime);
+  if (ok.length <= cap) return ok;
+  const out = [];
+  const step = ok.length / cap;
+  for (let i = 0; i < cap; i++) out.push(ok[Math.floor(i * step)]);
+  return out;
+}
+async function storeNews(env, tk, list, cap) {
+  const rows = newsRows(list, cap || 150);
+  if (!rows.length) return 0;
+  await ensureNewsTable(env);
+  const st = env.DB.prepare('INSERT OR IGNORE INTO news_hist (tk, t, headline, source, url, summary) VALUES (?,?,?,?,?,?)');
+  for (let i = 0; i < rows.length; i += 50) {
+    await env.DB.batch(rows.slice(i, i + 50).map((n) => st.bind(tk, n.datetime * 1000, String(n.headline).slice(0, 220), String(n.source || '').slice(0, 60), String(n.url).slice(0, 500), String(n.summary || '').slice(0, 300))));
+  }
+  return rows.length;
+}
+// Eén maand ouder nieuws voor één aandeel; na een jaar is dat aandeel klaar
+async function newsHistTask(env, tk) {
+  if (!env.FINNHUB_KEY) return 0;
+  let cur = {};
+  try { cur = JSON.parse((await getKv(env, 'news_hist_cur')) || '{}'); } catch (e) { cur = {}; }
+  if (cur[tk] === 'klaar') return 0;
+  const to = cur[tk] || ymdUTC(Date.now() - 9 * 864e5);
+  const fromMs = Date.parse(to + 'T00:00:00Z') - 30 * 864e5;
+  const from = ymdUTC(fromMs);
+  const sym = SYMBOL_MAP[tk] || tk;
+  const r = await getJson(FINNHUB_BASE + '/company-news?symbol=' + encodeURIComponent(sym) + '&from=' + from + '&to=' + to + '&token=' + encodeURIComponent(env.FINNHUB_KEY));
+  if (r.status === 429) throw new Error('Finnhub-limiet bereikt');
+  if (r.status === 401 || r.status === 403) { cur[tk] = 'klaar'; await setKv(env, 'news_hist_cur', JSON.stringify(cur)); return 1; }
+  if (!r.ok) return 1;
+  await storeNews(env, tk, r.body, 150);
+  cur[tk] = fromMs < Date.now() - 365 * 864e5 ? 'klaar' : from;
+  await setKv(env, 'news_hist_cur', JSON.stringify(cur));
+  return 1;
+}
+// Ouder nieuws voor de site: per aandeel of alles, nieuwste eerst, in blokken
+async function newsArchive(env, q) {
+  await ensureNewsTable(env);
+  const before = Number(q.get('before')) || Date.now() + 864e5;
+  const limit = Math.max(1, Math.min(100, Number(q.get('limit')) || 40));
+  const tk = String(q.get('tk') || '').toUpperCase().replace(/[^A-Z0-9.\-]/g, '').slice(0, 15);
+  const sql = 'SELECT tk, t, headline, source, url, summary FROM news_hist WHERE t < ?' + (tk ? ' AND tk = ?' : '') + ' ORDER BY t DESC LIMIT ?';
+  const { results } = await (tk ? env.DB.prepare(sql).bind(before, tk, limit + 1) : env.DB.prepare(sql).bind(before, limit + 1)).all();
+  let cur = {};
+  try { cur = JSON.parse((await getKv(env, 'news_hist_cur')) || '{}'); } catch (e) { cur = {}; }
+  const busy = Object.values(cur).some((v) => v !== 'klaar');
+  return { items: results.slice(0, limit), more: results.length > limit, filling: busy };
+}
+
 async function finnhubTask(env, tk) {
   if (!env.FINNHUB_KEY) return 0;
   const sym = SYMBOL_MAP[tk] || tk;
@@ -1787,6 +1853,8 @@ async function finnhubTask(env, tk) {
     if (k === 'news') {
       out.news = (Array.isArray(b) ? b : []).filter((n) => n.headline && n.url).sort((a, c) => c.datetime - a.datetime).slice(0, 6)
         .map((n) => ({ t: n.datetime * 1000, headline: String(n.headline).slice(0, 220), source: n.source || '', url: n.url }));
+      // Alles bewaren in het archief, niet alleen de nieuwste zes
+      try { await storeNews(env, tk, b, 100); } catch (e) { console.error('nieuwsarchief', e); }
     } else if (k === 'rec') {
       out.rec = (Array.isArray(b) ? b : []).slice(0, 6).map((x) => ({ period: x.period, sb: x.strongBuy, b: x.buy, h: x.hold, s: x.sell, ss: x.strongSell }));
     } else if (k === 'eps') {
@@ -1979,7 +2047,14 @@ async function planMarket(env) {
   if (flags.fx) tasks.push('fx');
   if (flags.inflation) tasks.push('hicp');
   if (flags.indices) tasks.push('idx');
-  if (env.FINNHUB_KEY) { tasks.push('fhnews'); all.forEach((h) => tasks.push('fh:' + h.ticker)); }
+  if (env.FINNHUB_KEY) {
+    tasks.push('fhnews'); all.forEach((h) => tasks.push('fh:' + h.ticker));
+    // Nieuwsarchief: per ronde voor hoogstens 12 aandelen een maand ouder nieuws, tot een jaar terug; oude berichten opruimen
+    let cur = {};
+    try { cur = JSON.parse((await getKv(env, 'news_hist_cur')) || '{}'); } catch (e) { cur = {}; }
+    all.filter((h) => cur[h.ticker] !== 'klaar').slice(0, 12).forEach((h) => tasks.push('fhhist:' + h.ticker));
+    if ((await getKv(env, 'news_schema')) === '1') await env.DB.prepare('DELETE FROM news_hist WHERE t < ?').bind(Date.now() - NEWS_KEEP_DAYS * 864e5).run();
+  }
   if (env.ALPHAVANTAGE_KEY) {
     // Reserve: aandelen waar Finnhub iets mist, langst niet aangevuld eerst; het dagbudget bepaalt hoeveel er lukken
     const { results: rs } = await env.DB.prepare("SELECT key, value FROM kv WHERE key LIKE 'rs\\_%' ESCAPE '\\'").all();
@@ -2124,7 +2199,7 @@ async function marketStep(env) {
     const ci = task.indexOf(':');
     const kind = ci < 0 ? task : task.slice(0, ci), arg = ci < 0 ? '' : task.slice(ci + 1);
     try {
-      if (kind === 'fx' || kind === 'hicp' || kind === 'idx' || kind === 'fh' || kind === 'fhnews' || kind === 'sec' || kind === 'av' || kind === 'companies' || kind === 'filings' || kind === 'f13' || kind === 'econ' || kind === 'pies' || kind === 'instr') {
+      if (kind === 'fx' || kind === 'hicp' || kind === 'idx' || kind === 'fh' || kind === 'fhhist' || kind === 'fhnews' || kind === 'sec' || kind === 'av' || kind === 'companies' || kind === 'filings' || kind === 'f13' || kind === 'econ' || kind === 'pies' || kind === 'instr') {
         calls += await externalTask(env, kind, arg);
       } else if (kind === 'eod2') {
         // Reserve voor koershistorie: Twelve Data (8 per minuut, dus hoogstens 6 per stap), anders Alpha Vantage
@@ -2373,7 +2448,7 @@ function isDst(localIso) {
   return t >= start.getTime() + 2 * HOUR_MS && t < end.getTime() + 3 * HOUR_MS;
 }
 
-export const _test = { parts, isLive, shortTicker, isoLocal, isDst, hourStart, dayOf };
+export const _test = { parts, isLive, shortTicker, isoLocal, isDst, hourStart, dayOf, newsHistTask, storeNews };
 
 
 // =====================================================================

@@ -5,8 +5,10 @@ import { readFileSync, readdirSync, writeFileSync, mkdtempSync, rmSync } from 'n
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
-const root = new URL('../docs/', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
+// fileURLToPath: werkt ook met spaties in de map (anders %20)
+const root = fileURLToPath(new URL('../docs/', import.meta.url));
 const js = join(root, 'js');
 const files = readdirSync(js).filter((f) => f.endsWith('.js'));
 const classic = files.filter((f) => /^\d\d-/.test(f)).sort();

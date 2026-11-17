@@ -540,5 +540,27 @@ await test('Trading 212-sleutel vervangen terwijl hij als Cloudflare-geheim staa
   setKv('login_fail', {});
 });
 
+await test('nieuwsarchief: ouder nieuws aanvullen en per blok ophalen', async () => {
+  const day = 864e5;
+  const mk = (tk, n, from) => Array.from({ length: n }, (_, i) => ({ datetime: Math.floor((from - i * day / 3) / 1000), headline: tk + ' bericht ' + i, source: 'Test', url: 'https://nieuws.test/' + tk + '/' + from + '/' + i, summary: 'samenvatting' }));
+  routes = [[/finnhub\.io\/api\/v1\/company-news/, (u) => reply(mk('AAPL', 40, Date.parse(new URL(u).searchParams.get('to') + 'T12:00:00Z')))]];
+  const e = Object.assign(Object.create(env), { FINNHUB_KEY: 'fh-test' });
+  for (let i = 0; i < 14; i++) await WM._test.newsHistTask(e, 'AAPL');
+  const cur = JSON.parse(kv('news_hist_cur'));
+  assert.equal(cur.AAPL, 'klaar', 'na een jaar klaar');
+  const n = DB.db.prepare("SELECT COUNT(*) AS n FROM news_hist WHERE tk = 'AAPL'").get().n;
+  assert.ok(n >= 12 * 40, 'berichten bewaard: ' + n);
+  let r = await jsonOf(await req('/api/news?tk=AAPL&limit=30'));
+  assert.equal(r.ok, true);
+  assert.equal(r.items.length, 30);
+  assert.equal(r.more, true);
+  assert.ok(r.items[0].t >= r.items[29].t, 'nieuwste eerst');
+  const r2 = await jsonOf(await req('/api/news?tk=AAPL&limit=30&before=' + r.items[29].t));
+  assert.ok(r2.items.every((x) => x.t < r.items[29].t), 'volgende blok is ouder');
+  // Zonder sleutel: niets ophalen
+  assert.equal(await WM._test.newsHistTask(Object.assign(Object.create(env), { FINNHUB_KEY: '' }), 'MSFT'), 0);
+  routes = [];
+});
+
 console.log((failed ? failed + ' fout, ' : '') + passed + ' geslaagd');
 process.exit(failed ? 1 : 0);

@@ -108,7 +108,7 @@ function lineChart(host, sets, o) {
     const idx = [...ser[k].keys()].sort((a, b) => a - b);
     if (idx.length < 2) return;
     const d = idx.map((i, j) => (j ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(ser[k].get(i)).toFixed(2)).join('');
-    if (s.area) svg += '<path d="' + d + 'L' + X(idx[idx.length - 1]).toFixed(1) + ' 100L' + X(idx[0]).toFixed(1) + ' 100Z" fill="' + s.color + '" fill-opacity="' + (s.alpha || 0.14) + '"/>';
+    // Geen gekleurde vlakken onder lijnen meer (rustig ontwerp); 'area' wordt genegeerd
     svg += '<path d="' + d + '" fill="none" stroke="' + s.color + '" stroke-width="' + (s.width || 2.5) + '" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"' + (s.dash ? ' stroke-dasharray="6 5"' : '') + '/>';
   });
   host.innerHTML = svg + '</svg>';
@@ -221,7 +221,6 @@ function spark(pts, color, cls) {
   const Y = (v) => (6 + ((hi - v) / (hi - lo)) * 50).toFixed(2);
   const d = a.map((p, i) => (i ? 'L' : 'M') + X(i) + ' ' + Y(p.v)).join('');
   return '<svg class="' + cls + '" viewBox="0 0 200 60" preserveAspectRatio="none" aria-hidden="true">' +
-    '<path d="' + d + 'L200 60L0 60Z" fill="' + color + '" fill-opacity=".13"/>' +
     '<path d="' + d + '" fill="none" stroke="' + color + '" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg>';
 }
 

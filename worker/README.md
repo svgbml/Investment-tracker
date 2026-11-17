@@ -33,6 +33,7 @@ Alle adressen vragen je toegangscode, als `?token=…` of als header `Authorizat
 | Reservekopie (zonder sleutels of toegangscodes), per tabel in pagina's van 2000 rijen; zonder `table` het overzicht | `GET /api/backup?table=weeks&offset=0` |
 | Reservekopie terugzetten, per pagina; `done: true` bij de laatste pagina bouwt de gegevens opnieuw op | `POST /api/restore` met `{"table": "weeks", "rows": [[…]], "done": false}` |
 | Bedrijf zoeken op naam of symbool (SEC-lijst, ETF's, Finnhub) | `GET /api/search?q=apple` |
+| Ouder nieuws uit het archief (tot een jaar terug, per aandeel of alles, nieuwste eerst) | `GET /api/news?before=<ms>&tk=AAPL&limit=40` |
 | Order plaatsen (alleen als *Kopen en verkopen* aanstaat): markt of limiet, met eigen id tegen dubbel versturen; de Worker controleert je grens per order en per dag en of je genoeg stuks hebt om te verkopen | `POST /api/trade/order` met `{"side": "BUY" \| "SELL", "type": "market" \| "limit", "ticker": "AAPL_US_EQ", "quantity": 0.5, "limitPrice": 210, "validity": "DAY" \| "GTC", "estEur": 100, "clientId": "…"}` |
 | Openstaande orders, de laatste orders via de app en je gebruik van vandaag | `GET /api/trade/orders` |
 | Openstaande order annuleren | `POST /api/trade/cancel` met `{"id": 123}` |

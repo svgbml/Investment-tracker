@@ -184,10 +184,19 @@ const TITLES = { home: 'Overzicht', list: 'Bedrijven', news: 'Nieuws', stats: 'A
 const pageId = (p) => (mode === 'm' ? 'm-' + p : 'page-' + p);
 const pageHash = (p) => (p === 'list' ? 'bedrijven' : p === 'stats' ? 'analyse' : p === 'news' ? 'nieuws' : p === 'plan' ? 'plannen' : 'overzicht');
 
+// Menu op de computer: tussen de grote grafiek en de tegels op Overzicht, bovenaan de pagina elders
+function placeDeskNav() {
+  const nav = document.querySelector('.pillnav');
+  if (!nav || mode !== 'd') return;
+  const band = document.querySelector('#page-home > .band');
+  if (ui.page === 'home' && band) { if (band.nextElementSibling !== nav) band.after(nav); }
+  else { const app = $('app'); if (app && app.firstElementChild !== nav) app.prepend(nav); }
+}
 function placeIndicators() {
-  const a = document.querySelector('.pillnav a[aria-current="page"]');
-  const pill = document.querySelector('.pill');
-  if (a && pill && mode === 'd') { pill.style.width = a.offsetWidth + 'px'; pill.style.transform = 'translateX(' + a.offsetLeft + 'px)'; }
+  placeDeskNav();
+  const a = /** @type {HTMLElement|null} */ (document.querySelector('.pillnav a[aria-current="page"]'));
+  const pill = /** @type {HTMLElement|null} */ (document.querySelector('.pill'));
+  if (a && pill && mode === 'd') { const w = Math.round(a.offsetWidth * 0.5); pill.style.width = w + 'px'; pill.style.transform = 'translateX(' + (a.offsetLeft + (a.offsetWidth - w) / 2) + 'px)'; }
   const t = document.querySelector('.m-tabs a[aria-current="page"]');
   const ind = document.querySelector('.m-tab-ind');
   if (t && ind && mode === 'm') { const w = t.offsetWidth * 0.5; ind.style.width = w + 'px'; ind.style.transform = 'translateX(' + (t.offsetLeft + (t.offsetWidth - w) / 2) + 'px)'; }
