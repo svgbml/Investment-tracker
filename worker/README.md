@@ -28,7 +28,11 @@ Alle adressen vragen je toegangscode, als `?token=…` of als header `Authorizat
 
 | Wat | Methode en adres |
 |---|---|
-| Gegevens voor de website, in twee delen met vingerafdruk (ETag): `core` (metingen, posities, weken) en `extra` (markt, onderzoek, koersen). Met `If-None-Match` geeft de Worker 304 als er niets veranderd is. Zonder `part` beide samen. De toegangscode gaat in de kop `Authorization: Bearer …` | `GET /api/data?part=core` / `?part=extra` |
+| Gegevens voor de website, in delen met vingerafdruk (ETag): `core` (posities, weken), `extra` (markt, onderzoek, koersen) en `series` (metingen). Met `If-None-Match` geeft de Worker 304 als er niets veranderd is. `part=core&split=1` laat de metingen weg; `part=series&since=<ms>` geeft alleen metingen na dat moment (de site bewaart de rest in IndexedDB). Zonder `part` alles samen. De toegangscode gaat in de kop `Authorization: Bearer …` | `GET /api/data?part=core&split=1` / `?part=extra` / `?part=series&since=…` |
+| Status: laatste meting, mislukte metingen op rij, gezondheid van de bronnen | `GET /api/status` |
+| Reservekopie (zonder sleutels of toegangscodes), per tabel in pagina's van 2000 rijen; zonder `table` het overzicht | `GET /api/backup?table=weeks&offset=0` |
+| Reservekopie terugzetten, per pagina; `done: true` bij de laatste pagina bouwt de gegevens opnieuw op | `POST /api/restore` met `{"table": "weeks", "rows": [[…]], "done": false}` |
+| Bedrijf zoeken op naam of symbool (SEC-lijst, ETF's, Finnhub) | `GET /api/search?q=apple` |
 | Nu een meting doen (test) | `POST /api/run` |
 | Nu een weeksnapshot maken | `POST /api/snapshot` |
 | Openstaande opname invoeren | `POST /api/pending` met `{"amount": 154.65}` |
@@ -37,7 +41,7 @@ Alle adressen vragen je toegangscode, als `?token=…` of als header `Authorizat
 | Orders (aan- en verkopen) nu ophalen | `POST /api/orders` |
 | Samenstelling van de indexfondsen nu ophalen / zelf toevoegen | `POST /api/etf` / `POST /api/etf-upload` met `{"key": "SP500" of "NDX", "csv": "…"}` |
 | Inloggen op een nieuw apparaat met de Trading 212-sleutel en -secret die al in de Worker staan; geeft de toegangscode terug (zonder toegangscode, max. 10 mislukte pogingen per uur) | `POST /api/login` |
-| Instellingen van de site (streefverdeling, inleg, doel, volglijst, notities bij aankopen `notes`, andere rekeningen `accounts`) | `GET` / `POST /api/settings` |
+| Instellingen van de site (streefverdeling, inleg, doelen `goals`, volglijst, koersalarmen `priceAlerts`, herinnering inleg `depositReminder`, notities bij aankopen `notes`, andere rekeningen `accounts`) | `GET` / `POST /api/settings` |
 | Status van koppelingen en functies, met `health`: welke bron tijdelijk uit staat en welke reserve het werk doet | `GET /api/features` (alleen waar een sleutel staat, nooit de sleutel zelf) |
 | Meldingen: openbare sleutel en regels, apparaat aan- of afmelden, testmelding | `GET /api/push/key`, `POST /api/push/subscribe` met `{"sub": …}`, `POST /api/push/unsubscribe`, `POST /api/push/test` |
 | Weekmail nu als test sturen (optioneel, Resend) | `POST /api/mail/test` |
@@ -97,6 +101,7 @@ Na de agenda zet de Worker elke ochtend taken klaar die hij buiten de meettijden
 - **Indexen**: S&P 500 en Nasdaq-100 (koersindex, zonder dividend) van FRED, zonder sleutel via de downloadlink of met `FRED_KEY` via de officiële API, voor "wat als alles in de index had gezeten" en als koershistorie voor de risicoberekening van indexfondsen.
 - **Koersdoel en nieuwsstemming** (Finnhub `price-target` en `news-sentiment`), als je abonnement ze toestaat.
 - **Alpha Vantage** (`ALPHAVANTAGE_KEY`, optioneel), reserve voor Finnhub: per aandeel `OVERVIEW` (analisten, gemiddeld koersdoel), `NEWS_SENTIMENT`, `EARNINGS` en `INSIDER_TRANSACTIONS`, alleen voor onderdelen die Finnhub niet levert (geen sleutel, ongeldige sleutel, niet in het abonnement of al twee dagen niet bijgewerkt). Dagbudget 24 verzoeken (`av_calls` in `kv`), één aandeel per stap. Welke onderdelen van Alpha Vantage komen staat in `src` per aandeel.
+- **Twelve Data** (`TWELVEDATA_KEY`, optioneel), reserve voor koershistorie: geeft FMP een 402 (niet in het gratis plan), dan haalt de Worker de dagkoersen bij Twelve Data (hoogstens 6 per stap), zonder sleutel bij Alpha Vantage. Wekelijks haalt de Worker ook de bedrijvenlijst van de SEC op voor het zoeken op de volglijst.
 - **Marktnieuws** (Finnhub `news?category=general`), één keer per dag, voor de nieuwspagina (`marketNews` in `/api/data`). Per aandeel bewaart de Worker ook wekelijks het gemiddelde koersdoel (`targetHist`), zodat de site later kan nagaan of koersdoelen uitkwamen.
 - **Waardering** (FMP `ratios-ttm` en `ratios`, per aandeel één keer per week; `sector-pe-snapshot` één keer per dag): koers-winstverhouding en dividendrendement, in `market.valuation` en `market.sectorPe`. Geeft FMP 402 (niet in het abonnement), dan stopt de Worker ermee (`val_denied`) en rekent de site de K/W uit SEC-cijfers.
 - **Reservebronnen**: lukt een bron niet of zit hij aan zijn limiet, dan schakelt de Worker over en houdt hij dat bij in `kv` `src_health` (de site toont het bij Koppelingen). Wisselkoersen: Frankfurter, anders het ECB Data Portal. Inflatie: ECB, anders Eurostat. Indexen: FRED, anders FMP. Profielen (koers, branche, beta, jaarbereik): FMP, anders Finnhub. Koersgeschiedenis: FMP, anders Alpha Vantage. Kwartaalcijfers: FMP, anders Finnhub. Nieuws en analisten: Finnhub, anders Alpha Vantage. Weekmail: Resend, anders een pushmelding. Na een limiet blijft de bron tot middernacht (UTC) uit; na drie andere fouten zes uur.

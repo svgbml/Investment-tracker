@@ -151,6 +151,7 @@ let swReg = null, swReload = false;
 function showUpdate(on) {
   const el = $('update-banner');
   if (el) el.hidden = !on;
+  if (typeof syncVersionText === 'function') syncVersionText();
 }
 function watchSw(reg) {
   swReg = reg;
@@ -177,10 +178,12 @@ document.addEventListener('click', async (e) => {
     if (!swReg) { if (st) st.textContent = 'Updates controleren kan alleen op de website zelf (https).'; return; }
     if (st) st.textContent = 'Bezig met controleren…';
     try { await swReg.update(); } catch (err) { /* geen verbinding */ }
-    setTimeout(() => { if (st) st.textContent = swReg.waiting || swReg.installing ? 'Er is een nieuwe versie. Kies Nu bijwerken.' : 'Je hebt de nieuwste versie (' + VERSION + ').'; if (swReg.waiting) showUpdate(true); }, 1500);
+    setTimeout(() => { if (st) st.textContent = swReg.waiting || swReg.installing ? 'Er is een nieuwe versie. Kies Nu bijwerken.' : 'Je hebt de nieuwste versie.'; if (swReg.waiting) showUpdate(true); }, 1500);
   }
 });
-if ($('app-version')) $('app-version').textContent = VERSION;
+// Geen versienummer tonen: alleen of je de nieuwste versie hebt (bijgewerkt zodra er een nieuwe klaarstaat)
+function syncVersionText() { const el = $('app-version'); if (el) el.textContent = swReg && swReg.waiting ? 'Er is een nieuwe versie.' : 'Je hebt de nieuwste versie.'; }
+syncVersionText();
 
 // ---------- Meldingen op dit apparaat (Web Push via je eigen Worker) ----------
 // De Worker stuurt meldingen over grote koersbewegingen, kwartaalcijfers van morgen, aankopen door bestuurders
@@ -381,3 +384,233 @@ function renderDriftNote() {
   })();
   ['drift-note', 'm-drift-note'].forEach((id) => { if ($(id)) $(id).innerHTML = html; });
 }
+
+// =====================================================================
+// ---------- Status van je tracker (#status) ----------
+let statusCache = null;
+function demoStatus() {
+  return { now: new Date().toISOString(), lastMeasurement: M && M.lastT ? new Date(M.lastT).toISOString() : null, live: true, lastCron: new Date().toISOString(), lastError: null, tickFails: 0,
+    lastWeek: M && M.lastWeek ? new Date(M.lastWeek.t).toISOString().slice(0, 10) : null, ordersSynced: new Date().toISOString().slice(0, 10), marketPlanned: new Date().toISOString().slice(0, 10),
+    queue: 12, fmpCalls: { n: 84 }, avCalls: { n: 6 }, errors: {}, health: { fmp: { backup: 'Finnhub', backupAt: new Date().toISOString() } },
+    rows: { intraday: 3960, hours: 6420, days: 980, weeks: 13, orders: 31 }, sizes: { data_core: 41200, data_extra: 188000, data_series: 712000 }, devices: 2,
+    companies: '{"n":10412,"updated":"' + new Date().toISOString().slice(0, 10) + '","source":"SEC"}',
+    keys: { T212_KEY: true, FMP_KEY: true, FINNHUB_KEY: true, SEC_CONTACT: true, ALPHAVANTAGE_KEY: false, TWELVEDATA_KEY: false, RESEND_KEY: false } };
+}
+async function loadStatus() {
+  if (demo) { statusCache = demoStatus(); return statusCache; }
+  if (!isWorker() || !getToken()) throw new Error('de status komt van je eigen Cloudflare Worker');
+  statusCache = (await workerCall('/api/status', { method: 'GET' })).status;
+  return statusCache;
+}
+const kb = (n) => (isNum(n) ? (n >= 1e6 ? N1.format(n / 1e6) + ' MB' : NI.format(n / 1e3) + ' kB') : '–');
+const ago = (s) => { if (!s) return 'nog nooit'; const t = new Date(s).getTime(); const m = Math.round((Date.now() - t) / 60000); return fDT.format(t) + ' (' + (m < 1 ? 'net' : m < 90 ? m + ' min geleden' : m < 2880 ? Math.round(m / 60) + ' uur geleden' : Math.round(m / 1440) + ' dagen geleden') + ')'; };
+function renderStatusView() {
+  const S = statusCache;
+  if (!S) {
+    loadStatus().then(() => { if (ui.detail === STATUS) renderDetail(false); }).catch((err) => { statusCache = { error: err.message }; if (ui.detail === STATUS) renderDetail(false); });
+    return pseudoPage('Status', pseudoHead('Status van je tracker', 'Bezig met laden…', ''), [[]], []);
+  }
+  if (S.error) return pseudoPage('Status', pseudoHead('Status van je tracker', 'Niet beschikbaar', S.error + '.'), [[]], []);
+  const lastM = S.lastMeasurement ? new Date(S.lastMeasurement).getTime() : null;
+  const stale = S.live && lastM && Date.now() - lastM > 2 * HOUR;
+  const ok = !stale && !(S.tickFails >= 3);
+  const H = S.health || {};
+  const healthRows = Object.entries(H).map(([src, h]) => [SOURCE_NAMES[src] || src, (h.until && h.until > Date.now() ? 'tijdelijk uit tot ' + fDT.format(h.until) + '. ' : '') + (h.backup ? 'reserve: ' + h.backup : h.msg || 'fouten: ' + h.fails), h.until && h.until > Date.now() ? 'loss' : '']);
+  const errRows = Object.entries(S.errors || {}).map(([src, e]) => [src, e.msg + ' (' + fDT.format(new Date(e.at)) + ')', 'loss']);
+  const meas = '<section class="tile pad"><h3>Metingen</h3>' + kvList([
+    ['Laatste meting', ago(S.lastMeasurement), stale ? 'loss' : ''],
+    ['Meettijden nu', S.live ? 'ja (werkdagen 08:00–22:30)' : 'nee'],
+    ['Laatste geplande run', ago(S.lastCron)],
+    ['Mislukte metingen op rij', String(S.tickFails || 0), S.tickFails >= 3 ? 'loss' : ''],
+    ['Laatste fout', S.lastError || 'geen', S.lastError ? 'loss' : ''],
+    ['Laatste weekmeting', S.lastWeek || '–'],
+    ['Orders opgehaald', S.ordersSynced || '–'],
+  ]) + '</section>';
+  const src = '<section class="tile pad"><h3>Bronnen</h3>' + kvList([
+    ['Marktgegevens ingepland', S.marketPlanned || '–'],
+    ['Taken in de wachtrij', String(S.queue)],
+    ['FMP-verzoeken vandaag', S.fmpCalls && isNum(S.fmpCalls.n) ? S.fmpCalls.n + ' van 250' : '–'],
+    ['Alpha Vantage vandaag', S.avCalls && isNum(S.avCalls.n) ? S.avCalls.n + ' van 25' : '–'],
+    ['Bedrijvenlijst om te zoeken', (() => { try { const c = JSON.parse(S.companies || 'null'); return c ? NI.format(c.n) + ' bedrijven, ' + c.updated : 'nog niet (vraagt het SEC-e-mailadres)'; } catch (e) { return '–'; } })()],
+    ['Meldingen', S.devices ? S.devices + (S.devices === 1 ? ' apparaat' : ' apparaten') : 'geen apparaat aangemeld'],
+  ].concat(healthRows, errRows)) + '</section>';
+  const db = '<section class="tile pad"><h3>Database</h3>' + kvList([
+    ['Metingen per 10 minuten', NI.format(S.rows.intraday || 0) + ' (laatste 3 dagen)'],
+    ['Uurregels', NI.format(S.rows.hours || 0)],
+    ['Dagregels', NI.format(S.rows.days || 0)],
+    ['Weken', NI.format(S.rows.weeks || 0)],
+    ['Orders', NI.format(S.rows.orders || 0)],
+    ['Overzicht voor de site', kb(S.sizes.data_core) + ' + ' + kb(S.sizes.data_extra) + ' + ' + kb(S.sizes.data_series)],
+  ]) + '<p class="sub" style="margin-top:8px">Elke maand ruimt de Worker uurregels ouder dan 400 dagen op. Een reservekopie maak je bij Instellingen.</p></section>';
+  const keys = '<section class="tile pad"><h3>Koppelingen</h3>' + kvList(Object.entries(S.keys || {}).map(([k, v]) => [k.replace(/_KEY|_CONTACT/g, '').replace('T212', 'Trading 212').replace('_', ' '), v ? 'ingesteld' : 'niet ingesteld', v ? 'gain' : ''])) + '</section>';
+  const head = pseudoHead('Status van je tracker', ok ? 'Alles werkt' : stale ? 'Geen nieuwe metingen' : 'Er gaat iets mis', ok ? 'Laatste meting ' + ago(S.lastMeasurement) + '.' : 'Bekijk hieronder de laatste fout. Een melding volgt na drie mislukte metingen.', ok ? 'gain' : 'loss');
+  return pseudoPage('Status', head, [[meas, src], [db, keys]], [meas, src, db, keys]);
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('[data-goto-status]');
+  if (!b) return;
+  if ($('dlg-settings').open) $('dlg-settings').close();
+  statusCache = null;
+  location.hash = '#status';
+});
+
+// =====================================================================
+// ---------- Reservekopie downloaden en terugzetten ----------
+async function makeBackup(say) {
+  const man = await workerCall('/api/backup', { method: 'GET' });
+  const out = { format: man.format, version: man.version, created: man.created, tables: {} };
+  for (const t of Object.keys(man.tables)) {
+    const rows = [];
+    for (let off = 0; ; off += man.page) {
+      say('Bezig: ' + t + ' (' + NI.format(rows.length) + ' van ' + NI.format(man.tables[t]) + ')…');
+      const r = await workerCall('/api/backup?table=' + t + '&offset=' + off, { method: 'GET' });
+      r.rows.forEach((x) => rows.push(x));
+      if (r.rows.length < man.page) break;
+    }
+    out.tables[t] = rows;
+  }
+  return out;
+}
+async function restoreBackup(b, say) {
+  if (!b || b.format !== 'investeringstracker-backup' || !b.tables) throw new Error('dit is geen reservekopie van de tracker');
+  const names = Object.keys(b.tables);
+  for (let k = 0; k < names.length; k++) {
+    const t = names[k], rows = b.tables[t] || [];
+    for (let off = 0; off < Math.max(rows.length, 1); off += 2000) {
+      say('Bezig: ' + t + ' (' + NI.format(Math.min(off + 2000, rows.length)) + ' van ' + NI.format(rows.length) + ')…');
+      await workerCall('/api/restore', { method: 'POST', body: JSON.stringify({ table: t, rows: rows.slice(off, off + 2000), done: k === names.length - 1 && off + 2000 >= rows.length }) });
+    }
+  }
+}
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest && e.target.closest('[data-backup]');
+  if (!b) return;
+  const st = $('backup-status');
+  const say = (t, cls) => { if (st) { st.textContent = t; st.className = 'small plan-status ' + (cls || ''); } };
+  if (demo || sharedView || !isWorker()) { say('Een reservekopie kan alleen van je eigen tracker.', 'loss'); return; }
+  b.disabled = true;
+  try {
+    const out = await makeBackup(say);
+    const blob = new Blob([JSON.stringify(out)], { type: 'application/json' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'investeringstracker-reservekopie-' + new Date().toISOString().slice(0, 10) + '.json';
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+    say('Reservekopie gedownload (' + kb(blob.size) + '). Bewaar hem op een veilige plek; er staan geen sleutels in.', 'gain');
+  } catch (err) { say('Mislukt: ' + err.message + '.', 'loss'); }
+  finally { b.disabled = false; }
+});
+document.addEventListener('change', async (e) => {
+  const el = e.target;
+  if (!(el.matches && el.matches('input[type="file"][data-restore]')) || !el.files[0]) return;
+  const st = $('backup-status');
+  const say = (t, cls) => { if (st) { st.textContent = t; st.className = 'small plan-status ' + (cls || ''); } };
+  try {
+    if (demo || sharedView || !isWorker()) throw new Error('terugzetten kan alleen in je eigen tracker');
+    const b = JSON.parse(await el.files[0].text());
+    const n = Object.values(b.tables || {}).reduce((s, r) => s + (r ? r.length : 0), 0);
+    if (!confirm('Reservekopie van ' + (b.created || '?') + ' terugzetten (' + NI.format(n) + ' regels)? Bestaande regels met dezelfde datum of hetzelfde id worden overschreven; de rest blijft staan.')) { el.value = ''; return; }
+    await restoreBackup(b, say);
+    say('Teruggezet. De gegevens worden opnieuw geladen.', 'gain');
+    load();
+  } catch (err) { say('Terugzetten is mislukt: ' + err.message + '.', 'loss'); }
+  el.value = '';
+});
+
+// =====================================================================
+// ---------- Volglijst: bedrijven zoeken, ongeldige symbolen opruimen ----------
+const DEMO_COMPANIES = [['NVDA', 'NVIDIA Corp'], ['LMT', 'Lockheed Martin Corp'], ['NOC', 'Northrop Grumman Corp'], ['BA', 'Boeing Co'], ['RTX', 'RTX Corp'], ['GD', 'General Dynamics Corp'],
+  ['AIR', 'AAR Corp'], ['TCEHY', 'Tencent Holdings Ltd (ADR)'], ['PEP', 'PepsiCo Inc'], ['MNST', 'Monster Beverage Corp'], ['KDP', 'Keurig Dr Pepper Inc'], ['COST', 'Costco Wholesale Corp'],
+  ['AVGO', 'Broadcom Inc'], ['NFLX', 'Netflix Inc'], ['JPM', 'JPMorgan Chase & Co'], ['V', 'Visa Inc'], ['MA', 'Mastercard Inc'], ['ADBE', 'Adobe Inc'], ['AMD', 'Advanced Micro Devices Inc'], ['INTC', 'Intel Corp'],
+  ['ASML.AS', 'ASML Holding NV (Amsterdam)'], ['ADYEN.AS', 'Adyen NV (Amsterdam)'], ['SHELL.AS', 'Shell plc (Amsterdam)'], ['BRK.B', 'Berkshire Hathaway Inc'], ['UNH', 'UnitedHealth Group Inc'], ['XOM', 'Exxon Mobil Corp']];
+async function searchCompaniesSite(q) {
+  const Q = q.trim().toUpperCase();
+  if (Q.length < 1) return [];
+  if (!demo && isWorker() && getToken()) {
+    try { return (await workerCall('/api/search?q=' + encodeURIComponent(q.trim()), { method: 'GET' })).results || []; } catch (e) { /* oudere Worker: hieronder lokaal zoeken */ }
+  }
+  const list = DEMO_COMPANIES.slice();
+  if (M && M.mk.ok) Object.values((data.market && data.market.profiles) || {}).forEach((p) => list.push([p.symbol, p.name || '']));
+  Object.values(data.etf || {}).forEach((E) => (E.rows || []).forEach((r) => list.push([normTk(String(r[0])), String(r[1] || '')])));
+  const seen = new Set();
+  return list.filter(([s, n]) => (s.startsWith(Q) || n.toUpperCase().includes(Q)) && !seen.has(s) && seen.add(s))
+    .sort((a, b) => (b[0] === Q) - (a[0] === Q) || (b[0].startsWith(Q)) - (a[0].startsWith(Q))).slice(0, 12).map(([sym, name]) => ({ sym, name, exchange: '' }));
+}
+let searchTimer = null, searchSeq = 0;
+document.addEventListener('input', (e) => {
+  const inp = e.target.closest && e.target.closest('[data-watchform] input');
+  if (!inp) return;
+  const box = inp.closest('[data-watchform]').querySelector('.ws-results');
+  clearTimeout(searchTimer);
+  if (!inp.value.trim()) { box.innerHTML = ''; box.hidden = true; return; }
+  searchTimer = setTimeout(async () => {
+    const seq = ++searchSeq;
+    const res = await searchCompaniesSite(inp.value);
+    if (seq !== searchSeq) return;
+    const held = new Set([...M.byTk.keys()].concat(M.mk.ok ? Object.values(data.market.symbols || {}) : []));
+    const on = new Set(watchSyms());
+    box.innerHTML = res.length ? res.map((r) => '<button type="button" class="ws-hit" data-xa="watch-pick" data-k="' + esc(r.sym) + '"' + (held.has(r.sym) || on.has(r.sym) ? ' disabled' : '') + '><b>' + esc(r.sym) + '</b><span>' + esc(r.name) + '</span>' +
+      '<span class="muted small">' + esc(held.has(r.sym) ? 'in bezit' : on.has(r.sym) ? 'volg je al' : r.exchange || '') + '</span></button>').join('')
+      : '<p class="small muted" style="padding:8px 12px">Niets gevonden. Probeer de naam of het beurssymbool.</p>';
+    box.hidden = false;
+  }, 220);
+});
+document.addEventListener('click', (e) => {
+  if (e.target.closest && !e.target.closest('[data-watchform]')) $$('.ws-results').forEach((b) => { b.hidden = true; });
+});
+function unknownSyms() { return M && M.mk ? watchSyms().filter((s) => !(M.mk.ok && M.mk.prof(s)) && ((data.market && data.market.unknown) || []).includes(s)) : []; }
+// Klikken in de volglijst: kiezen uit de zoekresultaten, toch toevoegen, verwijderen, ongeldige opruimen
+document.addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('[data-xa^="watch-"]');
+  if (!b || b.dataset.xa === 'watch-add') return;
+  const f = b.closest('[data-watchform]') || document.querySelector('[data-watchform]');
+  const st = f ? f.querySelector('.watch-status') : null;
+  const act = b.dataset.xa, sym = b.dataset.k;
+  if (act === 'watch-pick' || act === 'watch-force') {
+    const list = watchSyms().slice();
+    if (list.includes(sym)) return;
+    if (list.length >= 30) { if (st) { st.textContent = 'Maximaal 30 aandelen.'; st.className = 'small watch-status loss'; } return; }
+    if (f) { f.querySelector('input').value = ''; const r = f.querySelector('.ws-results'); r.innerHTML = ''; r.hidden = true; }
+    setWatchlist(list.concat([sym]), st, sym + ' staat op je volglijst.');
+  } else if (act === 'watch-remove') {
+    setWatchlist(watchSyms().filter((x) => x !== sym), st, sym + ' is van je volglijst gehaald.');
+  } else if (act === 'watch-clean') {
+    const bad = new Set(unknownSyms());
+    setWatchlist(watchSyms().filter((x) => !bad.has(x)), st, bad.size + (bad.size === 1 ? ' ongeldig symbool' : ' ongeldige symbolen') + ' verwijderd.');
+  } else if (act === 'watch-more') { xs.suggN = xs.suggN === 20 ? 10 : 20; renderWatch(); }
+  else if (act === 'watch-next') { xs.suggOff = (xs.suggOff || 0) + (xs.suggN || 10); renderWatch(); }
+});
+
+// =====================================================================
+// ---------- Koersalarm per aandeel ----------
+const alertsOf = (sym) => ((M.settings && M.settings.priceAlerts) || []).filter((a) => a.sym === sym);
+function priceAlertTile(sym, price, cur) {
+  const list = alertsOf(sym);
+  const pf = (v) => (isNum(v) ? money(v, cur || 'USD') : '–');
+  return '<section class="tile pad price-alerts" data-alert-sym="' + esc(sym) + '"><h3>Koersalarm</h3>' +
+    (list.length ? '<div class="tx-list">' + list.map((a) => '<div class="tx"><span class="tag' + (a.on ? ' gain' : '') + '">' + (a.on ? 'Aan' : a.hit ? 'Afgegaan' : 'Uit') + '</span>' +
+      '<span class="tx-m"><b>' + esc((a.op === 'below' ? 'Onder ' : 'Boven ') + pf(a.price)) + '</b><span class="sub">' + esc(a.hit ? 'afgegaan ' + fDT.format(new Date(a.hit)) + (isNum(a.hitPrice) ? ' bij ' + pf(a.hitPrice) : '') : isNum(price) ? (a.op === 'below' ? 'nog ' + P1.format(Math.max(0, price / a.price - 1)) + ' erboven' : 'nog ' + P1.format(Math.max(0, a.price / price - 1)) + ' eronder') : '') + '</span></span>' +
+      '<span class="tx-v"><button type="button" class="linklike small" data-palert="toggle" data-id="' + esc(a.id) + '">' + (a.on ? 'Uitzetten' : 'Aanzetten') + '</button> <button type="button" class="linklike small danger" data-palert="del" data-id="' + esc(a.id) + '">Wissen</button></span></div>').join('') + '</div>'
+      : '<p class="muted small">Krijg een melding als de koers onder of boven een bedrag komt.</p>') +
+    '<div class="palert-add"><label class="sr-only" for="pa-op-' + esc(sym) + '">Richting</label><select id="pa-op-' + esc(sym) + '" data-pa="op"><option value="below">onder</option><option value="above">boven</option></select>' +
+    '<span class="eur-in">' + esc(CUR_SYM[cur] || (cur ? cur + ' ' : '$')) + '<input type="number" inputmode="decimal" min="0" step="any" data-pa="price" value="' + (isNum(price) ? Math.round(price * 0.95 * 100) / 100 : '') + '" aria-label="Koers voor het alarm"></span>' +
+    '<button type="button" class="btn ghost" data-palert="add">Alarm toevoegen</button></div>' +
+    '<p class="sub" style="margin-top:8px">Koers ' + (isNum(price) ? 'nu ' + esc(pf(price)) + ', ' : '') + 'in de munt van het aandeel. Tijdens de meettijden kijkt de Worker elke 10 minuten; na een melding gaat het alarm uit.' +
+      (pushOk() && Notification.permission !== 'granted' && !demo ? ' Zet meldingen aan bij Instellingen.' : '') + '</p><p class="small plan-status palert-st" role="status"></p></section>';
+}
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest && e.target.closest('[data-palert]');
+  if (!b) return;
+  const box = b.closest('[data-alert-sym]');
+  const sym = box.dataset.alertSym, st = box.querySelector('.palert-st');
+  const all = ((M.settings && M.settings.priceAlerts) || []).map((a) => Object.assign({}, a));
+  let next = all;
+  if (b.dataset.palert === 'add') {
+    const price = Number(box.querySelector('[data-pa="price"]').value);
+    if (!(price > 0)) { st.textContent = 'Vul een koers in.'; st.className = 'small plan-status palert-st loss'; return; }
+    if (all.length >= 30) { st.textContent = 'Maximaal 30 alarmen.'; st.className = 'small plan-status palert-st loss'; return; }
+    next = all.concat([{ id: Math.random().toString(36).slice(2, 10), sym, op: box.querySelector('[data-pa="op"]').value, price, on: true }]);
+  } else if (b.dataset.palert === 'toggle') next = all.map((a) => (a.id === b.dataset.id ? Object.assign(a, { on: !a.on, hit: a.on ? a.hit : null }) : a));
+  else if (b.dataset.palert === 'del') next = all.filter((a) => a.id !== b.dataset.id);
+  b.disabled = true;
+  try { await saveSettings({ priceAlerts: next }); rerenderAll(); }
+  catch (err) { st.textContent = 'Opslaan is mislukt: ' + err.message + '.'; st.className = 'small plan-status palert-st loss'; b.disabled = false; }
+});

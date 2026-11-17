@@ -10,6 +10,9 @@ const demoSettings = () => {
   if (!o.notes) o.notes = (data && data.demoNotes) || {};
   if (!o.accounts) o.accounts = (data && data.demoAccounts) || [];
   if (!o.targets) { o.targets = { VUAG: 40, SXRV: 25, ASML: 8, MSFT: 7, KO: 5 }; o.targetMode = 'position'; }
+  if (!o.goals) o.goals = [{ id: 'huis', name: 'Huis', target: 20000, share: 60, date: (new Date().getFullYear() + 6) + '-06' }, { id: 'buffer', name: 'Buffer', target: 1500, share: 40, date: null }];
+  if (!o.priceAlerts) o.priceAlerts = [{ id: 'demo1', sym: 'ASML', op: 'below', price: 600, on: true }];
+  if (!isNum(o.monthly)) o.monthly = 100;
   return o;
 };
 const plan = { mode: null, draft: null, amount: 100, years: 10, monthly: null, goal: null, status: '', year: null };
@@ -270,10 +273,10 @@ function renderPlan() {
   const focus = document.activeElement && host.contains(document.activeElement) ? document.activeElement.id || null : null;
   const sec = (title, sub, tiles) => '<div class="section-head"><h2>' + esc(title) + '</h2>' + (sub ? '<p class="muted small">' + esc(sub) + '</p>' : '') + '</div><div class="plan-grid">' + tiles.filter(Boolean).join('') + '</div>';
   host.innerHTML =
-    sec('Inleg en doelen', 'Streefverdeling, wat je met nieuwe inleg koopt en waar je naartoe groeit', [targetTile(), inlegTile(), forecastTile(), milestoneTile()]) +
+    sec('Inleg en doelen', 'Streefverdeling, wat je met nieuwe inleg koopt en waar je naartoe groeit', [targetTile(), inlegTile(), forecastTile(), goalsTile(), depositTile(), milestoneTile()]) +
     sec('Wat als', 'Je portefeuille bij tegenvallers en tegenover de index', [scenarioTile(), whatIfTile()]) +
     sec('Dividend en belasting', 'Verwacht dividend, box 3 en het jaaroverzicht', [divCalendarTile(), box3Tile(), yearTile()]) +
-    sec('Kosten en aankopen', 'Wisselkosten en je aankoopdagboek', [costTile(), journalTile()]) +
+    sec('Kosten en aankopen', 'Wisselkosten, fondskosten en je aankoopdagboek', [costTile(), terTile(), journalTile()]) +
     sec('Spreiding en rekeningen', 'Overlap met je fondsen en je andere rekeningen', [overlapTile(), exposureTile(), accountsTile()]) +
     sec('Delen en exporteren', '', [weekShareTile(), exportTile()]);
   drawForecast(host);

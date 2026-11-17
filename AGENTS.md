@@ -57,7 +57,9 @@ The user-facing language is **Dutch**: all UI text, code comments, commit messag
 - Two layouts share the data layer: desktop (`#shell`, `page-*`) and phone (`#mshell`, `m-*`). A new tile needs to appear in both.
 - Home-screen tiles fold: `foldAll()` measures and collapses long tiles, `toggleFold()` animates them. Folded tiles in one row share a height, and a chart in a folded tile must stay fully visible (`fitChart`).
 - Expandable overviews are pseudo detail pages (`@account`, `@risk`, `@result`, `@deposits`) registered in `PSEUDO`.
-- Keep animations, and honour `prefers-reduced-motion` (`reduceMotion()`).
+- Keep animations, and honour `prefers-reduced-motion` (`reduceMotion()`). Keep them cheap: animate `transform`/`opacity`, not shadows, sizes or blur. During the zoom into a detail page `#detail` has the class `zooming`, which gives the content a fixed size so only the outer frame moves. The zoom placeholder is `.tile.ghost`; never select plain `.ghost`, that also matches `.btn.ghost` buttons.
+- Measurements (`series`) load as a delta (`part=series&since=`) and are kept in IndexedDB (`idbGet`/`idbSet`, with a localStorage fallback). Long line charts are thinned by `thinSets` before drawing.
+- When editing files with a script, use Python `str.replace`, not JS `String.replace`: in JS a `$$` in the replacement collapses to `$`, which once broke `$('…')` calls on the live site.
 - `makeDemoData()` powers the keyless demo (`?demo`). **Every new feature needs demo data**, otherwise it is invisible to visitors without a key.
 - After changing any file in `docs/`, bump the cache version: every `?v=N` in `index.html`, the precache list and `CACHE = 'tracker-vN'` in `sw.js`, and `VERSION` in `js/01-basis.js`. A new file must also be added to the precache list.
 

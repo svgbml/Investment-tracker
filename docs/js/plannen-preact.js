@@ -121,6 +121,7 @@ function ForecastTile() {
     <div class="fc-res">${P.sets.slice().reverse().map((x) => html`<div key=${x.label}><span class="k"><i style=${'background:' + x.color}></i>${x.label} (${P1.format(x.r)} per jaar)</span><b>${eur(x.end)}</b>
         ${P.goal ? html`<span class="sub">${x.reached ? 'doel in ' + fY(x.reached) : 'doel niet binnen 60 jaar'}</span>` : null}</div>`)}
       <div><span class="k"><i class="dash"></i>Alleen inleg</span><b>${eur(P.dep[P.dep.length - 1].v)}</b></div></div>
+    <div dangerouslySetInnerHTML=${{ __html: snowballLine(P) }}></div>
     <p class="sub" style="margin-top:10px">Start: je accountwaarde nu (${eur(P.start)}). ${isNum(M.settings.monthly) || isNum(plan.monthly) ? '' : 'De maandinleg is geschat uit je stortingen van de laatste drie maanden. '}De drie rendementen zijn voorbeelden, geen verwachting: werkelijke rendementen schommelen sterk per jaar en kunnen ook negatief zijn. Kosten, belasting en inflatie zijn niet meegenomen.</p>
   </section>`;
 }
@@ -138,11 +139,11 @@ function PlanPage({ stamp }) {
   useEffect(() => { const root = host.current && host.current.parentElement; if (root) { drawWhatIf(root); drawWeekShare(root); } });
   return html`<div style="display:contents" ref=${host} data-preact="plan">
     <${Section} title="Inleg en doelen" sub="Streefverdeling, wat je met nieuwe inleg koopt en waar je naartoe groeit">
-      <${TargetTile} bump=${() => setVersion((n) => n + 1)} /><${InlegTile} version=${version + ':' + stamp} /><${ForecastTile} />${leg(milestoneTile())}
+      <${TargetTile} bump=${() => setVersion((n) => n + 1)} /><${InlegTile} version=${version + ':' + stamp} /><${ForecastTile} />${leg(goalsTile())}${leg(depositTile())}${leg(milestoneTile())}
     <//>
     <${Section} title="Wat als" sub="Je portefeuille bij tegenvallers en tegenover de index">${leg(scenarioTile())}${leg(whatIfTile())}<//>
     <${Section} title="Dividend en belasting" sub="Verwacht dividend, box 3 en het jaaroverzicht">${leg(divCalendarTile())}${leg(box3Tile())}${leg(yearTile())}<//>
-    <${Section} title="Kosten en aankopen" sub="Wisselkosten en je aankoopdagboek">${leg(costTile())}${leg(journalTile())}<//>
+    <${Section} title="Kosten en aankopen" sub="Wisselkosten, fondskosten en je aankoopdagboek">${leg(costTile())}${leg(terTile())}${leg(journalTile())}<//>
     <${Section} title="Spreiding en rekeningen" sub="Overlap met je fondsen en je andere rekeningen">${leg(overlapTile())}${leg(exposureTile())}${leg(accountsTile())}<//>
     <${Section} title="Delen en exporteren">${leg(weekShareTile())}${leg(exportTile())}<//>
   </div>`;

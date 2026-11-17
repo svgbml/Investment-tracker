@@ -62,6 +62,7 @@ $('form-settings').addEventListener('submit', (e) => {
   } else if (action === 'forget') {
     localStorage.removeItem(LS_TOKEN);
     localStorage.removeItem(LS_LAST);
+    idbDel('last');
     data = null;
     showWelcome();
   }
@@ -124,12 +125,14 @@ const LINKS = [
   { id: 'indices', title: 'Indexen (FRED)', need: 'geen sleutel nodig', what: 'Dagkoersen van de S&P 500 en de Nasdaq-100 voor "wat als alles in de index had gezeten" en voor het risico van je indexfondsen. Weigert FRED de gewone download, vul dan een gratis FRED-sleutel in.',
     keys: [['FRED_KEY', 'FRED-sleutel (optioneel)']], optKeys: true, flag: 'indices', href: 'https://fred.stlouisfed.org/docs/api/api_key.html' },
   { id: 'etfAuto', title: 'Fondssamenstelling automatisch (iShares)', need: 'geen sleutel', what: 'Probeert wekelijks de samenstelling van je indexfondsen op te halen. Lukt dat niet, dan kun je het bestand zelf toevoegen op Plannen.', flag: 'etfAuto' },
+  { id: 'twelvedata', title: 'Twelve Data (koersgeschiedenis, reserve)', need: 'gratis sleutel', what: 'Dagkoersen van het afgelopen jaar voor aandelen waarvoor het gratis FMP-abonnement geen geschiedenis geeft, zodat ook die een grafiek krijgen. Gratis tot 800 verzoeken per dag.',
+    keys: [['TWELVEDATA_KEY', 'API-sleutel']], href: 'https://twelvedata.com/register' },
   { id: 'mail', title: 'Weekoverzicht per e-mail (optioneel)', need: 'gratis sleutel', what: 'Elke zaterdag na de weekmeting een korte mail met je weekrendement en de grootste stijgers en dalers, via Resend (gratis tot 3000 mails per maand). Zonder eigen domein kan Resend alleen mailen naar het adres van je Resend-account. Lukt mailen niet, dan komt het overzicht als melding (als meldingen aanstaan).',
     keys: [['RESEND_KEY', 'Resend API-sleutel'], ['MAIL_TO', 'Naar (je e-mailadres)'], ['MAIL_FROM', 'Afzender (optioneel, met eigen domein)', true]], flag: 'weeklyMail', href: 'https://resend.com/signup' },
 ];
 // Welke bronnen bij een koppeling horen (voor de melding "reserve in gebruik")
-const LINK_SOURCES = { fmp: ['fmp'], finnhub: ['finnhub'], fx: ['frankfurter'], inflation: ['ecb_hicp'], indices: ['fred'], mail: ['resend'] };
-const SOURCE_NAMES = { fmp: 'FMP', finnhub: 'Finnhub', frankfurter: 'Frankfurter', ecb_hicp: 'de ECB', fred: 'FRED', resend: 'Resend' };
+const LINK_SOURCES = { twelvedata: ['twelvedata'], fmp: ['fmp'], finnhub: ['finnhub'], fx: ['frankfurter'], inflation: ['ecb_hicp'], indices: ['fred'], mail: ['resend'] };
+const SOURCE_NAMES = { twelvedata: 'Twelve Data', fmp: 'FMP', finnhub: 'Finnhub', frankfurter: 'Frankfurter', ecb_hicp: 'de ECB', fred: 'FRED', resend: 'Resend' };
 function healthLine(id, H) {
   return (LINK_SOURCES[id] || []).map((src) => {
     const h = H && H[src];
@@ -316,38 +319,94 @@ function showWelcome() {
 }
 
 // Laatste stand in deze browser, zodat de site direct (en zonder verbinding) iets laat zien
+// In IndexedDB (ruimte voor vele megabytes); localStorage (zo'n 5 MB) alleen als reserve
 const LS_LAST = 'tracker.last';
-function readLast(url) {
+const IDB_NAME = 'tracker', IDB_STORE = 'kv';
+let idbConn = null;
+function idbOpen() {
+  if (idbConn) return idbConn;
+  idbConn = new Promise((ok, no) => {
+    if (!('indexedDB' in window)) { no(new Error('geen IndexedDB')); return; }
+    const r = indexedDB.open(IDB_NAME, 1);
+    r.onupgradeneeded = () => r.result.createObjectStore(IDB_STORE);
+    r.onsuccess = () => ok(r.result);
+    r.onerror = () => no(r.error || new Error('IndexedDB'));
+  });
+  idbConn.catch(() => { idbConn = null; });
+  return idbConn;
+}
+async function idbGet(k) { const db = await idbOpen(); return new Promise((ok, no) => { const q = db.transaction(IDB_STORE).objectStore(IDB_STORE).get(k); q.onsuccess = () => ok(q.result); q.onerror = () => no(q.error); }); }
+async function idbSet(k, v) { const db = await idbOpen(); return new Promise((ok, no) => { const t = db.transaction(IDB_STORE, 'readwrite'); t.objectStore(IDB_STORE).put(v, k); t.oncomplete = () => ok(); t.onerror = () => no(t.error); t.onabort = () => no(t.error); }); }
+async function idbDel(k) { try { const db = await idbOpen(); await new Promise((ok) => { const t = db.transaction(IDB_STORE, 'readwrite'); t.objectStore(IDB_STORE).delete(k); t.oncomplete = ok; t.onerror = ok; }); } catch (e) { /* niet erg */ } }
+async function readLast(url) {
+  try { const o = await idbGet('last'); if (o && o.url === url && o.data && o.data.ok) return o; } catch (e) { /* valt terug op localStorage */ }
   try { const o = JSON.parse(localStorage.getItem(LS_LAST) || 'null'); return o && o.url === url && o.data && o.data.ok ? o : null; } catch (e) { return null; }
 }
-function saveLast(url, d) {
-  try { localStorage.setItem(LS_LAST, JSON.stringify({ url, saved: Date.now(), data: d, tags: dataParts.tags })); } catch (e) { /* vol of geblokkeerd: niet erg */ }
+async function saveLast(url, d) {
+  const o = { url, saved: Date.now(), data: d, tags: Object.assign({}, dataParts.tags), seriesTs: dataParts.seriesTs || 0 };
+  try { await idbSet('last', o); try { localStorage.removeItem(LS_LAST); } catch (e) { /* niet erg */ } }
+  catch (e) { try { localStorage.setItem(LS_LAST, JSON.stringify(o)); } catch (e2) { /* vol of geblokkeerd: niet erg */ } }
 }
 
 // Gegevens van de Worker in twee delen: 'core' (metingen, posities; elke 10 minuten anders) en 'extra'
 // (markt, onderzoek, koersen; een paar keer per dag). Een deel dat niet veranderde, stuurt de Worker niet
 // opnieuw (304). De toegangscode gaat in de Authorization-kop, niet in het adres.
-const dataParts = { core: null, extra: null, tags: {} };
-async function fetchPart(url, token, part) {
+// Een derde deel, 'series' (metingen per 10 minuten, uren en dagen), komt na de eerste keer alleen nog
+// met de regels die erbij kwamen (?since=).
+const dataParts = { core: null, extra: null, series: null, tags: {}, seriesTs: 0 };
+async function fetchPart(url, token, part, query) {
   const h = { Authorization: 'Bearer ' + token };
   if (dataParts.tags[part] && dataParts[part]) h['If-None-Match'] = dataParts.tags[part];
-  const res = await fetch(url + (url.includes('?') ? '&' : '?') + 'part=' + part, { cache: 'no-store', headers: h });
+  const res = await fetch(url + (url.includes('?') ? '&' : '?') + 'part=' + part + (query || ''), { cache: 'no-store', headers: h });
   if (res.status === 304) return null;
   const json = await res.json().catch(() => null);
   if (!res.ok || !json) throw new Error((json && json.error) || 'de web-app gaf status ' + res.status);
   if (!json.ok) throw new Error(json.error || 'onbekende fout');
-  // Een oudere Worker kent geen delen en stuurt alles in één keer
-  if (json.part !== part) { dataParts.core = json; dataParts.extra = {}; dataParts.tags = {}; return 'full'; }
+  if (json.part !== part) {
+    // Een oudere Worker kent geen delen en stuurt alles in één keer; kent hij alleen geen 'series', dan negeren
+    if (part === 'core') { dataParts.core = json; dataParts.extra = {}; dataParts.series = null; dataParts.tags = {}; return 'full'; }
+    return 'none';
+  }
   dataParts[part] = json;
   dataParts.tags[part] = res.headers.get('ETag') || null;
+  if (part === 'series') dataParts.seriesTs = json.seriesTs || 0;
   return part;
 }
+// Nieuwe reeksregels samenvoegen met wat er al is (zelfde tijd en ticker = vervangen), oude regels opruimen
+function mergeRows(old, add, keepFrom) {
+  const m = new Map((old || []).map((r) => [r[0] + '|' + r[1], r]));
+  (add || []).forEach((r) => m.set(r[0] + '|' + r[1], r));
+  return [...m.values()].filter((r) => !keepFrom || r[0] >= keepFrom).sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+}
+async function fetchSeries(url, token) {
+  const S = dataParts.series;
+  if (S && dataParts.seriesTs && S.intraday) {
+    const res = await fetch(url + (url.includes('?') ? '&' : '?') + 'part=series&since=' + dataParts.seriesTs, { cache: 'no-store', headers: { Authorization: 'Bearer ' + token } });
+    const json = await res.json().catch(() => null);
+    if (res.ok && json && json.ok && json.delta) {
+      const n = json.intraday.rows.length + json.hours.rows.length + json.days.rows.length;
+      if (!n) return null;
+      const last = json.intraday.rows.length ? json.intraday.rows[json.intraday.rows.length - 1][0] : null;
+      const iso = (t) => { const d = new Date(t); const p = (x) => String(x).padStart(2, '0'); return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':00'; };
+      const lastT = last ? new Date(last).getTime() : Date.now();
+      S.intraday = Object.assign({}, S.intraday, { rows: mergeRows(S.intraday.rows, json.intraday.rows, iso(lastT - 4 * DAY)) });
+      S.hours = Object.assign({}, S.hours, { rows: mergeRows(S.hours.rows, json.hours.rows, iso(lastT - 31 * DAY)) });
+      S.days = Object.assign({}, S.days, { rows: mergeRows(S.days.rows, json.days.rows, null) });
+      dataParts.seriesTs = json.seriesTs || dataParts.seriesTs;
+      dataParts.tags.series = null;
+      return 'series';
+    }
+  }
+  return fetchPart(url, token, 'series');
+}
 async function fetchWorkerData(url, token) {
-  const a = await fetchPart(url, token, 'core');
-  const b = a === 'full' ? null : await fetchPart(url, token, 'extra');
-  if (!a && !b) return null; // niets veranderd
-  const d = Object.assign({}, dataParts.core, dataParts.extra);
-  d.ok = true; delete d.part;
+  const a = await fetchPart(url, token, 'core', '&split=1');
+  if (a === 'full') { const d = Object.assign({}, dataParts.core); d.ok = true; delete d.part; return d; }
+  const b = await fetchPart(url, token, 'extra');
+  const c = await fetchSeries(url, token);
+  if (!a && !b && (!c || c === 'none')) return null; // niets veranderd
+  const d = Object.assign({}, dataParts.series || {}, dataParts.core, dataParts.extra);
+  d.ok = true; delete d.part; delete d.seriesTs;
   return d;
 }
 
@@ -390,11 +449,15 @@ async function load() {
   if (!token) { showWelcome(); return; }
   if (!url) { showWelcome(); showError('Er is nog geen adres van de web-app ingesteld. Vul het in bij Instellingen of zet het in config.js.'); return; }
   if (!data) {
-    const last = readLast(url);
-    if (last) {
+    const last = await readLast(url);
+    if (last && !data) {
       data = last.data; render();
       // Met de vingerafdrukken van de vorige keer hoeft er na een herstart vaak niets opnieuw te komen
-      if (last.tags && last.tags.core) { dataParts.core = last.data; dataParts.extra = {}; dataParts.tags = { core: last.tags.core }; if (last.tags.extra) { dataParts.extra = last.data; dataParts.tags.extra = last.tags.extra; } }
+      if (last.tags && last.tags.core) {
+        dataParts.core = last.data; dataParts.extra = {}; dataParts.tags = { core: last.tags.core };
+        if (last.tags.extra) { dataParts.extra = last.data; dataParts.tags.extra = last.tags.extra; }
+        if (last.seriesTs && last.data.intraday) { dataParts.series = { intraday: last.data.intraday, hours: last.data.hours, days: last.data.days }; dataParts.seriesTs = last.seriesTs; }
+      }
     }
   }
   $$('.btn-refresh').forEach((b) => b.classList.add('busy'));

@@ -285,5 +285,111 @@ await test('maandelijkse opruiming van oude uurregels', async () => {
   assert.equal(DB.db.prepare('SELECT COUNT(*) AS n FROM hours WHERE hour = ?').get(old).n, 0);
 });
 
+await test('reeksen los: core zonder reeksen, oude core met reeksen, alleen nieuwe regels', async () => {
+  routes = t212Routes();
+  await req('/api/run', { method: 'POST' });
+  const split = await jsonOf(await req('/api/data?part=core&split=1'));
+  assert.ok(!('intraday' in split) && split.positions, 'core zonder reeksen');
+  const legacy = await jsonOf(await req('/api/data?part=core'));
+  assert.equal(legacy.part, 'core');
+  assert.ok(legacy.intraday && legacy.intraday.rows.length, 'oude site krijgt reeksen mee');
+  const ser = await req('/api/data?part=series');
+  const s = await jsonOf(ser.clone());
+  assert.ok(s.seriesTs > 0 && s.intraday.rows.length);
+  assert.equal((await req('/api/data?part=series', { headers: { 'If-None-Match': ser.headers.get('ETag') } })).status, 304);
+  const d0 = await jsonOf(await req('/api/data?part=series&since=' + s.seriesTs));
+  assert.ok(d0.delta && d0.intraday.rows.length === 0, 'niets nieuws');
+  const d1 = await jsonOf(await req('/api/data?part=series&since=' + (s.seriesTs - 1)));
+  assert.ok(d1.intraday.rows.length >= 3, 'de laatste meting (3 regels)');
+});
+
+await test('status', async () => {
+  const st = (await jsonOf(await req('/api/status'))).status;
+  assert.ok(st.lastMeasurement && st.rows.intraday > 0 && 'tickFails' in st && st.keys.T212_KEY === true);
+  assert.ok(!JSON.stringify(st).includes(env.T212_KEY), 'geen sleutels in de status');
+});
+
+await test('reservekopie en terugzetten, zonder sleutels', async () => {
+  await req('/api/keys', { method: 'POST', body: { name: 'FINNHUB_KEY', value: 'geheim-finnhub-123' } });
+  const man = await jsonOf(await req('/api/backup'));
+  assert.equal(man.format, 'investeringstracker-backup');
+  assert.ok(man.tables.weeks >= 2);
+  const parts = {};
+  for (const t of Object.keys(man.tables)) parts[t] = (await jsonOf(await req('/api/backup?table=' + t))).rows;
+  const all = JSON.stringify(parts);
+  assert.ok(!all.includes('geheim-finnhub-123') && !all.includes('vapid') && !all.includes(TOKEN), 'geen sleutels of codes in de kopie');
+  assert.ok(parts.kv.some((r) => r[0] === 'settings'));
+  DB.db.prepare('DELETE FROM weeks').run();
+  const r = await jsonOf(await req('/api/restore', { method: 'POST', body: { table: 'weeks', rows: parts.weeks, done: true } }));
+  assert.equal(r.restored, parts.weeks.length);
+  assert.equal(DB.db.prepare('SELECT COUNT(*) AS n FROM weeks').get().n, parts.weeks.length);
+  const bad = await jsonOf(await req('/api/restore', { method: 'POST', body: { table: 'kv', rows: [['keys', '{"T212_KEY":"x"}'], ['settings', '{}']] } }));
+  assert.equal(bad.skipped, 1, 'sleutels terugzetten mag niet');
+});
+
+await test('waakhond: melding na drie mislukte metingen tijdens de meettijden', async () => {
+  const pushes = [];
+  routes = [[/t212\.test/, reply({ code: 'x' }, 401)], [/push\.test/, async (u, init) => { pushes.push(await decryptPush(init.body)); return reply('', 201); }]];
+  const at = new Date('2026-11-18T10:00:00Z').getTime();
+  for (let i = 0; i < 3; i++) { await W.scheduled({ cron: '*/10 * * * *', scheduledTime: at + i * 600000 }, env, { waitUntil: async (p) => p }); await new Promise((r) => setTimeout(r, 30)); }
+  assert.equal(pushes.length, 1, JSON.stringify(pushes));
+  assert.match(pushes[0].body, /Trading 212-sleutel/);
+  routes = t212Routes();
+  await W.scheduled({ cron: '*/10 * * * *', scheduledTime: at + 4 * 600000 }, env, { waitUntil: async (p) => p });
+  await new Promise((r) => setTimeout(r, 30));
+  assert.equal(kv('tick_fail'), '0', 'weer goed');
+});
+
+await test('koersalarm gaat af en zet zichzelf uit', async () => {
+  await req('/api/settings', { method: 'POST', body: { priceAlerts: [{ sym: 'AAPL', op: 'above', price: 220, on: true }, { sym: 'AAPL', op: 'below', price: 100, on: true }] } });
+  const pushes = [];
+  routes = t212Routes().concat([[/push\.test/, async (u, init) => { pushes.push(await decryptPush(init.body)); return reply('', 201); }]]);
+  await W.scheduled({ cron: '*/10 * * * *', scheduledTime: new Date('2026-11-19T10:00:00Z').getTime() }, env, { waitUntil: async (p) => p });
+  await new Promise((r) => setTimeout(r, 30));
+  const pa = pushes.filter((p) => /boven 220/.test(p.title));
+  assert.equal(pa.length, 1, JSON.stringify(pushes));
+  const s = JSON.parse(kv('settings'));
+  assert.equal(s.priceAlerts.find((a) => a.op === 'above').on, false);
+  assert.equal(s.priceAlerts.find((a) => a.op === 'below').on, true);
+});
+
+await test('zoeken: bedrijvenlijst van de SEC en Finnhub', async () => {
+  const e2 = Object.assign({}, env, { SEC_CONTACT: 'iemand@example.com', FINNHUB_KEY: 'fh' });
+  setKv('src_health', {});
+  setKv('companies_meta', '');
+  setKv('mkt_queue', ['companies']);
+  routes = [[/sec\.gov\/files\/company_tickers/, (u, init) => { assert.match(init.headers['User-Agent'], /iemand@example\.com/); return reply({ 0: { cik_str: 1, ticker: 'NOC', title: 'NORTHROP GRUMMAN CORP' }, 1: { cik_str: 2, ticker: 'NVDA', title: 'NVIDIA CORP' }, 2: { cik_str: 3, ticker: 'BRK-B', title: 'BERKSHIRE HATHAWAY INC' } }); }],
+    [/finnhub\.io\/api\/v1\/search/, reply({ result: [{ symbol: 'ASML.AS', displaySymbol: 'ASML.AS', description: 'ASML HOLDING NV', type: 'Common Stock' }, { symbol: 'XYZ', description: 'warrant', type: 'Warrant' }] })]];
+  await req('/api/market', { method: 'POST', env: e2 });
+  assert.equal(JSON.parse(kv('companies_meta')).n, 3);
+  const r1 = (await jsonOf(await req('/api/search?q=northrop', { env: e2 }))).results;
+  assert.equal(r1[0].sym, 'NOC');
+  const r2 = (await jsonOf(await req('/api/search?q=BRK', { env: e2 }))).results;
+  assert.ok(r2.some((x) => x.sym === 'BRK.B'));
+  const r3 = (await jsonOf(await req('/api/search?q=asml', { env: e2 }))).results;
+  assert.ok(r3.some((x) => x.sym === 'ASML.AS') && !r3.some((x) => x.sym === 'XYZ'), JSON.stringify(r3));
+});
+
+await test('koershistorie: FMP geeft 402, dan Twelve Data', async () => {
+  const e2 = Object.assign({}, env, { FMP_KEY: 'fmp', TWELVEDATA_KEY: 'td' });
+  setKv('src_health', {});
+  setKv('eod_unavailable', []);
+  setKv('mkt_queue', ['eod:NOC']);
+  routes = [[/financialmodelingprep/, reply({ 'Error Message': 'Premium' }, 402)],
+    [/api\.twelvedata\.com\/time_series/, reply({ status: 'ok', values: [{ datetime: '2026-11-14', close: '545.65' }, { datetime: '2026-11-13', close: '550.10' }] })]];
+  await req('/api/market', { method: 'POST', env: e2 });
+  const rows = DB.db.prepare('SELECT day, price FROM ext_prices WHERE symbol = ? ORDER BY day').all('NOC');
+  assert.equal(rows.length, 2, JSON.stringify(rows));
+  assert.equal(rows[1].price, 545.65);
+  assert.match(JSON.parse(kv('src_health')).fmp.backup, /Twelve Data/);
+});
+
+await test('doelen en herinnering inleg in de instellingen', async () => {
+  const r = await jsonOf(await req('/api/settings', { method: 'POST', body: { goals: [{ name: 'Huis', target: 30000, share: 60, date: '2030-06' }, { name: 'x', target: -1 }], depositReminder: false } }));
+  assert.equal(r.settings.goals.length, 1);
+  assert.equal(r.settings.goals[0].share, 60);
+  assert.equal(r.settings.depositReminder, false);
+});
+
 console.log((failed ? failed + ' fout, ' : '') + passed + ' geslaagd');
 process.exit(failed ? 1 : 0);

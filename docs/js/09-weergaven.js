@@ -150,7 +150,7 @@ function renderDetailDesktop(c, swapDir) {
     '</div>' +
     '<div class="wrap' + sw + '">' +
       '<div class="grid">' + I.kpis.join('') + '</div>' +
-      '<div class="grid wide" style="margin-top:16px">' + I.rangeTile + I.posTile + I.tradeTile + I.histTile + I.agendaTile + I.riskTile + valuationTile(c) + overlapTileC(c) + '</div>' +
+      '<div class="grid wide" style="margin-top:16px">' + I.rangeTile + I.posTile + I.tradeTile + I.histTile + I.agendaTile + I.riskTile + valuationTile(c) + overlapTileC(c) + priceAlertTile(c.tk, c.priceNative, c.cur) + '</div>' +
       '<div class="section-head"><h2>Nieuws, analisten en cijfers</h2></div>' +
       '<div class="grid wide">' + I.research.join('') + '</div>' +
       '<div class="section-head"><h2>Sector en vergelijkbare bedrijven</h2></div>' +
@@ -252,7 +252,7 @@ function renderDetailMobile(c, swapDir) {
   const tabs = [['pos', 'Positie'], ['res', 'Onderzoek'], ['cmp', 'Vergelijk'], ['hist', 'Historie'], ['pat', 'Patronen']];
   const panel = ui.mTab === 'hist' ? I.histTile : ui.mTab === 'pat' ? '<div class="m-stack">' + I.patterns.join('') + '</div>'
     : ui.mTab === 'cmp' ? I.riskTile + valuationTile(c) + overlapTileC(c) + '<button type="button" class="btn ghost" data-act="compare">Naast een ander aandeel zetten</button>' + I.market.tiles.join('') + I.market.table
-    : ui.mTab === 'res' ? I.research.join('') : I.rangeTile + I.posTile + I.tradeTile + I.agendaTile;
+    : ui.mTab === 'res' ? I.research.join('') : I.rangeTile + I.posTile + I.tradeTile + I.agendaTile + priceAlertTile(c.tk, c.priceNative, c.cur);
   return '<div class="md">' +
     '<div class="m-dtop"><button type="button" class="m-back" data-act="back">‹ Terug</button><span class="t">' + esc(c.tk) + '</span>' +
       '<div class="m-nav"><button type="button" data-act="prev" aria-label="Vorige: ' + esc(prev.name) + '">‹</button><button type="button" data-act="next" aria-label="Volgende: ' + esc(next.name) + '">›</button></div></div>' +
@@ -277,7 +277,8 @@ function renderDetailMobile(c, swapDir) {
 const ACC = '@account';
 const RISK = '@risk', RES = '@result', DEP = '@deposits';
 const CMP = '@compare';
-const PSEUDO = { '@account': 'accountwaarde', '@risk': 'risico', '@result': 'resultaat', '@deposits': 'stortingen', '@compare': 'vergelijken' };
+const STATUS = '@status';
+const PSEUDO = { '@account': 'accountwaarde', '@risk': 'risico', '@result': 'resultaat', '@deposits': 'stortingen', '@compare': 'vergelijken', '@status': 'status' };
 const isPseudo = (k) => Object.prototype.hasOwnProperty.call(PSEUDO, k);
 const hasView = (k) => isPseudo(k) || (M && M.byTk.has(k)) || (isWatchKey(k) && M && watchSyms().includes(k.slice(1)));
 const viewHash = (k) => (isPseudo(k) ? '#' + PSEUDO[k] : isWatchKey(k) ? '#volg/' + encodeURIComponent(k.slice(1)) : '#bedrijf/' + encodeURIComponent(k));
@@ -760,6 +761,7 @@ function renderDetail(animate, swapDir) {
   if (ui.detail === RISK) { $('detail-inner').innerHTML = renderRiskView(); return; }
   if (ui.detail === RES) { const inner = $('detail-inner'); inner.innerHTML = renderResultView(); drawMacro(inner); return; }
   if (ui.detail === DEP) { $('detail-inner').innerHTML = renderDepositView(); return; }
+  if (ui.detail === STATUS) { $('detail-inner').innerHTML = renderStatusView(); return; }
   if (ui.detail === CMP) { const inner = $('detail-inner'); inner.innerHTML = renderCompareView(); drawCompare(inner); return; }
   if (isWatchKey(ui.detail)) { const inner = $('detail-inner'); inner.innerHTML = renderWatchDetail(ui.detail.slice(1)); drawWatchChart(inner); drawSectorChart(inner); return; }
   const c = M.byTk.get(ui.detail);

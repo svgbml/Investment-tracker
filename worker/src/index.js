@@ -50,6 +50,7 @@ export default {
     }
     const at = new Date(event.scheduledTime);
     ctx.waitUntil(tick(env, at, false)
+      .then(() => tickOk(env))
       .then(() => setKv(env, 'last_cron', new Date().toISOString()))
       .then(async () => {
         if (isLive(at)) return null;
@@ -60,6 +61,7 @@ export default {
       .catch(async (e) => {
         console.error('tick', e);
         try { await setKv(env, 'last_error', new Date().toISOString() + ' ' + String(e && e.message || e)); } catch (_) {}
+        try { await tickFailed(env, at, e); } catch (_) {}
       }));
   },
 
@@ -118,6 +120,18 @@ export default {
         const site = base ? base[0].replace(/[^/]*$/, '') : null;
         if (site && (await getKv(env, 'site_origin')) !== site) await setKv(env, 'site_origin', site);
       }
+      if (url.pathname === '/api/status' && request.method === 'GET') {
+        return json({ ok: true, status: await statusInfo(env, envIn) }, 200, cors);
+      }
+      if (url.pathname === '/api/backup' && request.method === 'GET') {
+        return json(Object.assign({ ok: true }, await backupPart(env, url.searchParams.get('table'), url.searchParams.get('offset'))), 200, cors);
+      }
+      if (url.pathname === '/api/restore' && request.method === 'POST') {
+        return json(Object.assign({ ok: true }, await restorePart(env, await request.json().catch(() => ({})))), 200, cors);
+      }
+      if (url.pathname === '/api/search' && request.method === 'GET') {
+        return json({ ok: true, results: await searchCompanies(env, url.searchParams.get('q'), url) }, 200, cors);
+      }
       if (url.pathname === '/api/push/key' && request.method === 'GET') {
         return json({ ok: true, key: (await vapidKeys(env)).pub, devices: (await pushSubs(env)).length, rules: await alertRules(env) }, 200, cors);
       }
@@ -170,22 +184,32 @@ export default {
         // Het overzicht wordt na elke meting opgebouwd en bewaard, in twee delen: 'core' (metingen, posities, weken;
         // verandert elke 10 minuten) en 'extra' (markt, onderzoek, koersen; verandert een paar keer per dag).
         // Met ?part=core of ?part=extra en If-None-Match geeft de Worker 304 als er niets veranderd is.
-        let core = await getKv(env, 'data_core'), extra = await getKv(env, 'data_extra');
-        if (!core || !extra || url.searchParams.has('fresh')) {
-          await saveDataCache(env, await buildData(env));
-          core = await getKv(env, 'data_core'); extra = await getKv(env, 'data_extra');
-        }
         const part = url.searchParams.get('part');
-        if (part === 'core' || part === 'extra') {
+        const jh = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-cache', ...cors };
+        // Alleen de reeksregels die na ?since= zijn bijgekomen (rechtstreeks uit de database)
+        if (part === 'series' && url.searchParams.has('since')) {
+          const d = await seriesDelta(env, url.searchParams.get('since'));
+          if (d) return new Response(JSON.stringify(d), { status: 200, headers: jh });
+        }
+        let core = await getKv(env, 'data_core'), extra = await getKv(env, 'data_extra'), series = await getKv(env, 'data_series');
+        if (!core || !extra || !series || url.searchParams.has('fresh')) {
+          await saveDataCache(env, await buildData(env));
+          core = await getKv(env, 'data_core'); extra = await getKv(env, 'data_extra'); series = await getKv(env, 'data_series');
+        }
+        const glue = (a, b) => a.slice(0, -1) + ',' + b.slice(1);
+        // De site vanaf versie 38 vraagt core zonder reeksen (split=1); oudere versies krijgen core met reeksen
+        const split = url.searchParams.get('split') === '1';
+        if (part === 'core' || part === 'extra' || part === 'series') {
           let tags = {};
           try { tags = JSON.parse((await getKv(env, 'data_etags')) || '{}'); } catch (e) { tags = {}; }
-          const tag = tags[part];
-          const h = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-cache', ...(tag ? { ETag: tag } : {}), ...cors };
+          const tag = part === 'core' && !split ? (tags.core && tags.series ? '"' + tags.core.slice(1, 13) + tags.series.slice(1, 13) + '"' : null) : tags[part];
+          const h = { ...jh, ...(tag ? { ETag: tag } : {}) };
           if (tag && request.headers.get('If-None-Match') === tag) return new Response(null, { status: 304, headers: h });
-          return new Response(part === 'core' ? core : extra, { status: 200, headers: h });
+          const body = part === 'extra' ? extra : part === 'series' ? series : split ? core : glue(series, core);
+          return new Response(body, { status: 200, headers: h });
         }
-        // Zonder part (oudere versies van de site): beide delen samen
-        return new Response(core.slice(0, -1) + ',' + extra.slice(1), { status: 200, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...cors } });
+        // Zonder part (oudere versies van de site): alles samen
+        return new Response(glue(glue(series, core), extra), { status: 200, headers: { ...jh, 'Cache-Control': 'no-store' } });
       }
       if (url.pathname === '/api/run' && request.method === 'POST') {
         return json({ ok: true, message: await tick(env, new Date(), true) }, 200, cors);
@@ -311,7 +335,7 @@ async function ensureSchema(env) {
 }
 
 // Sleutels die via de website zijn ingevuld; een geheim bij Cloudflare gaat altijd voor
-const KEY_NAMES = ['T212_KEY', 'T212_SECRET', 'FMP_KEY', 'FINNHUB_KEY', 'SEC_CONTACT', 'FRED_KEY', 'ALPHAVANTAGE_KEY', 'RESEND_KEY', 'MAIL_TO', 'MAIL_FROM'];
+const KEY_NAMES = ['T212_KEY', 'T212_SECRET', 'FMP_KEY', 'FINNHUB_KEY', 'SEC_CONTACT', 'FRED_KEY', 'ALPHAVANTAGE_KEY', 'RESEND_KEY', 'MAIL_TO', 'MAIL_FROM', 'TWELVEDATA_KEY'];
 
 async function withKeys(env) {
   let stored = {};
@@ -418,16 +442,19 @@ async function sha256Hex(s) {
 }
 
 async function saveDataCache(env, data) {
-  const core = {}, extra = { ok: true, part: 'extra' };
-  Object.keys(data).forEach((k) => { if (EXTRA_KEYS.includes(k)) extra[k] = data[k]; else core[k] = data[k]; });
+  const core = {}, extra = { ok: true, part: 'extra' }, series = { ok: true, part: 'series' };
+  Object.keys(data).forEach((k) => { if (EXTRA_KEYS.includes(k)) extra[k] = data[k]; else if (SERIES_KEYS.includes(k)) series[k] = data[k]; else core[k] = data[k]; });
   core.part = 'core';
-  const cs = JSON.stringify(core), es = JSON.stringify(extra);
+  const last = await env.DB.prepare('SELECT MAX(ts) AS ts FROM intraday').first().catch(() => null);
+  series.seriesTs = (last && last.ts) || 0;
+  const cs = JSON.stringify(core), es = JSON.stringify(extra), ss = JSON.stringify(series);
   // generated verandert bij elke opbouw; zonder dat veld is de vingerafdruk alleen anders als de inhoud anders is
   const tagOf = async (o) => '"' + (await sha256Hex(JSON.stringify(Object.assign({}, o, { generated: null })))).slice(0, 24) + '"';
   await env.DB.batch([
     env.DB.prepare('INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)').bind('data_core', cs),
     env.DB.prepare('INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)').bind('data_extra', es),
-    env.DB.prepare('INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)').bind('data_etags', JSON.stringify({ core: await tagOf(core), extra: await tagOf(extra) })),
+    env.DB.prepare('INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)').bind('data_series', ss),
+    env.DB.prepare('INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)').bind('data_etags', JSON.stringify({ core: await tagOf(core), extra: await tagOf(extra), series: await tagOf(series) })),
     env.DB.prepare('DELETE FROM kv WHERE key = ?').bind('data_cache'),
   ]);
   try { await saveShareCache(env, data); } catch (e) { console.error('share', e); }
@@ -618,6 +645,8 @@ async function tick(env, now, force) {
     await setKv(env, 'pos_extra', JSON.stringify(posExtra(positions)));
     msgs.push(`${positions.length} posities gemeten (totaal €${total.toFixed(2)}).`);
     try { const m = await alertMoves(env, rows, now); if (m) msgs.push(m); } catch (e) { console.error('meldingen', e); }
+    try { const m = await checkPriceAlerts(env, rows); if (m) msgs.push(m); } catch (e) { console.error('koersalarm', e); }
+    try { const m = await depositReminder(env, now); if (m) msgs.push(m); } catch (e) { console.error('inleg', e); }
   }
 
   const p = parts(now);
@@ -1173,7 +1202,7 @@ async function saveSettings(env, body) {
   });
   if (body && typeof body.targetMode === 'string' && /^(position|sector)$/.test(body.targetMode)) clean.targetMode = body.targetMode;
   if (body && Array.isArray(body.watchlist)) {
-    clean.watchlist = [...new Set(body.watchlist.map((x) => String(x || '').trim().toUpperCase()).filter((x) => /^[A-Z0-9][A-Z0-9.\-]{0,11}$/.test(x)))].slice(0, 20);
+    clean.watchlist = [...new Set(body.watchlist.map((x) => String(x || '').trim().toUpperCase()).filter((x) => /^[A-Z0-9][A-Z0-9.\-]{0,11}$/.test(x)))].slice(0, 30);
   }
   // Aankoopdagboek: korte notitie per aankoop (sleutel = ticker|tijdstip in ms)
   if (body && body.notes && typeof body.notes === 'object') {
@@ -1202,6 +1231,23 @@ async function saveSettings(env, body) {
     clean.alerts = { move: num2(a.move, 0, 50), earnings: !!a.earnings, insider: !!a.insider, drift: num2(a.drift, 0, 50) };
   }
   if (body && typeof body.mailAmounts === 'boolean') clean.mailAmounts = body.mailAmounts;
+  if (body && typeof body.depositReminder === 'boolean') clean.depositReminder = body.depositReminder;
+  if (body && Array.isArray(body.priceAlerts)) {
+    clean.priceAlerts = body.priceAlerts.slice(0, 30).map((a) => ({
+      id: /^[a-z0-9]{1,16}$/.test(a && a.id) ? a.id : Math.random().toString(36).slice(2, 10),
+      sym: String((a && a.sym) || '').toUpperCase().slice(0, 12), op: a && a.op === 'above' ? 'above' : 'below',
+      price: Number(a && a.price), on: !!(a && a.on), hit: a && typeof a.hit === 'string' ? a.hit.slice(0, 25) : null,
+      hitPrice: isFinite(Number(a && a.hitPrice)) ? Number(a.hitPrice) : null,
+    })).filter((a) => /^[A-Z0-9][A-Z0-9.\-]{0,11}$/.test(a.sym) && isFinite(a.price) && a.price > 0);
+  }
+  if (body && Array.isArray(body.goals)) {
+    clean.goals = body.goals.slice(0, 8).map((g) => ({
+      id: /^[a-z0-9]{1,16}$/.test(g && g.id) ? g.id : Math.random().toString(36).slice(2, 10),
+      name: String((g && g.name) || 'Doel').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 40) || 'Doel',
+      target: Number(g && g.target), share: Math.max(0, Math.min(100, Number(g && g.share) || 0)),
+      date: /^\d{4}-\d{2}(-\d{2})?$/.test(g && g.date) ? g.date : null,
+    })).filter((g) => isFinite(g.target) && g.target > 0);
+  }
   if (body && body.features && typeof body.features === 'object') {
     clean.features = Object.assign({}, cur.features || {});
     Object.keys(FEATURE_DEFAULTS).forEach((k) => { if (typeof body.features[k] === 'boolean') clean.features[k] = body.features[k]; });
@@ -1307,7 +1353,7 @@ async function extraData(env) {
     } catch (e) { /* overslaan */ }
   });
   out.flags = await featureFlags(env);
-  out.has = { fmp: !!env.FMP_KEY, finnhub: !!env.FINNHUB_KEY, av: !!env.ALPHAVANTAGE_KEY, sec: !!env.SEC_CONTACT, t212: !!(env.T212_KEY && env.T212_SECRET) };
+  out.has = { fmp: !!env.FMP_KEY, finnhub: !!env.FINNHUB_KEY, av: !!env.ALPHAVANTAGE_KEY, td: !!env.TWELVEDATA_KEY, sec: !!env.SEC_CONTACT, t212: !!(env.T212_KEY && env.T212_SECRET) };
   const { results: kvs } = await env.DB.prepare("SELECT key, value FROM kv WHERE key LIKE 'peil_%' OR key LIKE 'etf\\_%' ESCAPE '\\'").all();
   kvs.forEach((r) => {
     try {
@@ -1430,6 +1476,7 @@ async function externalTask(env, kind, arg) {
     await setKv(env, 'market_news', JSON.stringify({ updated: isoLocal(Date.now()), items }));
     return 1;
   }
+  if (kind === 'companies') return refreshCompanies(env);
   if (kind === 'fh') return finnhubTask(env, arg);
   if (kind === 'av') return avTask(env, arg);
   if (kind === 'sec') return secTask(env, arg);
@@ -1819,6 +1866,19 @@ async function planMarket(env) {
       .sort((a, b) => (a.prev.avAt || '').localeCompare(b.prev.avAt || ''))
       .forEach((x) => tasks.push('av:' + x.tk));
   }
+  if (env.SEC_CONTACT) {
+    let cm = null; try { cm = JSON.parse((await getKv(env, 'companies_meta')) || 'null'); } catch (e) { cm = null; }
+    if (!cm || cm.updated < new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10)) tasks.push('companies');
+  }
+  if (env.TWELVEDATA_KEY || env.ALPHAVANTAGE_KEY) {
+    // Symbolen waarvoor FMP geen koershistorie geeft (gratis abonnement): via Twelve Data of Alpha Vantage
+    await ensureMarketTables(env);
+    const nh = JSON.parse((await getKv(env, 'eod_unavailable')) || '[]');
+    const { results: hn2 } = await env.DB.prepare('SELECT symbol, COUNT(*) AS n FROM ext_prices GROUP BY symbol').all();
+    const n2 = new Map(hn2.map((r) => [r.symbol, r.n]));
+    const wl = new Set(watch.map((w) => w.symbol));
+    nh.filter((sym) => (n2.get(sym) || 0) < 20).sort((a, b) => (wl.has(b) ? 1 : 0) - (wl.has(a) ? 1 : 0)).forEach((sym) => tasks.push('eod2:' + sym));
+  }
   if (flags.sec && env.SEC_CONTACT) {
     const { results: fins } = await env.DB.prepare("SELECT key, value FROM kv WHERE key LIKE 'fin\\_%' ESCAPE '\\'").all();
     const age = new Map(fins.map((r) => { try { return [r.key.slice(4), JSON.parse(r.value).updated || '']; } catch (e) { return [r.key.slice(4), '']; } }));
@@ -1904,6 +1964,7 @@ async function marketStep(env) {
   try { unknown = JSON.parse((await getKv(env, 'mkt_unknown')) || '[]'); } catch (e) { unknown = []; }
   // FMP aan zijn limiet of stuk: profielen via Finnhub, koersgeschiedenis via Alpha Vantage, de rest later
   let fmpDown = !!env.FMP_KEY && (await srcDown(env, 'fmp'));
+  let eod2Step = 0;
   const putProfile = (sym, keep) => {
     writes.push(env.DB.prepare('INSERT OR REPLACE INTO ext_profile (symbol, data, updated) VALUES (?,?,?)').bind(sym, JSON.stringify(keep), usDay));
     const pn = parts(new Date());
@@ -1924,7 +1985,19 @@ async function marketStep(env) {
     const ci = task.indexOf(':');
     const kind = ci < 0 ? task : task.slice(0, ci), arg = ci < 0 ? '' : task.slice(ci + 1);
     try {
-      if (kind === 'fx' || kind === 'hicp' || kind === 'idx' || kind === 'fh' || kind === 'fhnews' || kind === 'sec' || kind === 'av') {
+      if (kind === 'fx' || kind === 'hicp' || kind === 'idx' || kind === 'fh' || kind === 'fhnews' || kind === 'sec' || kind === 'av' || kind === 'companies') {
+        calls += await externalTask(env, kind, arg);
+      } else if (kind === 'eod2') {
+        // Reserve voor koershistorie: Twelve Data (8 per minuut, dus hoogstens 6 per stap), anders Alpha Vantage
+        let rows = null, src = null;
+        if (env.TWELVEDATA_KEY && eod2Step < 6 && !(await srcDown(env, 'twelvedata'))) { eod2Step++; calls++; rows = await twelveDaily(env, arg); src = 'Twelve Data'; }
+        else if (env.ALPHAVANTAGE_KEY && !avThisStep && (await avCount(env, 0)) > 4) { avThisStep = true; calls++; rows = await avDaily(env, arg); src = 'Alpha Vantage'; }
+        else { deferred.push(task); continue; }
+        if (rows && rows.length) {
+          const st = env.DB.prepare('INSERT OR REPLACE INTO ext_prices (symbol, day, price) VALUES (?,?,?)');
+          rows.forEach(([d, v]) => writes.push(st.bind(arg, d, v)));
+          await srcBackup(env, 'fmp', src + ' (koershistorie)');
+        }
         calls += await externalTask(env, kind, arg);
       } else if (kind === 'profile' && (!env.FMP_KEY || fmpDown)) {
         if (env.FINNHUB_KEY) await finnhubProfile(arg);
@@ -1992,7 +2065,7 @@ async function marketStep(env) {
           const st = env.DB.prepare('INSERT OR REPLACE INTO ext_prices (symbol, day, price) VALUES (?,?,?)');
           rows.filter((r) => r.date && isFinite(Number(r.price))).forEach((r) => writes.push(st.bind(arg, r.date, Number(r.price))));
         } catch (e) {
-          if (/402/.test(e.message)) { if (!noHist.includes(arg)) noHist.push(arg); } else throw e;
+          if (/402/.test(e.message)) { if (!noHist.includes(arg)) noHist.push(arg); if ((env.TWELVEDATA_KEY || env.ALPHAVANTAGE_KEY) && !queue.includes('eod2:' + arg)) queue.push('eod2:' + arg); } else throw e;
         }
       } else if (kind === 'ratios') {
         // Koers-winstverhouding en dividendrendement: nu (TTM) en per boekjaar
@@ -2518,4 +2591,207 @@ function mergeCsvDividends(received, divCsv) {
     else out.push({ ticker: c.ticker, date: c.date, amount: c.amount, perShare: c.perShare, qty: c.qty, wht: c.wht, whtCur: c.whtCur, src: 'csv' });
   });
   return out.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+
+// =====================================================================
+// ---------- Reeksen (metingen, uren, dagen) los, met alleen-nieuwe-regels ----------
+// De site haalt 'series' één keer helemaal en daarna met ?since=<ms> alleen wat erbij kwam.
+const SERIES_KEYS = ['intraday', 'hours', 'days'];
+async function seriesDelta(env, since) {
+  const s = Number(since);
+  if (!isFinite(s) || s <= 0) return null;
+  const dayOf = (ms) => parts(new Date(ms)).day;
+  const { results: intra } = await env.DB.prepare('SELECT ts, ticker, value FROM intraday WHERE ts > ? ORDER BY ts').bind(s).all();
+  const { results: hrs } = await env.DB.prepare('SELECT hour, ticker, open, close, low, high, avg FROM hours WHERE hour >= ? ORDER BY hour').bind(s - 2 * HOUR_MS).all();
+  const { results: dys } = await env.DB.prepare('SELECT day, ticker, open, close, low, high, avg, range, range_pct FROM days WHERE day >= ? ORDER BY day').bind(dayOf(s - 864e5)).all();
+  const last = await env.DB.prepare('SELECT MAX(ts) AS ts FROM intraday').first();
+  return {
+    ok: true, part: 'series', delta: true, since: s, seriesTs: (last && last.ts) || s,
+    intraday: { rows: intra.map((r) => [isoLocal(r.ts), r.ticker, r.value]) },
+    hours: { rows: hrs.map((r) => [isoLocal(r.hour), r.ticker, r.open, r.close, r.low, r.high, r.avg]) },
+    days: { rows: dys.map((r) => [r.day + 'T00:00:00', r.ticker, r.open, r.close, r.low, r.high, r.avg, r.range, r.range_pct]) },
+  };
+}
+
+// =====================================================================
+// ---------- Status van de tracker ----------
+async function statusInfo(env, raw) {
+  const one = async (sql) => { try { const r = await env.DB.prepare(sql).first(); return r ? r.n : null; } catch (e) { return null; } };
+  const last = await env.DB.prepare('SELECT MAX(ts) AS ts FROM intraday').first().catch(() => null);
+  let fmpCalls = null, avCalls = null, q = [];
+  try { fmpCalls = JSON.parse((await getKv(env, 'fmp_calls')) || 'null'); } catch (e) { /* leeg */ }
+  try { avCalls = JSON.parse((await getKv(env, 'av_calls')) || 'null'); } catch (e) { /* leeg */ }
+  try { q = JSON.parse((await getKv(env, 'mkt_queue')) || '[]'); } catch (e) { q = []; }
+  const sizes = {};
+  for (const k of ['data_core', 'data_extra', 'data_series']) sizes[k] = ((await getKv(env, k)) || '').length;
+  return {
+    now: isoLocal(Date.now()), lastMeasurement: last && last.ts ? isoLocal(last.ts) : null, live: isLive(new Date()),
+    lastCron: await getKv(env, 'last_cron'), lastError: await getKv(env, 'last_error'), tickFails: Number((await getKv(env, 'tick_fail')) || 0),
+    lastWeek: await getKv(env, 'last_week_snapshot'), ordersSynced: await getKv(env, 'orders_synced'), marketPlanned: await getKv(env, 'mkt_planned'),
+    queue: q.length, fmpCalls, avCalls, errors: JSON.parse((await getKv(env, 'ext_errors')) || '{}'), health: await srcState(env),
+    rows: { intraday: await one('SELECT COUNT(*) AS n FROM intraday'), hours: await one('SELECT COUNT(*) AS n FROM hours'), days: await one('SELECT COUNT(*) AS n FROM days'),
+      weeks: await one('SELECT COUNT(*) AS n FROM weeks'), orders: await one('SELECT COUNT(*) AS n FROM orders') },
+    sizes, devices: (await pushSubs(env)).length, companies: ((await getKv(env, 'companies_meta')) || '').slice(0, 200) || null,
+    keys: Object.fromEntries(KEY_NAMES.map((k) => [k, !!(raw[k] || env[k])])),
+  };
+}
+
+// =====================================================================
+// ---------- Reservekopie en terugzetten (per tabel, in porties) ----------
+// Geen sleutels, toegangscodes of interne vlaggen: alleen je eigen gegevens.
+const BACKUP_TABLES = {
+  weeks: ['date', 'account_value', 'net_deposits', 'cash', 'cost_basis', 'source'],
+  positions: ['date', 'ticker', 'name', 'value', 'unrealized', 'qty'],
+  days: ['day', 'ticker', 'name', 'open', 'close', 'low', 'high', 'avg', 'range', 'range_pct', 'n', 'close_price'],
+  hours: ['hour', 'ticker', 'name', 'open', 'close', 'low', 'high', 'avg', 'n', 'close_price'],
+  orders: ['id', 'ts', 'ticker', 'name', 'side', 'qty', 'price', 'currency', 'fx_rate', 'net', 'realised', 'fee_fx', 'fee_other', 'kind'],
+  kv: ['key', 'value'],
+};
+const BACKUP_KV = /^(settings|events|div_csv|pos_extra|peil_\d{4}|etf_(SP500|NDX))$/;
+const BACKUP_PAGE = 2000;
+async function backupPart(env, table, offset) {
+  if (table === 'orders') await ensureOrdersTable(env);
+  if (!table) {
+    const counts = {};
+    for (const t of Object.keys(BACKUP_TABLES)) {
+      try {
+        const r = t === 'kv' ? await env.DB.prepare('SELECT key FROM kv').all() : null;
+        counts[t] = t === 'kv' ? r.results.filter((x) => BACKUP_KV.test(x.key)).length : ((await env.DB.prepare('SELECT COUNT(*) AS n FROM ' + t).first()) || {}).n || 0;
+      } catch (e) { counts[t] = 0; }
+    }
+    return { format: 'investeringstracker-backup', version: 1, created: isoLocal(Date.now()), page: BACKUP_PAGE, tables: counts };
+  }
+  const cols = BACKUP_TABLES[table];
+  if (!cols) throw new Error('Onbekende tabel.');
+  const off = Math.max(0, Number(offset) || 0);
+  let rows;
+  if (table === 'kv') rows = (await env.DB.prepare('SELECT key, value FROM kv ORDER BY key').all()).results.filter((x) => BACKUP_KV.test(x.key)).slice(off, off + BACKUP_PAGE);
+  else rows = (await env.DB.prepare('SELECT ' + cols.join(', ') + ' FROM ' + table + ' ORDER BY rowid LIMIT ? OFFSET ?').bind(BACKUP_PAGE, off).all()).results;
+  return { table, offset: off, rows: rows.map((r) => cols.map((c) => r[c])) };
+}
+async function restorePart(env, body) {
+  const table = body && body.table, cols = BACKUP_TABLES[table];
+  if (!cols) throw new Error('Onbekende tabel.');
+  if (table === 'orders') await ensureOrdersTable(env);
+  const rows = (Array.isArray(body.rows) ? body.rows : []).slice(0, BACKUP_PAGE).filter((r) => Array.isArray(r) && r.length === cols.length);
+  const ok = table === 'kv' ? rows.filter((r) => BACKUP_KV.test(String(r[0])) && typeof r[1] === 'string' && r[1].length < 3e6) : rows;
+  const st = env.DB.prepare('INSERT OR REPLACE INTO ' + table + ' (' + cols.join(', ') + ') VALUES (' + cols.map(() => '?').join(',') + ')');
+  await batchChunks(env, ok.map((r) => st.bind(...r.map((v) => (v === undefined ? null : v)))));
+  if (body.done) await saveDataCache(env, await buildData(env));
+  return { table, restored: ok.length, skipped: rows.length - ok.length };
+}
+
+// =====================================================================
+// ---------- Waakhond: melding als de tracker niet meer meet ----------
+async function tickFailed(env, at, err) {
+  const n = Number((await getKv(env, 'tick_fail')) || 0) + 1;
+  await setKv(env, 'tick_fail', String(n));
+  if (n >= 3 && isLive(at)) {
+    const msg = String(err && err.message || err).slice(0, 160);
+    await alertOnce(env, 'watchdog|' + parts(at).day, { title: 'Je tracker meet niet meer', body: 'Al ' + n + ' metingen op rij mislukt: ' + msg + (/401|403|sleutel/i.test(msg) ? ' Controleer je Trading 212-sleutel bij Koppelingen.' : ''), url: '#status', tag: 'watchdog', urgent: true });
+  }
+}
+async function tickOk(env) { if ((await getKv(env, 'tick_fail')) !== '0') await setKv(env, 'tick_fail', '0'); }
+
+// =====================================================================
+// ---------- Koersalarmen per aandeel ----------
+// settings.priceAlerts = [{ id, sym, op: 'below' | 'above', price, on, hit }]; koers in de munt van het aandeel.
+async function checkPriceAlerts(env, rows) {
+  const s = await getSettings(env);
+  const list = Array.isArray(s.priceAlerts) ? s.priceAlerts : [];
+  const active = list.filter((a) => a.on && isFinite(a.price));
+  if (!active.length || !(await pushSubs(env)).length) return '';
+  const held = new Map(rows.filter((r) => r.ticker !== TOTAL && r.price).map((r) => [r.ticker, r.price]));
+  const price = new Map();
+  let quotes = 0;
+  for (const a of active) {
+    if (held.has(a.sym)) { price.set(a.sym, held.get(a.sym)); continue; }
+    if (price.has(a.sym)) continue;
+    if (env.FINNHUB_KEY && quotes < 10 && !(await srcDown(env, 'finnhub'))) {
+      quotes++;
+      const r = await getJson(FINNHUB_BASE + '/quote?symbol=' + encodeURIComponent(a.sym) + '&token=' + encodeURIComponent(env.FINNHUB_KEY));
+      if (r.ok && r.body && r.body.c > 0) { price.set(a.sym, r.body.c); continue; }
+    }
+    const p = await env.DB.prepare('SELECT data FROM ext_profile WHERE symbol = ?').bind(a.sym).first().catch(() => null);
+    try { const d = p && JSON.parse(p.data); if (d && d.price > 0) price.set(a.sym, d.price); } catch (e) { /* geen profiel */ }
+  }
+  let hits = 0;
+  for (const a of active) {
+    const p = price.get(a.sym);
+    if (!(p > 0) || !(a.op === 'below' ? p <= a.price : p >= a.price)) continue;
+    hits++;
+    a.on = false; a.hit = isoLocal(Date.now()); a.hitPrice = p;
+    await alertOnce(env, 'price|' + a.id + '|' + a.hit.slice(0, 10), { title: a.sym + (a.op === 'below' ? ' onder ' : ' boven ') + String(a.price).replace('.', ','),
+      body: 'Koers nu ' + String(Math.round(p * 100) / 100).replace('.', ',') + '. Het alarm staat nu uit; zet het opnieuw aan op de pagina van het aandeel.', url: held.has(a.sym) ? '#bedrijf/' + encodeURIComponent(a.sym) : '#volg/' + encodeURIComponent(a.sym), tag: 'price-' + a.sym, urgent: true });
+  }
+  if (hits) { const cur = await getSettings(env); cur.priceAlerts = list; await setKv(env, 'settings', JSON.stringify(cur)); }
+  return hits ? hits + ' koersalarmen.' : '';
+}
+
+// ---------- Inleg deze maand: herinnering vanaf de 25e ----------
+async function depositsThisMonth(env, now) {
+  const p = parts(now);
+  const monthStart = p.day.slice(0, 8) + '01';
+  const { results: wk } = await env.DB.prepare('SELECT date, net_deposits FROM weeks ORDER BY date').all();
+  const before = wk.filter((w) => w.date < monthStart).pop();
+  const last = wk[wk.length - 1];
+  if (!before || !last || last.date < monthStart) return { month: p.day.slice(0, 7), deposited: 0, known: !!before };
+  return { month: p.day.slice(0, 7), deposited: Math.round((last.net_deposits - before.net_deposits) * 100) / 100, known: true, asOf: last.date };
+}
+async function depositReminder(env, now) {
+  const p = parts(now);
+  if (Number(p.day.slice(8, 10)) < 25 || p.hour !== 9) return '';
+  const s = await getSettings(env);
+  if (!(s.monthly > 0) || s.depositReminder === false || !(await pushSubs(env)).length) return '';
+  const D = await depositsThisMonth(env, now);
+  if (!D.known || D.deposited >= s.monthly * 0.9) return '';
+  await alertOnce(env, 'deposit|' + D.month, { title: 'Inleg deze maand', body: 'Tot nu toe ' + nlEur(D.deposited) + ' van de ' + nlEur(s.monthly) + ' die je per maand wilt inleggen (stand weekmeting ' + (D.asOf || '') + ').', url: '#plannen', tag: 'deposit' });
+  return 'Herinnering inleg verstuurd.';
+}
+
+// =====================================================================
+// ---------- Bedrijvenlijst om te zoeken (SEC, ruim 10.000 Amerikaanse bedrijven) ----------
+// Eén keer per week; daarnaast zoekt de Worker live bij Finnhub (ook andere beurzen) als die sleutel er is.
+async function refreshCompanies(env) {
+  if (!env.SEC_CONTACT) return 0;
+  const r = await getJson('https://www.sec.gov/files/company_tickers.json', { 'User-Agent': 'investment-tracker (' + env.SEC_CONTACT + ')', Accept: 'application/json' });
+  if (!r.ok || !r.body) { await noteExtError(env, 'sec', 'Bedrijvenlijst: SEC gaf ' + r.status); return 1; }
+  const list = Object.values(r.body).filter((x) => x && x.ticker && x.title).map((x) => [String(x.ticker).toUpperCase().replace('-', '.'), String(x.title).slice(0, 70)]);
+  await setKv(env, 'companies', JSON.stringify(list));
+  await setKv(env, 'companies_meta', JSON.stringify({ n: list.length, updated: parts(new Date()).day, source: 'SEC' }));
+  return 1;
+}
+async function searchCompanies(env, q, url) {
+  const query = String(q || '').trim().slice(0, 40);
+  if (!query) return [];
+  const Q = query.toUpperCase();
+  const seen = new Map();
+  const add = (sym, name, ex, src) => { const k = String(sym || '').toUpperCase(); if (!k || seen.has(k) || !/^[A-Z0-9][A-Z0-9.\-]{0,11}$/.test(k)) return; seen.set(k, { sym: k, name: name || '', exchange: ex || '', src }); };
+  let list = [];
+  try { list = JSON.parse((await getKv(env, 'companies')) || '[]'); } catch (e) { list = []; }
+  // Ook de bedrijven uit je fondsen en de profielen die de Worker al heeft
+  try {
+    const { results } = await env.DB.prepare("SELECT key, value FROM kv WHERE key IN ('etf_SP500', 'etf_NDX')").all();
+    results.forEach((r) => { try { JSON.parse(r.value).rows.forEach((x) => list.push([String(x[0]).toUpperCase(), String(x[1] || '')])); } catch (e) { /* leeg */ } });
+  } catch (e) { /* geen fondsen */ }
+  const exact = list.filter((x) => x[0] === Q), starts = list.filter((x) => x[0] !== Q && x[0].startsWith(Q)), named = list.filter((x) => !x[0].startsWith(Q) && x[1].toUpperCase().includes(Q));
+  exact.concat(starts.slice(0, 8), named.slice(0, 12)).forEach((x) => add(x[0], x[1], 'VS', 'lijst'));
+  if (seen.size < 8 && env.FINNHUB_KEY && !(await srcDown(env, 'finnhub'))) {
+    const r = await getJson(FINNHUB_BASE + '/search?q=' + encodeURIComponent(query) + '&token=' + encodeURIComponent(env.FINNHUB_KEY));
+    if (r.ok && r.body && Array.isArray(r.body.result)) r.body.result.filter((x) => /Common Stock|ADR|ETP|ETF/i.test(x.type || '')).slice(0, 12).forEach((x) => add(x.symbol, x.description, x.displaySymbol !== x.symbol ? x.displaySymbol : '', 'Finnhub'));
+    else if (r.status === 429) await srcFail(env, 'finnhub', 'Finnhub-limiet', true);
+  }
+  return [...seen.values()].slice(0, 15);
+}
+
+// ---------- Koersgeschiedenis van Twelve Data (gratis sleutel: 800 verzoeken per dag, 8 per minuut) ----------
+async function twelveDaily(env, sym) {
+  if (!env.TWELVEDATA_KEY) return null;
+  const r = await getJson('https://api.twelvedata.com/time_series?symbol=' + encodeURIComponent(sym) + '&interval=1day&outputsize=300&apikey=' + encodeURIComponent(env.TWELVEDATA_KEY));
+  const b = r.body || {};
+  if (r.status === 429 || b.code === 429) { await srcFail(env, 'twelvedata', 'Twelve Data-limiet', true); throw new Error('Twelve Data-limiet bereikt'); }
+  if (!r.ok || b.status === 'error' || !Array.isArray(b.values)) { await srcFail(env, 'twelvedata', 'Twelve Data: ' + (b.message || r.status)); return []; }
+  await srcOk(env, 'twelvedata');
+  return b.values.map((v) => [String(v.datetime).slice(0, 10), numOrNull(v.close)]).filter((x) => x[1] != null).sort((a, c) => a[0].localeCompare(c[0]));
 }
