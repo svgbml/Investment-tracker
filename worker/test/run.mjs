@@ -7,7 +7,8 @@ try { ({ DatabaseSync } = await import('node:sqlite')); } catch (e) {
   console.log('node:sqlite ontbreekt in deze Node-versie (' + process.version + '); Worker-tests overgeslagen.');
   process.exit(0);
 }
-const W = (await import('../src/index.js')).default;
+const WM = await import('../src/index.js');
+const W = WM.default;
 
 // ---------- D1-stand-in ----------
 class Stmt {
@@ -389,6 +390,75 @@ await test('doelen en herinnering inleg in de instellingen', async () => {
   assert.equal(r.settings.goals.length, 1);
   assert.equal(r.settings.goals[0].share, 60);
   assert.equal(r.settings.depositReminder, false);
+});
+
+await test('voorkeuren en maatstaf in de instellingen', async () => {
+  const r = await jsonOf(await req('/api/settings', { method: 'POST', body: { benchmark: ' urth ', prefs: { watchMeta: { NVDA: { tags: ['chips'], note: 'kopen onder 100' } }, morningPush: true } } }));
+  assert.equal(r.settings.benchmark, 'URTH');
+  assert.deepEqual(r.settings.prefs.watchMeta.NVDA.tags, ['chips']);
+  const big = await jsonOf(await req('/api/settings', { method: 'POST', body: { benchmark: 'x y', prefs: { blob: 'a'.repeat(50000) } } }));
+  assert.equal(big.settings.benchmark, '');
+  assert.equal(big.settings.prefs.morningPush, true, 'te groot: vorige voorkeuren blijven');
+});
+
+await test('deponeringen bij de SEC en 13F van grote beleggers', async () => {
+  const e2 = Object.assign({}, env, { SEC_CONTACT: 'iemand@example.com' });
+  setKv('companies', [['AAPL', 'APPLE INC', 320193], ['VUAG', 'x', 0]]);
+  setKv('filings', {}); setKv('f13', {});
+  setKv('mkt_queue', ['filings', 'f13']);
+  const recent = { form: ['4', '10-Q', '8-K'], accessionNumber: ['0001-26-000001', '0000320193-26-000010', '0000320193-26-000011'], filingDate: ['2026-11-01', '2026-10-31', '2026-10-30'],
+    primaryDocument: ['x.xml', 'aapl-10q.htm', 'aapl-8k.htm'], primaryDocDescription: ['', '10-Q', '8-K'], items: ['', '', '2.02'] };
+  const fund = { form: ['13F-HR'], accessionNumber: ['0000950123-26-000999'], filingDate: ['2026-11-14'], reportDate: ['2026-09-30'] };
+  routes = [[/submissions\/CIK0000320193/, reply({ filings: { recent } })],
+    [/submissions\/CIK/, reply({ filings: { recent: fund } })],
+    [/index\.json$/, reply({ directory: { item: [{ name: 'primary_doc.xml' }, { name: 'infotable.xml' }] } })],
+    [/infotable\.xml$/, reply('<informationTable><infoTable><nameOfIssuer>APPLE INC</nameOfIssuer><value>600</value><shrsOrPrnAmt><sshPrnamt>10</sshPrnamt></shrsOrPrnAmt></infoTable>' +
+      '<infoTable><nameOfIssuer>APPLE INC</nameOfIssuer><value>400</value><shrsOrPrnAmt><sshPrnamt>5</sshPrnamt></shrsOrPrnAmt></infoTable>' +
+      '<infoTable><nameOfIssuer>COCA COLA CO</nameOfIssuer><value>500</value><shrsOrPrnAmt><sshPrnamt>50</sshPrnamt></shrsOrPrnAmt><putCall>Put</putCall></infoTable></informationTable>')]];
+  await req('/api/market', { method: 'POST', env: e2 });
+  const f = JSON.parse(kv('filings'));
+  assert.equal(f.per.AAPL.list.length, 2, JSON.stringify(f));
+  assert.match(f.per.AAPL.list[0].url, /edgar\/data\/320193\/000032019326000010\/aapl-10q\.htm$/);
+  const g = JSON.parse(kv('f13'));
+  assert.equal(g.funds.length, 4);
+  assert.equal(g.funds[0].top[0].name, 'APPLE INC');
+  assert.equal(g.funds[0].top[0].value, 1000);
+  assert.equal(g.funds[0].n, 1, 'opties tellen niet mee');
+  const d = await jsonOf(await req('/api/data?part=extra', { env: e2 }));
+  assert.ok(d.ext2 && d.ext2.filings && d.ext2.f13, 'in de gegevens voor de site');
+  const st = (await jsonOf(await req('/api/status', { env: e2 }))).status;
+  assert.ok(Object.values(st.usage).some((u) => u.sec >= 6), JSON.stringify(st.usage));
+});
+
+await test('economische agenda via FRED', async () => {
+  const e2 = Object.assign({}, env, { FRED_KEY: 'fred' });
+  setKv('mkt_queue', ['econ']);
+  routes = [[/fred\/releases\/dates/, reply({ release_dates: [{ release_id: 10, release_name: 'Consumer Price Index', date: '2099-12-10' }, { release_id: 9, release_name: 'Advance Monthly Sales', date: '2099-12-11' }] })]];
+  await req('/api/market', { method: 'POST', env: e2 });
+  const e = JSON.parse(kv('econ'));
+  assert.equal(e.items.length, 1);
+  assert.equal(e.items[0].name, 'Consumer Price Index');
+});
+
+await test('Trading 212-pies met namen', async () => {
+  WM._setPieWait(0);
+  setKv('mkt_queue', ['pies']); setKv('pies', {});
+  routes = [[/equity\/pies\/77$/, reply({ settings: { name: 'Dividend', goal: 5000 }, instruments: [{ ticker: 'KO_US_EQ', expectedShare: 0.5, currentShare: 0.55, result: { priceAvgValue: 110, priceAvgResult: 10 } }] })],
+    [/equity\/pies$/, reply([{ id: 77, cash: 1.5, progress: 0.2, status: 'AHEAD', result: { priceAvgInvestedValue: 200, priceAvgValue: 220, priceAvgResult: 20, priceAvgResultCoef: 0.1 }, dividendDetails: { gained: 3 } }])]];
+  await req('/api/market', { method: 'POST' });
+  const p = JSON.parse(kv('pies'));
+  assert.equal(p.list[0].name, 'Dividend');
+  assert.equal(p.list[0].resultPct, 0.1);
+  assert.equal(p.list[0].instruments[0].tk, 'KO');
+});
+
+await test('foutmeldingen van de site op de statuspagina', async () => {
+  for (let i = 0; i < 2; i++) await req('/api/log', { method: 'POST', body: { msg: 'TypeError: x is undefined', src: 'js/16-analyse.js', line: 12, ver: 'v41' } });
+  const st = (await jsonOf(await req('/api/status'))).status;
+  assert.equal(st.siteErrors.length, 1);
+  assert.equal(st.siteErrors[0].n, 2);
+  const noTok = await W.fetch(new Request('https://worker.test/api/log', { method: 'POST', body: '{}' }), env);
+  assert.equal(noTok.status, 401);
 });
 
 console.log((failed ? failed + ' fout, ' : '') + passed + ' geslaagd');
