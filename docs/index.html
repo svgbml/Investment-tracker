@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="robots" content="noindex">
-  <meta name="theme-color" content="#E8EDFA">
+  <meta name="theme-color" content="#FFFFFF">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" type="image/png" href="favicon.png">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=50">
+  <link rel="stylesheet" href="style.css?v=51">
 </head>
 <body data-page="home">
 
@@ -61,7 +61,7 @@
     <header class="topbar">
       <span class="brand">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l5-5 4 3 8-9" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        Investeringstracker
+        <span class="brand-txt">Investeringstracker</span><span id="top-mini" class="top-mini" aria-hidden="true"></span>
       </span>
       <nav class="pillnav" aria-label="Hoofdmenu">
         <span class="pill" aria-hidden="true"></span>
@@ -175,6 +175,7 @@
   <div id="mshell" hidden>
     <header class="m-top">
       <h1 id="m-title">Overzicht</h1>
+      <div id="m-mini" class="m-mini" aria-hidden="true"></div>
       <div class="m-top-actions">
         <span class="updated"></span>
         <button class="m-icon btn-hide" type="button" aria-pressed="false" aria-label="Bedragen verbergen"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/><path class="slash" d="M4 4l16 16"/></svg></button>
@@ -205,6 +206,17 @@
           <div id="m-agenda" class="m-stack stagger"></div>
           <div class="m-head"><h2>Weken</h2></div>
           <div id="m-weeks" class="m-stack stagger"></div>
+          <div class="m-head"><h2>Sectoren</h2></div>
+          <div id="m-sectors" class="m-stack stagger"></div>
+          <div class="m-head"><h2>Valuta en koopkracht</h2></div>
+          <div id="m-macro" class="m-stack stagger"></div>
+          <div class="m-head"><h2>Risico</h2></div>
+          <div id="m-risk" class="m-stack stagger"></div>
+          <div class="m-head"><h2>Patronen</h2></div>
+          <div id="m-patterns" class="m-stack stagger"></div>
+          <div class="m-head"><h2>Statistieken</h2></div>
+          <p id="m-stats-note" class="m-sub" style="padding:0 0 8px"></p>
+          <div id="m-stat-cards" class="m-grid2 stagger"></div>
         </div>
       </section>
 
@@ -233,19 +245,7 @@
       </section>
 
       <section id="m-stats" class="m-view" hidden>
-        <div class="m-body">
-          <p id="m-stats-note" class="m-sub" style="padding:0"></p>
-          <div id="m-stat-cards" class="m-grid2 stagger"></div>
-          <div class="m-head"><h2>Risico</h2></div>
-          <div id="m-risk" class="m-stack stagger"></div>
-          <div class="m-head"><h2>Sectoren</h2></div>
-          <div id="m-sectors" class="m-stack stagger"></div>
-          <div class="m-head"><h2>Valuta en koopkracht</h2></div>
-          <div id="m-macro" class="m-stack stagger"></div>
-          <div class="m-head"><h2>Patronen</h2></div>
-          <div id="m-patterns" class="m-stack stagger"></div>
-        </div>
-        <div class="m-body" style="padding-top:0"><div id="m-analyse-body"></div></div>
+        <div class="m-body"><div id="m-analyse-body"></div></div>
       </section>
     </main>
 
@@ -376,28 +376,28 @@
   <div id="tip" class="tip" role="status" hidden></div>
   <div id="print-area" aria-hidden="true"></div>
 
-  <script src="config.js?v=50"></script>
+  <script src="config.js?v=51"></script>
   <!-- De site: gewone scripts op volgorde (één gedeeld bereik), daarna de Preact-componenten als module -->
-  <script src="js/00-kern.js?v=50"></script>
-  <script src="js/01-basis.js?v=50"></script>
-  <script src="js/02-instellingen.js?v=50"></script>
-  <script src="js/03-model.js?v=50"></script>
-  <script src="js/04-grafieken.js?v=50"></script>
-  <script src="js/05-portefeuille.js?v=50"></script>
-  <script src="js/06-plannen.js?v=50"></script>
-  <script src="js/07-onderzoek.js?v=50"></script>
-  <script src="js/08-risico.js?v=50"></script>
-  <script src="js/09-weergaven.js?v=50"></script>
-  <script src="js/10-navigatie.js?v=50"></script>
-  <script src="js/11-uitbreidingen.js?v=50"></script>
-  <script src="js/12-nieuws.js?v=50"></script>
-  <script src="js/13-app.js?v=50"></script>
-  <script src="js/16-analyse.js?v=50"></script>
-  <script src="js/17-markt.js?v=50"></script>
-  <script src="js/18-gemak.js?v=50"></script>
-  <script src="js/20-handel.js?v=50"></script>
-  <script src="js/19-start.js?v=50"></script>
-  <script type="module" src="js/nieuws-preact.js?v=50"></script>
-  <script type="module" src="js/plannen-preact.js?v=50"></script>
+  <script src="js/00-kern.js?v=51"></script>
+  <script src="js/01-basis.js?v=51"></script>
+  <script src="js/02-instellingen.js?v=51"></script>
+  <script src="js/03-model.js?v=51"></script>
+  <script src="js/04-grafieken.js?v=51"></script>
+  <script src="js/05-portefeuille.js?v=51"></script>
+  <script src="js/06-plannen.js?v=51"></script>
+  <script src="js/07-onderzoek.js?v=51"></script>
+  <script src="js/08-risico.js?v=51"></script>
+  <script src="js/09-weergaven.js?v=51"></script>
+  <script src="js/10-navigatie.js?v=51"></script>
+  <script src="js/11-uitbreidingen.js?v=51"></script>
+  <script src="js/12-nieuws.js?v=51"></script>
+  <script src="js/13-app.js?v=51"></script>
+  <script src="js/16-analyse.js?v=51"></script>
+  <script src="js/17-markt.js?v=51"></script>
+  <script src="js/18-gemak.js?v=51"></script>
+  <script src="js/20-handel.js?v=51"></script>
+  <script src="js/19-start.js?v=51"></script>
+  <script type="module" src="js/nieuws-preact.js?v=51"></script>
+  <script type="module" src="js/plannen-preact.js?v=51"></script>
 </body>
 </html>

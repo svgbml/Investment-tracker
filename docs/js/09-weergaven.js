@@ -200,6 +200,7 @@ function renderMHome() {
   fill('m-agenda', agendaTiles());
   fill('m-weeks', weekCards());
   drawWeekChart($('m-weeks'));
+  renderMStats();
 }
 
 const M_CHIPS = [['sort', 'move', 'Verandering'], ['sort', 'value', 'Waarde'], ['sort', 'result', 'Sinds aankoop'], ['sort', 'name', 'Naam'], ['sep'],
@@ -233,6 +234,23 @@ function renderMList() {
 }
 
 $('m-search').addEventListener('input', (e) => { ui.listQuery = e.target.value; if (M) renderMList(); });
+
+// ---------- Kleine balk bovenaan bij scrollen (Overzicht): waarde, verandering en een mini-grafiek ----------
+function setMini() {
+  if (!M) return;
+  const T = M.tot;
+  const html = '<span class="mini-v">' + esc(eur(M.totalValue)) + '</span>' +
+    (isNum(T.changePct) ? '<span class="mini-c ' + tone(T.change) + '">' + esc(spct(T.changePct)) + '<span class="mini-w"> ' + esc(M.dayWord) + '</span></span>' : '') +
+    spark(seriesFor(TOTAL, ui.heroRange), C.accent, 'mini-spark');
+  ['top-mini', 'm-mini'].forEach((id) => { const el = $(id); if (el) el.innerHTML = html; });
+  heroPast();
+}
+function heroPast() {
+  const h = $(mode === 'm' ? 'm-hero-chart' : 'hero-chart');
+  const on = ui.page === 'home' && !!h && h.offsetParent !== null && h.getBoundingClientRect().bottom < (mode === 'm' ? 64 : 80);
+  document.body.classList.toggle('hero-past', on);
+}
+addEventListener('scroll', heroPast, { passive: true });
 
 function renderMStats() {
   const S = statsFor(TOTAL);

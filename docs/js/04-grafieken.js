@@ -512,11 +512,12 @@ function drawHero(p, animate) {
   const r = ui.heroRange;
   const pts = seriesFor(TOTAL, r);
   segButtons($(p + 'hero-ranges'), RANGES, r, (k) => { ui.heroRange = k; drawHero(p, true); });
-  lineChart($(p + 'hero-chart'), [{ pts, color: C.accent, area: true, width: 3 }], {
+  lineChart($(p + 'hero-chart'), [{ pts, color: C.accent, width: 2.5 }], {
     animate, markers: heroMarkers(pts, r), xl: $(p + 'hero-x'), xfmt: xFmt(r, pts), tfmt: tFmt(r, pts),
     empty: 'Nog te weinig metingen voor deze periode. De tracker meet op werkdagen tussen 08:00 en 22:30.',
   });
   $(p + 'hero-note').textContent = coverageNote(r, pts);
+  setMini();
 }
 
 function changeLine(o) {

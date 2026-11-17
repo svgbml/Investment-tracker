@@ -1101,3 +1101,47 @@ kbd { font: 600 12px/1 ui-monospace, monospace; padding: 3px 6px; border: 1px so
 .vrow .tx-m .sub { line-height: 16px; }
 .vrow .tx-v { flex: none; white-space: nowrap; }
 .vrow .tag { width: 76px; min-width: 76px; padding-left: 0; padding-right: 0; box-sizing: border-box; }
+
+
+/* ===================== Ontwerp 2026 "Rust": wit bovenaan, rustige grafiek, kleine balk bij scrollen ===================== */
+:root { --band: #FFFFFF; --band-ink: #5B6472; --soft: #EEF2FC; --soft-ink: #1E429F; }
+:root[data-theme="dark"] { --band: #181C23; --band-ink: #98A2B3; --soft: #1C2742; --soft-ink: #A9C0F8; }
+.banner, .tile.market, .m-row.market, .ag-date, .tbl tr.me td { background: var(--soft); }
+.banner { color: var(--soft-ink); }
+.ag-date span { color: var(--ink-2); }
+.tile.market .tag { background: var(--surface); }
+.pill-chg { background: var(--empty); }
+
+/* Bovenbalk: wit, blijft staan, toont bij scrollen de waarde */
+.topbar, body[data-page="home"] .topbar { position: sticky; top: 0; z-index: 30; background: var(--surface); border-bottom: 1px solid var(--rule); }
+.icon-btn, .m-icon { background: var(--surface); border: 1px solid var(--rule); }
+.icon-btn:hover { background: var(--bg); }
+.band { border-bottom: 1px solid var(--rule); }
+.top-mini { display: none; align-items: center; gap: 10px; min-width: 0; }
+.mini-v { font-weight: 700; font-size: 19px; letter-spacing: -0.02em; white-space: nowrap; }
+.mini-c { font-size: 14px; font-weight: 600; white-space: nowrap; }
+.mini-spark { width: 110px; height: 30px; flex: none; }
+.mini-spark svg { display: block; width: 100%; height: 100%; }
+body.hero-past[data-page="home"] .top-mini { display: inline-flex; animation: miniIn .22s var(--ease); }
+body.hero-past[data-page="home"] .brand-txt { display: none; }
+@keyframes miniIn { from { opacity: 0; transform: translateY(6px); } }
+
+/* Telefoon: witte kop met kleine balk, periodes op één regel */
+.m-top, body[data-page="list"] .m-top, body[data-page="stats"] .m-top, .md .m-dtop { background: rgba(255, 255, 255, .94); }
+:root[data-theme="dark"] .m-top, :root[data-theme="dark"] .md .m-dtop { background: rgba(24, 28, 35, .94); }
+.m-top { box-shadow: 0 1px 0 var(--rule); }
+.m-mini { display: none; flex: 1; min-width: 0; align-items: center; gap: 8px; }
+.m-mini .mini-v { font-size: 18px; }
+.m-mini .mini-c { font-size: 13px; }
+.m-mini .mini-spark { width: 64px; height: 26px; margin-left: auto; }
+body.hero-past[data-page="home"] .m-mini { display: flex; animation: miniIn .22s var(--ease); }
+body.hero-past[data-page="home"] #m-title { display: none; }
+.m-hero { border-bottom: 1px solid var(--rule); }
+.m-hero .m-seg { display: flex; justify-content: space-between; gap: 2px; margin: 10px 10px 0; padding: 0; background: none; border-radius: 0; }
+.m-hero .m-seg button { flex: 1 1 auto; min-height: 44px; padding: 0 2px; border-radius: 0; background: none; color: var(--ink-2); font-size: 13.5px; white-space: nowrap; border-bottom: 2px solid transparent; }
+.m-hero .m-seg button[aria-pressed="true"], :root[data-theme="dark"] .m-hero .m-seg button[aria-pressed="true"] { background: none; color: var(--ink); border-bottom-color: var(--ink); }
+:root[data-theme="dark"] .m-hero .m-seg { background: none; }
+body.hero-past[data-page="home"] .m-top .updated, body.hero-past[data-page="home"] .topbar .updated { display: none; }
+.m-mini .mini-c { overflow: hidden; text-overflow: ellipsis; }
+.m-mini .mini-w { display: none; }
+.brand .top-mini .mini-spark { width: 110px; height: 30px; }
