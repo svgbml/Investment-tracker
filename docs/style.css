@@ -1094,3 +1094,10 @@ kbd { font: 600 12px/1 ui-monospace, monospace; padding: 3px 6px; border: 1px so
 .trade-dlg .plan-inputs { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
 .trade-dlg .plan-inputs > label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--ink-2); }
 .btn:disabled, .btn[disabled] { opacity: .45; cursor: not-allowed; }
+/* Alle transacties (virtuele lijst): elke regel precies even hoog, tekst afgekapt in plaats van doorlopen */
+.vrow { height: 52px; box-sizing: border-box; padding: 0; overflow: hidden; }
+.vrow .tx-m b, .vrow .tx-m .sub { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vrow .tx-m b { font-size: 14px; line-height: 20px; }
+.vrow .tx-m .sub { line-height: 16px; }
+.vrow .tx-v { flex: none; white-space: nowrap; }
+.vrow .tag { width: 76px; min-width: 76px; padding-left: 0; padding-right: 0; box-sizing: border-box; }
