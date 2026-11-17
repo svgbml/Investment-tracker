@@ -1295,3 +1295,14 @@ body.welcoming #mshell { padding-bottom: 0; }
   .set-sec { padding: 18px 16px; }
 }
 .m-nav button { background: var(--surface); border: 1px solid var(--rule); color: var(--ink); }
+
+
+/* ===================== Pictogram kiezen ===================== */
+.icon-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; margin-top: 8px; }
+.icon-pick button { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 6px 10px; border: 2px solid transparent; border-radius: 14px; background: var(--bg); cursor: pointer; font: inherit; color: var(--ink); }
+.icon-pick button[aria-pressed="true"] { border-color: var(--accent); background: var(--soft); }
+.ip-wall { display: grid; place-items: center; width: 64px; height: 64px; border-radius: 14px; background: linear-gradient(160deg, #9C7A2E, #6E5524); }
+.ip-wall img { width: 48px; height: 48px; display: block; }
+.ip-l { font-size: 12px; font-weight: 600; text-align: center; line-height: 1.25; }
+.icon-pick { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+@media (max-width: 760px) { .icon-pick { gap: 4px; } .icon-pick button { padding: 6px 2px 8px; } .ip-wall { width: 52px; height: 52px; border-radius: 12px; } .ip-wall img { width: 40px; height: 40px; } .ip-l { font-size: 11px; } }

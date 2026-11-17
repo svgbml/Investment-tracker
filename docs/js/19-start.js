@@ -32,10 +32,39 @@ let installCheckText = '';
 // Sommige filters (adblockers met een VPN, zoals AdGuard) halen de manifest-verwijzing uit de pagina; zonder die verwijzing
 // kan Chrome de app niet installeren. Ontbreekt hij, dan zetten we hem zelf terug.
 let manifestRestored = false;
+// ---------- Pictogram op het beginscherm: een stijl kiezen (geldt na opnieuw installeren) ----------
+const ICON_STYLES = [['glas', 'Glas'], ['lijn', 'Doorzichtig, witte lijn'], ['donker', 'Donker'], ['blauw', 'Blauw'], ['licht', 'Licht']];
+function iconStyle() { try { const k = localStorage.getItem('tracker.icon'); return ICON_STYLES.some((x) => x[0] === k) ? k : 'glas'; } catch (e) { return 'glas'; } }
+const manifestHref = () => (iconStyle() === 'glas' ? 'manifest.webmanifest' : 'manifest-' + iconStyle() + '.webmanifest');
+function applyIconStyle() {
+  const k = iconStyle();
+  const m = document.querySelector('link[rel="manifest"]');
+  if (m) m.setAttribute('href', manifestHref());
+  const a = document.querySelector('link[rel="apple-touch-icon"]');
+  if (a) a.setAttribute('href', k === 'glas' ? 'apple-touch-icon.png' : 'icons/' + k + '-apple.png');
+}
+function renderIconPick(note) {
+  const box = $('icon-pick');
+  if (!box) return;
+  const cur = iconStyle();
+  box.innerHTML = ICON_STYLES.map(([k, l]) => '<button type="button" data-icon-pick="' + k + '" aria-pressed="' + (k === cur) + '"><span class="ip-wall"><img src="' + (k === 'glas' ? 'icon-192.png' : 'icons/' + k + '-192.png') + '" alt="" width="48" height="48"></span><span class="ip-l">' + esc(l) + '</span></button>').join('');
+  if (note != null) $('icon-note').textContent = note;
+}
+document.addEventListener('click', (e) => {
+  const t = /** @type {Element} */ (e.target);
+  const b = /** @type {HTMLElement|null} */ (t && t.closest ? t.closest('[data-icon-pick]') : null);
+  if (!b) return;
+  try { localStorage.setItem('tracker.icon', b.dataset.iconPick || 'glas'); } catch (err) { /* niet erg */ }
+  applyIconStyle();
+  renderIconPick('Gekozen. Verwijder de app van je beginscherm en installeer hem opnieuw om het nieuwe pictogram te zien. Chrome op Android kan het ook zelf bijwerken, maar dat duurt soms een dag en vraagt eerst om toestemming. ' +
+    (b.dataset.iconPick === 'lijn' ? 'Of de achtergrond echt doorzichtig blijft, bepaalt je startscherm: sommige zetten er een wit of gekleurd vlak achter. Op iPhone wordt doorzichtig zwart.' : ''));
+});
+renderIconPick();
+
 function ensureManifest() {
   if (document.querySelector('link[rel="manifest"]')) return;
   const l = document.createElement('link');
-  l.rel = 'manifest'; l.href = 'manifest.webmanifest';
+  l.rel = 'manifest'; l.href = manifestHref();
   document.head.appendChild(l);
   manifestRestored = true;
 }
