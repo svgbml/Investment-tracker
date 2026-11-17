@@ -28,7 +28,7 @@ Alle adressen vragen je toegangscode, als `?token=…` of als header `Authorizat
 
 | Wat | Methode en adres |
 |---|---|
-| Gegevens voor de website | `GET /api/data` |
+| Gegevens voor de website, in twee delen met vingerafdruk (ETag): `core` (metingen, posities, weken) en `extra` (markt, onderzoek, koersen). Met `If-None-Match` geeft de Worker 304 als er niets veranderd is. Zonder `part` beide samen. De toegangscode gaat in de kop `Authorization: Bearer …` | `GET /api/data?part=core` / `?part=extra` |
 | Nu een meting doen (test) | `POST /api/run` |
 | Nu een weeksnapshot maken | `POST /api/snapshot` |
 | Openstaande opname invoeren | `POST /api/pending` met `{"amount": 154.65}` |
@@ -38,9 +38,14 @@ Alle adressen vragen je toegangscode, als `?token=…` of als header `Authorizat
 | Samenstelling van de indexfondsen nu ophalen / zelf toevoegen | `POST /api/etf` / `POST /api/etf-upload` met `{"key": "SP500" of "NDX", "csv": "…"}` |
 | Inloggen op een nieuw apparaat met de Trading 212-sleutel en -secret die al in de Worker staan; geeft de toegangscode terug (zonder toegangscode, max. 10 mislukte pogingen per uur) | `POST /api/login` |
 | Instellingen van de site (streefverdeling, inleg, doel, volglijst, notities bij aankopen `notes`, andere rekeningen `accounts`) | `GET` / `POST /api/settings` |
-| Status van koppelingen en functies | `GET /api/features` (alleen waar een sleutel staat, nooit de sleutel zelf) |
+| Status van koppelingen en functies, met `health`: welke bron tijdelijk uit staat en welke reserve het werk doet | `GET /api/features` (alleen waar een sleutel staat, nooit de sleutel zelf) |
+| Meldingen: openbare sleutel en regels, apparaat aan- of afmelden, testmelding | `GET /api/push/key`, `POST /api/push/subscribe` met `{"sub": …}`, `POST /api/push/unsubscribe`, `POST /api/push/test` |
+| Weekmail nu als test sturen (optioneel, Resend) | `POST /api/mail/test` |
+| Deel-link (alleen lezen) maken, vernieuwen, met of zonder bedragen, uitzetten | `GET` / `POST /api/share` met `{"action": "on" \| "rotate" \| "off" \| "update", "amounts": false}` |
+| Gedeelde weergave (zonder toegangscode, met geheime link) | `GET /share/<token>` |
+| Geschiedenis uit een Trading 212-export inlezen (de site leest de CSV) | `POST /api/import-csv` met `{"orders": […], "dividends": […]}` |
 | Sleutel opslaan of wissen | `POST /api/keys` met `{"name": "FINNHUB_KEY", "value": "…"}` (lege waarde wist) |
-| Functie zonder sleutel aan/uit | `POST /api/features` met `{"features": {"fx": true, "inflation": true, "sec": true, "etfAuto": true, "indices": true}}` |
+| Functie aan/uit | `POST /api/features` met `{"features": {"fx": true, "inflation": true, "sec": true, "etfAuto": true, "indices": true, "weeklyMail": false}}` (`weeklyMail` staat standaard uit) |
 | Agenda-link (iCal) maken, vernieuwen of uitzetten | `POST /api/calendar` met `{}`, `{"rotate": true}` of `{"off": true}` |
 | Agenda als iCal-bestand (zonder toegangscode, met geheime link) | `GET /cal/<token>.ics` |
 | Sector- en vergelijkingsgegevens: taken klaarzetten en afwerken | `POST /api/market?plan=1&steps=3` (zonder `plan` alleen afwerken) |
@@ -94,6 +99,11 @@ Na de agenda zet de Worker elke ochtend taken klaar die hij buiten de meettijden
 - **Alpha Vantage** (`ALPHAVANTAGE_KEY`, optioneel), reserve voor Finnhub: per aandeel `OVERVIEW` (analisten, gemiddeld koersdoel), `NEWS_SENTIMENT`, `EARNINGS` en `INSIDER_TRANSACTIONS`, alleen voor onderdelen die Finnhub niet levert (geen sleutel, ongeldige sleutel, niet in het abonnement of al twee dagen niet bijgewerkt). Dagbudget 24 verzoeken (`av_calls` in `kv`), één aandeel per stap. Welke onderdelen van Alpha Vantage komen staat in `src` per aandeel.
 - **Marktnieuws** (Finnhub `news?category=general`), één keer per dag, voor de nieuwspagina (`marketNews` in `/api/data`). Per aandeel bewaart de Worker ook wekelijks het gemiddelde koersdoel (`targetHist`), zodat de site later kan nagaan of koersdoelen uitkwamen.
 - **Waardering** (FMP `ratios-ttm` en `ratios`, per aandeel één keer per week; `sector-pe-snapshot` één keer per dag): koers-winstverhouding en dividendrendement, in `market.valuation` en `market.sectorPe`. Geeft FMP 402 (niet in het abonnement), dan stopt de Worker ermee (`val_denied`) en rekent de site de K/W uit SEC-cijfers.
+- **Reservebronnen**: lukt een bron niet of zit hij aan zijn limiet, dan schakelt de Worker over en houdt hij dat bij in `kv` `src_health` (de site toont het bij Koppelingen). Wisselkoersen: Frankfurter, anders het ECB Data Portal. Inflatie: ECB, anders Eurostat. Indexen: FRED, anders FMP. Profielen (koers, branche, beta, jaarbereik): FMP, anders Finnhub. Koersgeschiedenis: FMP, anders Alpha Vantage. Kwartaalcijfers: FMP, anders Finnhub. Nieuws en analisten: Finnhub, anders Alpha Vantage. Weekmail: Resend, anders een pushmelding. Na een limiet blijft de bron tot middernacht (UTC) uit; na drie andere fouten zes uur.
+- **Meldingen** (Web Push, zonder externe dienst): de Worker maakt zijn eigen sleutelpaar (VAPID, `kv` `vapid`) en versleutelt elke melding (RFC 8291). Regels in `settings.alerts`: koersbeweging vanaf `move` % (het totaal vanaf de helft), kwartaalcijfers van morgen, aankopen door bestuurders, afwijking van je streefverdeling vanaf `drift` procentpunt (na de weeksnapshot). Elke melding één keer per dag of gebeurtenis.
+- **Weekmail** (optioneel): zaterdag na de weeksnapshot, via Resend (`RESEND_KEY`, `MAIL_TO`, optioneel `MAIL_FROM`). Zonder eigen domein mailt Resend alleen naar het adres van je Resend-account. `settings.mailAmounts = false` stuurt alleen procenten.
+- **Opruimen**: op de eerste dagelijkse cron van elke maand verdwijnen uurregels ouder dan 400 dagen en koersen en sectordagen ouder dan 420 dagen. Dagregels, weken, posities en orders blijven.
+- **Tests**: `npm test` (of `node test/run.mjs`) test de Worker met nep-API's en een database in het geheugen; Cloudflare draait ze vóór elke deploy (`[build]` in `wrangler.toml`).
 - **Volglijst**: symbolen uit `settings.watchlist` (maximaal 20) krijgen dezelfde gegevens als je posities: profiel, koersen, agenda en Finnhub/SEC.
 
 ## Agenda in Google Agenda

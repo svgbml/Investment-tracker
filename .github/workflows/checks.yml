@@ -1,0 +1,23 @@
+name: Controles
+
+# Bij elke push en pull request: syntaxis en namen van de website, en de Worker-tests met nep-API's.
+on:
+  push:
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Website
+        run: node tools/check-site.mjs
+      - name: Worker
+        run: node worker/test/run.mjs

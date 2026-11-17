@@ -219,6 +219,12 @@ function curOfTk(tk) {
 }
 function divTax(d) {
   const cur = curOfTk(d.ticker);
+  // Uit de export van Trading 212: de werkelijk ingehouden bronbelasting
+  if (isNum(d.wht) && d.wht >= 0) {
+    const wr = fxOn(d.whtCur || cur, d.t) || 1;
+    const tax = d.wht / wr;
+    return { cur, gross: d.amount + tax, tax, how: 'uit Trading 212-export' };
+  }
   const rate = fxOn(cur, d.t);
   let gross = null, how = 'berekend';
   if (isNum(d.perShare) && isNum(d.qty) && d.qty > 0 && rate) gross = d.perShare * d.qty / rate;

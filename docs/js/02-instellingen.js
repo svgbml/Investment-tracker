@@ -13,6 +13,17 @@ const getUrl = () => {
 };
 const isWorker = () => /\/api\/data$/.test(getUrl());
 
+// Gedeelde weergave (?gedeeld=<adres van de Worker, base64url>.<code>): alleen lezen, zonder toegangscode
+const sharedView = (() => {
+  const m = /^([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]{20,80})$/.exec(new URLSearchParams(location.search).get('gedeeld') || '');
+  if (!m) return null;
+  try {
+    let t = m[1].replace(/-/g, '+').replace(/_/g, '/'); while (t.length % 4) t += '=';
+    const origin = atob(t);
+    return /^https:\/\/[A-Za-z0-9.-]+$/.test(origin) ? { origin, token: m[2] } : null;
+  } catch (e) { return null; }
+})();
+
 function openSettings(showImport) {
   $('in-token').value = getToken();
   $('in-url').value = localStorage.getItem(LS_URL) || '';
@@ -27,6 +38,7 @@ function openSettings(showImport) {
   const F = data && data.features && data.features.has;
   if (F && (!F.t212 || !F.fmp || !F.finnhub || !F.sec)) $('links-box').open = true;
   loadLinks();
+  if (typeof renderPush === 'function') { renderPush(); renderShare(); }
   $('dlg-settings').showModal();
 }
 
@@ -112,7 +124,23 @@ const LINKS = [
   { id: 'indices', title: 'Indexen (FRED)', need: 'geen sleutel nodig', what: 'Dagkoersen van de S&P 500 en de Nasdaq-100 voor "wat als alles in de index had gezeten" en voor het risico van je indexfondsen. Weigert FRED de gewone download, vul dan een gratis FRED-sleutel in.',
     keys: [['FRED_KEY', 'FRED-sleutel (optioneel)']], optKeys: true, flag: 'indices', href: 'https://fred.stlouisfed.org/docs/api/api_key.html' },
   { id: 'etfAuto', title: 'Fondssamenstelling automatisch (iShares)', need: 'geen sleutel', what: 'Probeert wekelijks de samenstelling van je indexfondsen op te halen. Lukt dat niet, dan kun je het bestand zelf toevoegen op Plannen.', flag: 'etfAuto' },
+  { id: 'mail', title: 'Weekoverzicht per e-mail (optioneel)', need: 'gratis sleutel', what: 'Elke zaterdag na de weekmeting een korte mail met je weekrendement en de grootste stijgers en dalers, via Resend (gratis tot 3000 mails per maand). Zonder eigen domein kan Resend alleen mailen naar het adres van je Resend-account. Lukt mailen niet, dan komt het overzicht als melding (als meldingen aanstaan).',
+    keys: [['RESEND_KEY', 'Resend API-sleutel'], ['MAIL_TO', 'Naar (je e-mailadres)'], ['MAIL_FROM', 'Afzender (optioneel, met eigen domein)', true]], flag: 'weeklyMail', href: 'https://resend.com/signup' },
 ];
+// Welke bronnen bij een koppeling horen (voor de melding "reserve in gebruik")
+const LINK_SOURCES = { fmp: ['fmp'], finnhub: ['finnhub'], fx: ['frankfurter'], inflation: ['ecb_hicp'], indices: ['fred'], mail: ['resend'] };
+const SOURCE_NAMES = { fmp: 'FMP', finnhub: 'Finnhub', frankfurter: 'Frankfurter', ecb_hicp: 'de ECB', fred: 'FRED', resend: 'Resend' };
+function healthLine(id, H) {
+  return (LINK_SOURCES[id] || []).map((src) => {
+    const h = H && H[src];
+    if (!h) return '';
+    const down = h.until && h.until > Date.now();
+    const parts = [];
+    if (down) parts.push(SOURCE_NAMES[src] + ' tijdelijk uit tot ' + fDT.format(h.until) + (h.msg ? ' (' + h.msg + ')' : ''));
+    if (h.backup) parts.push('reserve in gebruik: ' + h.backup + (h.backupAt ? ', laatst ' + fDT.format(new Date(h.backupAt)) : ''));
+    return parts.length ? '<p class="small src-health">' + esc(parts.join('; ')) + '.</p>' : '';
+  }).join('');
+}
 let linkState = null;
 
 async function workerCall(path, init) {
@@ -132,21 +160,22 @@ function renderLinks(msg) {
   const errFor = (id) => F.errors && F.errors[id === 'inflation' ? 'inflation' : id];
   box.innerHTML = '<p class="muted small">De basis heeft alleen Trading 212 nodig. Extra functies zet je aan met een gratis sleutel of een schakelaar. Sleutels gaan naar je eigen Worker en worden nooit teruggestuurd naar de browser.</p>' +
     LINKS.map((L) => {
-      const keysSet = (L.keys || []).map(([k]) => F.keys[k]);
+      const keysSet = (L.keys || []).filter((k) => !k[2]).map(([k]) => F.keys[k]);
       const on = L.flag ? F.flags[L.flag] !== false && (!L.keys || L.optKeys || keysSet.every(Boolean)) : keysSet.every(Boolean);
       const err = errFor(L.id);
       const st = err ? '<span class="tag loss">Fout</span>' : on ? '<span class="tag gain">Aan</span>' : '<span class="tag">Uit</span>';
       return '<div class="link-row" data-link="' + L.id + '"><div class="link-h"><b>' + esc(L.title) + '</b><span class="muted small">' + esc(L.need) + '</span>' + st + '</div>' +
         '<p class="small muted">' + esc(L.what) + (L.href ? ' <a href="' + esc(L.href) + '" target="_blank" rel="noopener">Meer</a>' : '') + '</p>' +
-        (err ? '<p class="small loss">' + esc(err.msg) + '</p>' : '') +
+        (err ? '<p class="small loss">' + esc(err.msg) + '</p>' : '') + healthLine(L.id, F.health) +
         (L.keys || []).map(([k, lbl]) => {
           const where = F.keys[k];
           return '<div class="key-row"><label class="small" for="key-' + k + '">' + esc(lbl) + '</label>' +
             (where === 'cloudflare' ? '<span class="small muted">Ingesteld als geheim bij Cloudflare.</span>'
-              : '<span class="key-in"><input id="key-' + k + '" data-key="' + k + '" type="' + (k === 'SEC_CONTACT' ? 'email' : 'password') + '" autocomplete="off" spellcheck="false" placeholder="' + (where ? 'Ingesteld; vul in om te vervangen' : 'Niet ingesteld') + '">' +
+              : '<span class="key-in"><input id="key-' + k + '" data-key="' + k + '" type="' + (/SEC_CONTACT|MAIL_/.test(k) ? 'email' : 'password') + '" autocomplete="off" spellcheck="false" placeholder="' + (where ? 'Ingesteld; vul in om te vervangen' : 'Niet ingesteld') + '">' +
                 '<button type="button" class="btn ghost" data-savekey="' + k + '">Opslaan</button>' + (where ? '<button type="button" class="btn ghost danger" data-delkey="' + k + '">Wissen</button>' : '') + '</span>') + '</div>';
         }).join('') +
-        (L.flag ? '<label class="check small"><input type="checkbox" data-flag="' + L.flag + '"' + (F.flags[L.flag] !== false ? ' checked' : '') + '> Gebruiken</label>' : '') + '</div>';
+        (L.flag ? '<label class="check small"><input type="checkbox" data-flag="' + L.flag + '"' + (F.flags[L.flag] ? ' checked' : '') + '> Gebruiken</label>' : '') +
+        (L.id === 'mail' ? '<label class="check small"><input type="checkbox" data-mail-amounts' + (M && M.settings && M.settings.mailAmounts === false ? '' : ' checked') + '> Met bedragen</label> <button type="button" class="btn ghost" data-mail-test>Testmail sturen</button>' : '') + '</div>';
     }).join('') + calendarRow(calUrl || (() => { try { return localStorage.getItem('tracker.cal'); } catch (e) { return null; } })()) +
     '<p class="small plan-status" id="links-status" role="status">' + esc(msg || '') + '</p>';
 }
@@ -292,27 +321,102 @@ function readLast(url) {
   try { const o = JSON.parse(localStorage.getItem(LS_LAST) || 'null'); return o && o.url === url && o.data && o.data.ok ? o : null; } catch (e) { return null; }
 }
 function saveLast(url, d) {
-  try { localStorage.setItem(LS_LAST, JSON.stringify({ url, saved: Date.now(), data: d })); } catch (e) { /* vol of geblokkeerd: niet erg */ }
+  try { localStorage.setItem(LS_LAST, JSON.stringify({ url, saved: Date.now(), data: d, tags: dataParts.tags })); } catch (e) { /* vol of geblokkeerd: niet erg */ }
+}
+
+// Gegevens van de Worker in twee delen: 'core' (metingen, posities; elke 10 minuten anders) en 'extra'
+// (markt, onderzoek, koersen; een paar keer per dag). Een deel dat niet veranderde, stuurt de Worker niet
+// opnieuw (304). De toegangscode gaat in de Authorization-kop, niet in het adres.
+const dataParts = { core: null, extra: null, tags: {} };
+async function fetchPart(url, token, part) {
+  const h = { Authorization: 'Bearer ' + token };
+  if (dataParts.tags[part] && dataParts[part]) h['If-None-Match'] = dataParts.tags[part];
+  const res = await fetch(url + (url.includes('?') ? '&' : '?') + 'part=' + part, { cache: 'no-store', headers: h });
+  if (res.status === 304) return null;
+  const json = await res.json().catch(() => null);
+  if (!res.ok || !json) throw new Error((json && json.error) || 'de web-app gaf status ' + res.status);
+  if (!json.ok) throw new Error(json.error || 'onbekende fout');
+  // Een oudere Worker kent geen delen en stuurt alles in één keer
+  if (json.part !== part) { dataParts.core = json; dataParts.extra = {}; dataParts.tags = {}; return 'full'; }
+  dataParts[part] = json;
+  dataParts.tags[part] = res.headers.get('ETag') || null;
+  return part;
+}
+async function fetchWorkerData(url, token) {
+  const a = await fetchPart(url, token, 'core');
+  const b = a === 'full' ? null : await fetchPart(url, token, 'extra');
+  if (!a && !b) return null; // niets veranderd
+  const d = Object.assign({}, dataParts.core, dataParts.extra);
+  d.ok = true; delete d.part;
+  return d;
+}
+
+// Voorbeeldgegevens staan in een eigen bestand dat alleen in de voorbeeldweergave wordt geladen
+function loadDemoScript() {
+  if (typeof makeDemoData === 'function') return Promise.resolve();
+  return new Promise((ok, no) => {
+    const el = document.createElement('script');
+    el.src = 'js/14-demo.js?v=' + VERSION.replace(/^v/, '');
+    el.onload = ok;
+    el.onerror = () => no(new Error('de voorbeeldgegevens konden niet worden geladen'));
+    document.head.appendChild(el);
+  });
 }
 
 async function load() {
   clearTimeout(refreshTimer);
   showError('');
-  if (demo) { data = makeDemoData(); render(); return; }
+  if (sharedView) {
+    $('.btn-refresh').forEach((b) => b.classList.add('busy'));
+    try {
+      const res = await fetch(sharedView.origin + '/share/' + sharedView.token, { cache: 'no-store' });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json || !json.ok) throw new Error((json && json.error) || 'de link gaf status ' + res.status);
+      data = json;
+      if (!json.shared || !json.shared.amounts) { hideAmounts = true; syncHideButtons(); }
+      $('share-banner').hidden = false;
+      render();
+      refreshTimer = setTimeout(load, 15 * 60000);
+    } catch (err) { showError('Deze gedeelde weergave kon niet worden geladen: ' + err.message + '.'); }
+    finally { $('.btn-refresh').forEach((b) => b.classList.remove('busy')); }
+    return;
+  }
+  if (demo) {
+    try { await loadDemoScript(); } catch (err) { showError('Voorbeeldweergave: ' + err.message + '.'); return; }
+    data = makeDemoData(); render(); return;
+  }
   const token = getToken();
   const url = getUrl();
   if (!token) { showWelcome(); return; }
   if (!url) { showWelcome(); showError('Er is nog geen adres van de web-app ingesteld. Vul het in bij Instellingen of zet het in config.js.'); return; }
-  if (!data) { const last = readLast(url); if (last) { data = last.data; render(); } }
-  $$('.btn-refresh').forEach((b) => b.classList.add('busy'));
+  if (!data) {
+    const last = readLast(url);
+    if (last) {
+      data = last.data; render();
+      // Met de vingerafdrukken van de vorige keer hoeft er na een herstart vaak niets opnieuw te komen
+      if (last.tags && last.tags.core) { dataParts.core = last.data; dataParts.extra = {}; dataParts.tags = { core: last.tags.core }; if (last.tags.extra) { dataParts.extra = last.data; dataParts.tags.extra = last.tags.extra; } }
+    }
+  }
+  $('.btn-refresh').forEach((b) => b.classList.add('busy'));
   try {
-    const res = await fetch(url + (url.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(token), { cache: 'no-store' });
-    const json = await res.json().catch(() => null);
-    if (!res.ok || !json) throw new Error((json && json.error) || 'de web-app gaf status ' + res.status);
-    if (!json.ok) throw new Error(json.error || 'onbekende fout');
-    data = json;
-    saveLast(url, json);
-    render();
+    let json;
+    if (isWorker()) {
+      json = await fetchWorkerData(url, token);
+    } else {
+      // De oude Apps Script-web-app leest geen kopregels; daar blijft de code in het adres
+      const res = await fetch(url + (url.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(token), { cache: 'no-store' });
+      json = await res.json().catch(() => null);
+      if (!res.ok || !json) throw new Error((json && json.error) || 'de web-app gaf status ' + res.status);
+      if (!json.ok) throw new Error(json.error || 'onbekende fout');
+    }
+    if (json) {
+      data = json;
+      saveLast(url, json);
+      render();
+    } else if (data) {
+      // Niets veranderd: alleen de tijd bijwerken
+      $('.updated').forEach((e) => { e.textContent = (mode === 'm' ? '' : 'Bijgewerkt ') + fDT.format(new Date()); });
+    }
     refreshTimer = setTimeout(load, (Number(CFG.refreshMinutes) || 5) * 60000);
   } catch (err) {
     const offline = !navigator.onLine || err instanceof TypeError;

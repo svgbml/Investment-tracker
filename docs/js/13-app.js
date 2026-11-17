@@ -181,3 +181,203 @@ document.addEventListener('click', async (e) => {
   }
 });
 if ($('app-version')) $('app-version').textContent = VERSION;
+
+// ---------- Meldingen op dit apparaat (Web Push via je eigen Worker) ----------
+// De Worker stuurt meldingen over grote koersbewegingen, kwartaalcijfers van morgen, aankopen door bestuurders
+// en een verdeling die te veel afwijkt van je doel. Op iPhone en iPad werkt dit alleen in de geïnstalleerde app.
+const pushOk = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window && (location.protocol === 'https:' || location.hostname === 'localhost');
+const keyBytes = (s) => { let t = String(s).replace(/-/g, '+').replace(/_/g, '/'); while (t.length % 4) t += '='; return Uint8Array.from(atob(t), (c) => c.charCodeAt(0)); };
+let pushInfo = null;
+async function currentSub() {
+  if (!pushOk()) return null;
+  const reg = swReg || (await navigator.serviceWorker.ready);
+  return reg.pushManager.getSubscription();
+}
+async function renderPush(msg) {
+  const box = $('push-body');
+  if (!box) return;
+  const say = (html) => { box.innerHTML = html + (msg ? '<p class="small plan-status" role="status">' + esc(msg) + '</p>' : ''); };
+  if (sharedView) { say('<p class="muted small">Niet beschikbaar in een gedeelde weergave.</p>'); return; }
+  if (demo) { say('<p class="muted small">In de voorbeeldweergave staan meldingen uit. Met je eigen tracker krijg je ze op je telefoon of computer.</p>'); return; }
+  if (!isWorker() || !getToken()) { say('<p class="muted small">Meldingen werken met je eigen Cloudflare Worker. Sla eerst hierboven je toegangscode op.</p>'); return; }
+  if (!pushOk()) {
+    const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    say('<p class="muted small">' + (ios ? 'Op iPhone en iPad werken meldingen alleen in de geïnstalleerde app: zet de tracker op je beginscherm (deelknop, Zet op beginscherm) en open hem daarvandaan.' : 'Deze browser ondersteunt geen pushmeldingen.') + '</p>');
+    return;
+  }
+  try { pushInfo = await workerCall('/api/push/key', { method: 'GET' }); } catch (err) { say('<p class="small loss">Meldingen konden niet worden geladen: ' + esc(err.message) + '. Werk je Worker bij als dit blijft.</p>'); return; }
+  const sub = await currentSub();
+  const R = pushInfo.rules || {};
+  const blocked = Notification.permission === 'denied';
+  say('<p class="small">' + (sub ? '<span class="tag gain">Aan</span> op dit apparaat' : '<span class="tag">Uit</span> op dit apparaat') + (pushInfo.devices ? ' · ' + pushInfo.devices + (pushInfo.devices === 1 ? ' apparaat' : ' apparaten') + ' aangemeld' : '') + '</p>' +
+    (blocked ? '<p class="small loss">Je browser blokkeert meldingen voor deze site. Sta ze toe via het slotje naast het adres en probeer het opnieuw.</p>' : '') +
+    '<div class="alert-rules">' +
+      '<label class="small">Koersbeweging vanaf<span class="eur-in"><input type="number" min="0" max="50" step="0.5" data-rule="move" value="' + esc(R.move != null ? R.move : 5) + '">%</span></label>' +
+      '<label class="small">Afwijking van je doel vanaf<span class="eur-in"><input type="number" min="0" max="50" step="0.5" data-rule="drift" value="' + esc(R.drift != null ? R.drift : 5) + '">pp</span></label>' +
+      '<label class="check small"><input type="checkbox" data-rule="earnings"' + (R.earnings !== false ? ' checked' : '') + '> Kwartaalcijfers van morgen</label>' +
+      '<label class="check small"><input type="checkbox" data-rule="insider"' + (R.insider !== false ? ' checked' : '') + '> Bestuurders die aandelen kopen</label>' +
+    '</div>' +
+    '<div class="dlg-actions" style="justify-content:flex-start;margin-top:8px">' +
+      (sub ? '<button type="button" class="btn ghost" data-push="off">Uitzetten op dit apparaat</button><button type="button" class="btn ghost" data-push="test">Testmelding</button>'
+        : '<button type="button" class="btn primary" data-push="on"' + (blocked ? ' disabled' : '') + '>Meldingen aanzetten</button>') +
+      '<button type="button" class="btn ghost" data-push="rules">Regels opslaan</button></div>' +
+    '<p class="muted small" style="margin-top:6px">Koersbewegingen tegenover het slot van de vorige handelsdag, tijdens de meettijden; het totaal van je portefeuille vanaf de helft van de drempel. Elke melding komt hoogstens één keer per dag.</p>');
+}
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest && e.target.closest('[data-push]');
+  if (!b) return;
+  const act = b.dataset.push;
+  b.disabled = true;
+  try {
+    if (act === 'on') {
+      const perm = await Notification.requestPermission();
+      if (perm !== 'granted') { await renderPush('Zonder toestemming kan de browser geen meldingen tonen.'); return; }
+      const reg = swReg || (await navigator.serviceWorker.ready);
+      const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(pushInfo.key) });
+      const label = /android/i.test(navigator.userAgent) ? 'Android' : /iphone|ipad/i.test(navigator.userAgent) ? 'iPhone/iPad' : /windows/i.test(navigator.userAgent) ? 'Windows' : /mac os/i.test(navigator.userAgent) ? 'Mac' : 'Apparaat';
+      await workerCall('/api/push/subscribe', { method: 'POST', body: JSON.stringify({ sub: sub.toJSON(), label }) });
+      await renderPush('Meldingen staan aan op dit apparaat.');
+    } else if (act === 'off') {
+      const sub = await currentSub();
+      if (sub) { await workerCall('/api/push/unsubscribe', { method: 'POST', body: JSON.stringify({ endpoint: sub.endpoint }) }); await sub.unsubscribe(); }
+      await renderPush('Meldingen staan uit op dit apparaat.');
+    } else if (act === 'test') {
+      const r = await workerCall('/api/push/test', { method: 'POST' });
+      await renderPush(r.sent ? 'Testmelding verstuurd naar ' + r.sent + (r.sent === 1 ? ' apparaat.' : ' apparaten.') : 'Er ging geen melding uit; zet meldingen opnieuw aan.');
+    } else if (act === 'rules') {
+      const v = (k) => document.querySelector('#push-body [data-rule="' + k + '"]');
+      await saveSettings({ alerts: { move: Number(v('move').value) || 0, drift: Number(v('drift').value) || 0, earnings: v('earnings').checked, insider: v('insider').checked } });
+      await renderPush('Regels opgeslagen.');
+    }
+  } catch (err) { await renderPush('Mislukt: ' + err.message + '.'); }
+  finally { b.disabled = false; }
+});
+
+// Weekmail: met of zonder bedragen, en een testmail (de rij staat bij Koppelingen)
+document.addEventListener('change', async (e) => {
+  const cb = e.target.closest && e.target.closest('input[data-mail-amounts]');
+  if (!cb) return;
+  try { await saveSettings({ mailAmounts: cb.checked }); renderLinks(cb.checked ? 'De weekmail bevat bedragen.' : 'De weekmail bevat alleen procenten.'); }
+  catch (err) { renderLinks('Mislukt: ' + err.message); }
+});
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest && e.target.closest('[data-mail-test]');
+  if (!b) return;
+  b.disabled = true;
+  try { const r = await workerCall('/api/mail/test', { method: 'POST' }); renderLinks(r.message || 'Testmail verstuurd.'); }
+  catch (err) { renderLinks('Testmail mislukt: ' + err.message); }
+  finally { b.disabled = false; }
+});
+
+// ---------- Deel-link (alleen lezen) ----------
+const workerOrigin = () => getUrl().replace(/\/api\/data$/, '');
+const b64uStr = (s) => btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const shareLink = (token) => location.origin + location.pathname + '?gedeeld=' + b64uStr(workerOrigin()) + '.' + token;
+async function renderShare(msg) {
+  const box = $('share-body');
+  if (!box) return;
+  const say = (html) => { box.innerHTML = html + (msg ? '<p class="small plan-status" role="status">' + esc(msg) + '</p>' : ''); };
+  if (sharedView) { say('<p class="muted small">Je bekijkt zelf een gedeelde weergave.</p>'); return; }
+  if (demo || !isWorker() || !getToken()) { say('<p class="muted small">Delen werkt met je eigen Cloudflare Worker.</p>'); return; }
+  let st;
+  try { st = await workerCall('/api/share', { method: 'GET' }); } catch (err) { say('<p class="small loss">Kon de deel-link niet laden: ' + esc(err.message) + '.</p>'); return; }
+  if (!st.on) {
+    say('<p class="muted small">Maak een link waarmee iemand anders je portefeuille kan bekijken, zonder je toegangscode en zonder iets te kunnen wijzigen. Notities, andere rekeningen en sleutels worden nooit gedeeld.</p>' +
+      '<label class="check small"><input type="checkbox" id="share-amounts"> Met bedragen (anders alleen procenten en verhoudingen)</label>' +
+      '<div class="dlg-actions" style="justify-content:flex-start;margin-top:6px"><button type="button" class="btn ghost" data-share="on">Deel-link maken</button></div>');
+    return;
+  }
+  say('<div class="key-in"><input id="share-url" type="text" readonly value="' + esc(shareLink(st.token)) + '" aria-label="Deel-link"><button type="button" class="btn ghost" data-share="copy">Kopiëren</button></div>' +
+    '<label class="check small"><input type="checkbox" id="share-amounts"' + (st.amounts ? ' checked' : '') + ' data-share-amounts> Met bedragen</label>' +
+    '<p class="muted small">Iedereen met deze link ziet je portefeuille' + (st.amounts ? ' met bedragen' : ', zonder echte bedragen') + '. Maak een nieuwe link om de oude in te trekken.</p>' +
+    '<div class="dlg-actions" style="justify-content:flex-start;margin-top:6px"><button type="button" class="btn ghost" data-share="rotate">Nieuwe link maken</button><button type="button" class="btn ghost danger" data-share="off">Uitzetten</button></div>');
+}
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest && e.target.closest('[data-share]');
+  if (!b) return;
+  const act = b.dataset.share;
+  if (act === 'copy') { const i = $('share-url'); i.select(); try { await navigator.clipboard.writeText(i.value); b.textContent = 'Gekopieerd'; } catch (err) { /* geselecteerd om zelf te kopiëren */ } return; }
+  b.disabled = true;
+  try {
+    const amounts = $('share-amounts') ? $('share-amounts').checked : false;
+    await workerCall('/api/share', { method: 'POST', body: JSON.stringify({ action: act, amounts }) });
+    await renderShare(act === 'off' ? 'Deel-link uitgezet; de oude link werkt niet meer.' : act === 'rotate' ? 'Nieuwe link gemaakt; de oude werkt niet meer.' : 'Deel-link gemaakt.');
+  } catch (err) { await renderShare('Mislukt: ' + err.message + '.'); }
+  finally { b.disabled = false; }
+});
+document.addEventListener('change', async (e) => {
+  const cb = e.target.closest && e.target.closest('input[data-share-amounts]');
+  if (!cb) return;
+  try { await workerCall('/api/share', { method: 'POST', body: JSON.stringify({ action: 'update', amounts: cb.checked }) }); await renderShare(cb.checked ? 'De link toont nu bedragen.' : 'De link toont nu alleen procenten.'); }
+  catch (err) { await renderShare('Mislukt: ' + err.message + '.'); }
+});
+
+// ---------- Geschiedenis inlezen uit een Trading 212-export (CSV) ----------
+// In de app: Geschiedenis > exporteren. Orders en dividenden gaan naar je Worker; wat er al was, wordt overgeslagen.
+function parseT212Csv(text) {
+  const lines = text.replace(/^﻿/, '').split(/\r?\n/).filter((l) => l.trim());
+  if (lines.length < 2) throw new Error('het bestand is leeg');
+  const head = parseCsvLine(lines[0], ',').map((h) => h.toLowerCase());
+  const col = (re) => head.findIndex((h) => re.test(h));
+  const I = { act: col(/^action$/), time: col(/^time$/), tk: col(/^ticker$/), name: col(/^name$/), qty: col(/^no\. of shares$/), price: col(/^price \/ share$/), cur: col(/^currency \(price \/ share\)$/),
+    fx: col(/^exchange rate$/), res: col(/^result$/), total: col(/^total$/), totalCur: col(/^currency \(total\)$/), wht: col(/^withholding tax$/), whtCur: col(/^currency \(withholding tax\)$/),
+    feeFx: col(/^currency conversion fee$/), stamp: col(/stamp duty/), ftt: col(/french transaction tax/), id: col(/^id$/) };
+  if (I.act < 0 || I.time < 0 || I.tk < 0) throw new Error('dit lijkt geen export van Trading 212 (kolommen Action, Time en Ticker ontbreken)');
+  const orders = [], dividends = [];
+  lines.slice(1).forEach((l, n) => {
+    const c = parseCsvLine(l, ',');
+    const act = c[I.act] || '', ts = Date.parse(String(c[I.time] || '').replace(' ', 'T') + 'Z');
+    const v = (i) => (i >= 0 ? parseNum(c[i]) : null);
+    if (!isNum(ts)) return;
+    if (/buy|sell/i.test(act)) {
+      orders.push({ id: c[I.id] || ('r' + n + '-' + ts), ts, tk: c[I.tk], name: c[I.name], side: /sell/i.test(act) ? 'SELL' : 'BUY', qty: v(I.qty), price: v(I.price), cur: c[I.cur],
+        fx: v(I.fx), net: v(I.total), realised: v(I.res), feeFx: v(I.feeFx), feeOther: (v(I.stamp) || 0) + (v(I.ftt) || 0) });
+    } else if (/^dividend/i.test(act)) {
+      dividends.push({ tk: c[I.tk], date: new Date(ts).toISOString().slice(0, 10), amount: v(I.total), perShare: v(I.price), qty: v(I.qty), wht: v(I.wht), whtCur: I.whtCur >= 0 ? c[I.whtCur] : null });
+    }
+  });
+  if (!orders.length && !dividends.length) throw new Error('geen aankopen, verkopen of dividenden gevonden');
+  return { orders, dividends };
+}
+document.addEventListener('change', async (e) => {
+  const el = e.target;
+  if (!(el.matches && el.matches('input[type="file"][data-t212csv]')) || !el.files[0]) return;
+  const st = $('t212csv-status');
+  const say = (t, cls) => { if (st) { st.textContent = t; st.className = 'small plan-status ' + (cls || ''); } };
+  try {
+    if (demo || sharedView) throw new Error('dit kan alleen met je eigen tracker');
+    if (!isWorker()) throw new Error('dit kan alleen met de Cloudflare Worker');
+    say('Bezig met inlezen…');
+    const P = parseT212Csv(await el.files[0].text());
+    let o = 0, sk = 0, dv = 0;
+    for (let i = 0; i < Math.max(P.orders.length, 1); i += 1000) {
+      const r = await workerCall('/api/import-csv', { method: 'POST', body: JSON.stringify({ orders: P.orders.slice(i, i + 1000), dividends: i ? [] : P.dividends }) });
+      o += r.orders; sk += r.skipped; dv += r.dividends;
+    }
+    say(o + ' orders en ' + dv + ' dividenden toegevoegd' + (sk ? '; ' + sk + ' orders stonden er al' : '') + '. De gegevens worden opnieuw geladen.', 'gain');
+    load();
+  } catch (err) { say('Inlezen is mislukt: ' + err.message + '.', 'loss'); }
+  el.value = '';
+});
+
+// ---------- Herbalanceren: melding op het overzicht als je verdeling te ver van je doel ligt ----------
+function driftModel() {
+  const S = M.settings || {};
+  const t = S.targets || {};
+  if (!Object.keys(t).length) return null;
+  const items = allocItems(S.targetMode || 'position');
+  const lim = S.alerts && isNum(S.alerts.drift) && S.alerts.drift > 0 ? S.alerts.drift : 5;
+  const diffs = items.filter((x) => isNum(t[x.key]) && t[x.key] > 0).map((x) => ({ x, d: x.w * 100 - t[x.key] })).sort((a, b) => Math.abs(b.d) - Math.abs(a.d));
+  const big = diffs.filter((o) => Math.abs(o.d) >= lim);
+  return big.length ? { big, lim } : null;
+}
+function renderDriftNote() {
+  const html = (() => {
+    if (!M || sharedView) return '';
+    const D = driftModel();
+    if (!D) return '';
+    return '<a class="drift-note" href="#plannen"><b>Je verdeling wijkt af van je doel</b><span>' + esc(D.big.slice(0, 3).map((o) => o.x.label + ' ' + sgn(o.d, N1) + ' pp').join(', ')) +
+      '. Op Plannen zie je wat je met nieuwe inleg kunt kopen om weer dichter bij je doel te komen.</span><span class="more" aria-hidden="true">Naar Plannen ›</span></a>';
+  })();
+  ['drift-note', 'm-drift-note'].forEach((id) => { if ($(id)) $(id).innerHTML = html; });
+}

@@ -9,11 +9,13 @@ const demoSettings = () => {
   if (!o.watchlist) o.watchlist = ['NVDA', 'LMT'];
   if (!o.notes) o.notes = (data && data.demoNotes) || {};
   if (!o.accounts) o.accounts = (data && data.demoAccounts) || [];
+  if (!o.targets) { o.targets = { VUAG: 40, SXRV: 25, ASML: 8, MSFT: 7, KO: 5 }; o.targetMode = 'position'; }
   return o;
 };
 const plan = { mode: null, draft: null, amount: 100, years: 10, monthly: null, goal: null, status: '', year: null };
 
 async function saveSettings(patch) {
+  if (sharedView) throw new Error('dit is een gedeelde weergave: alleen lezen');
   const next = Object.assign({}, M.settings, patch);
   if (demo) { localStorage.setItem(LS_DEMO_SET, JSON.stringify(next)); M.settings = next; return next; }
   if (!isWorker()) throw new Error('opslaan kan alleen met de Cloudflare Worker');
@@ -255,12 +257,16 @@ function exportTile() {
   const n = { posities: M.companies.length, weken: M.weeks.length, transacties: M.tx.list.length, dividenden: M.ev.received.length };
   const names = { posities: 'Posities', weken: 'Weken', transacties: 'Transacties', dividenden: 'Ontvangen dividend' };
   return '<section class="tile pad"><h3>Exporteren</h3><p class="sub">CSV-bestanden voor Excel of Google Sheets.</p><div class="exp">' +
-    Object.keys(EXPORTS).map((k) => '<button type="button" class="btn ghost" data-export="' + k + '"' + (n[k] ? '' : ' disabled') + '>' + esc(names[k]) + ' <span class="muted small">(' + n[k] + ')</span></button>').join('') + '</div></section>';
+    Object.keys(EXPORTS).map((k) => '<button type="button" class="btn ghost" data-export="' + k + '"' + (n[k] ? '' : ' disabled') + '>' + esc(names[k]) + ' <span class="muted small">(' + n[k] + ')</span></button>').join('') + '</div>' +
+    '<h3 style="margin-top:16px">Geschiedenis inlezen</h3><p class="sub">Exporteer in de Trading 212-app je geschiedenis als CSV (Geschiedenis, delen of exporteren) en kies dat bestand. Zo komen ook aankopen en dividenden van vóór de API in je overzicht, met de echte bronbelasting. Wat er al was, wordt overgeslagen.</p>' +
+    '<div class="exp" style="margin-top:8px"><label class="btn ghost">CSV van Trading 212 kiezen<input type="file" accept=".csv,text/csv" data-t212csv hidden></label></div><p class="small plan-status" id="t212csv-status" role="status"></p></section>';
 }
 
 function renderPlan() {
   const host = mode === 'm' ? $('m-plan-body') : $('plan-body');
   if (!host) return;
+  // Componentenversie (js/plannen-preact.js) als die geladen is
+  if (window.PlanView && window.PlanView.ok) { window.PlanView.draw(host); return; }
   const focus = document.activeElement && host.contains(document.activeElement) ? document.activeElement.id || null : null;
   const sec = (title, sub, tiles) => '<div class="section-head"><h2>' + esc(title) + '</h2>' + (sub ? '<p class="muted small">' + esc(sub) + '</p>' : '') + '</div><div class="plan-grid">' + tiles.filter(Boolean).join('') + '</div>';
   host.innerHTML =
@@ -325,6 +331,7 @@ function planEvents(host) {
   });
   host.addEventListener('input', (e) => {
     const el = e.target;
+    if (el.closest('[data-preact]')) return; // de componenten handelen hun eigen invoer af
     if (el.classList.contains('t-in')) {
       const key = el.closest('tr').dataset.key;
       const v = el.value === '' ? null : Math.max(0, Math.min(100, Number(el.value)));

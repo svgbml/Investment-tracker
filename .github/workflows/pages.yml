@@ -3,7 +3,7 @@ name: Website publiceren
 on:
   push:
     branches: [main]
-    paths: ['docs/**', '.github/workflows/pages.yml']
+    paths: ['docs/**', 'tools/**', '.github/workflows/pages.yml']
   workflow_dispatch:
 
 permissions:
@@ -16,7 +16,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Eerst de controles; faalt er een, dan gaat de website niet online
+  check:
+    uses: ./.github/workflows/checks.yml
+
   deploy:
+    needs: check
     runs-on: ubuntu-latest
     environment:
       name: github-pages

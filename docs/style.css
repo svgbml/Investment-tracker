@@ -911,3 +911,17 @@ details.acct summary { display: grid; grid-template-columns: auto minmax(0, 1fr)
 .login-form label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--ink-2); }
 .login-form input { min-height: 44px; padding: 0 12px; border: 1px solid #C9CED6; border-radius: 10px; background: var(--surface); color: var(--ink); font: inherit; }
 :root[data-theme="dark"] .login-form input { background: #10141A; border-color: #3A4250; }
+
+/* Meldingen, reservebronnen, herbalanceren */
+.alert-rules { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap: 8px 16px; margin-top: 8px; }
+.alert-rules label:not(.check) { display: flex; flex-direction: column; gap: 4px; color: var(--ink-2); }
+.alert-rules .eur-in input { width: 70px; }
+.src-health { margin-top: 4px; color: #8A5A00; }
+:root[data-theme="dark"] .src-health { color: #F2C26B; }
+.drift-note { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin: 0 0 16px; padding: 14px 18px; border-radius: 16px; background: #FFF4DC; color: #5C3D00; text-decoration: none; }
+.drift-note b { font-size: 15px; }
+.drift-note span { font-size: 14px; }
+.drift-note .more { margin-left: auto; font-weight: 600; }
+.drift-note:hover { box-shadow: 0 6px 16px rgba(20, 24, 31, .10); }
+:root[data-theme="dark"] .drift-note { background: #3A2E12; color: #F5D9A0; }
+#m-drift-note .drift-note { margin: 0 0 12px; }

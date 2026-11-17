@@ -196,6 +196,7 @@ function showPage(p, animate, force) {
   if (mode === 'd' && p === 'stats') p = 'home';
   const prev = ui.page;
   ui.page = p;
+  if (M) ensurePage(p);
   const ids = mode === 'm' ? ['home', 'list', 'news', 'stats', 'plan'] : ['home', 'list', 'news', 'plan'];
   const el = $(pageId(p));
   const move = animate && !reduceMotion();
@@ -268,7 +269,7 @@ if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { pl
 
 // ---------- Tekenen ----------
 // Weergaven (zie js/00-kern.js): renderAll() tekent ze allemaal, refresh('naam') alleen dat stuk
-defineView('home', () => { if (mode === 'm') renderMHome(); else renderHome(); });
+defineView('home', () => { if (mode === 'm') renderMHome(); else renderHome(); renderDriftNote(); });
 defineView('list', () => { if (mode === 'm') renderMList(); else renderList(); });
 defineView('stats', () => { if (mode === 'm') renderMStats(); });
 defineView('plan', () => renderPlan());
@@ -276,9 +277,22 @@ defineView('watch', () => renderWatch());
 defineView('news', () => renderNews());
 defineView('valuation', () => renderValuationList());
 
+// Alleen de zichtbare pagina tekenen; de andere worden bijgewerkt zodra je ze opent
+const PAGE_VIEWS = { home: ['home'], list: ['list', 'watch', 'valuation'], news: ['news'], stats: ['stats'], plan: ['plan'] };
+const staleViews = new Set();
 function renderAll() {
-  refresh();
+  const page = mode === 'd' && ui.page === 'stats' ? 'home' : ui.page;
+  const now = PAGE_VIEWS[page] || [];
+  [...VIEWS.keys()].forEach((n) => { if (now.includes(n)) staleViews.delete(n); else staleViews.add(n); });
+  refresh(...now);
   foldSoon();
+}
+// Pagina openen: eerst bijwerken wat sinds de laatste gegevens nog niet getekend is
+function ensurePage(p) {
+  const want = (PAGE_VIEWS[p] || []).filter((n) => staleViews.has(n));
+  if (!want.length) return;
+  want.forEach((n) => staleViews.delete(n));
+  refresh(...want);
 }
 
 // ---------- Panelen inklappen: lange tegels op de beginpagina's starten compact ----------

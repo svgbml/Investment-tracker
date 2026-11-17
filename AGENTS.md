@@ -41,7 +41,10 @@ The user-facing language is **Dutch**: all UI text, code comments, commit messag
 - Schema changes go in the embedded `SCHEMA_SQL` (`ensureSchema` applies it). Use `CREATE … IF NOT EXISTS`.
 - FMP has a daily budget (counter in `kv` `fmp_calls`). Keep previous data when a fetch fails.
 - Record source failures with `noteExtError(env, source, msg)`; the site shows them under *Koppelingen*.
-- All `/api/*` routes require the `WEB_TOKEN`; only `/cal/<token>.ics` and `POST /api/login` are public. `/api/login` returns the `WEB_TOKEN` only when the posted Trading 212 key and secret match the ones in the Worker (constant-time compare, max 10 failures per hour, nothing stored).
+- Every external source needs a fallback where one exists. Use `srcFail` / `srcOk` / `srcDown` / `srcBackup` (`kv` `src_health`): on a limit or repeated failures, switch to the backup and record which backup did the work. Never retry a refused source in a loop.
+- Write the built data only through `saveDataCache(env, data)` (it stores `data_core`, `data_extra`, their ETags and the share copy). New top-level fields that change rarely belong in `EXTRA_KEYS`.
+- Push alerts go through `alertOnce(env, key, msg)` so each alert is sent once; only evaluate them when `pushSubs(env)` is non-empty.
+- All `/api/*` routes require the `WEB_TOKEN` (prefer the `Authorization: Bearer` header; `?token=` is only kept for old clients and the Apps Script); only `/cal/<token>.ics`, `/share/<token>` and `POST /api/login` are public. `/share` serves a read-only copy without notes, accounts or keys, with money scaled when amounts are off. `/api/login` returns the `WEB_TOKEN` only when the posted Trading 212 key and secret match the ones in the Worker (constant-time compare, max 10 failures per hour, nothing stored).
 
 ## Site conventions
 
@@ -62,6 +65,7 @@ The user-facing language is **Dutch**: all UI text, code comments, commit messag
 
 There is no test suite. Before committing:
 
+0. Run `node tools/check-site.mjs` (syntax, duplicate or browser-clashing names, cache version, script list) and `node worker/test/run.mjs` (Worker against mocked APIs and an in-memory SQLite D1). Both run in GitHub Actions; the Pages deploy and the Cloudflare build wait for them. Add a Worker test for every new route, source or fallback.
 1. `node --check` every file in `docs/js/` (the module with `--input-type=module` or by importing it) and import `worker/src/index.js` in Node to catch syntax errors. Also check that no top-level name is declared twice across `docs/js/` and none is a property of `window`.
 2. Serve `docs/` locally (`python3 -m http.server`) and open `/?demo` at desktop (1360×900) and phone (390×844) size. Check for console errors and look at screenshots of what you changed, in light and dark.
 3. For data handling, also try sparse data: no weeks, one position, no optional sources. Tiles should explain what is missing, never show `NaN`, `undefined` or crash.

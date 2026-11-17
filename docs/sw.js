@@ -3,10 +3,10 @@
  * Eerst het netwerk (zodat updates direct binnenkomen), bij geen verbinding de bewaarde versie.
  * Gegevens van de Worker gaan hier niet doorheen; de laatste stand bewaart de site zelf in de browser.
  */
-const CACHE = 'tracker-v36';
-const FILES = ['./', './index.html', './style.css?v=36', './config.js?v=36', './manifest.webmanifest',
-  './js/00-kern.js?v=36', './js/01-basis.js?v=36', './js/02-instellingen.js?v=36', './js/03-model.js?v=36', './js/04-grafieken.js?v=36', './js/05-portefeuille.js?v=36', './js/06-plannen.js?v=36', './js/07-onderzoek.js?v=36', './js/08-risico.js?v=36', './js/09-weergaven.js?v=36', './js/10-navigatie.js?v=36', './js/11-uitbreidingen.js?v=36', './js/12-nieuws.js?v=36', './js/13-app.js?v=36', './js/14-demo.js?v=36', './js/15-start.js?v=36',
-  './js/nieuws-preact.js?v=36', './vendor/preact-htm.js',
+const CACHE = 'tracker-v37';
+const FILES = ['./', './index.html', './style.css?v=37', './config.js?v=37', './manifest.webmanifest',
+  './js/00-kern.js?v=37', './js/01-basis.js?v=37', './js/02-instellingen.js?v=37', './js/03-model.js?v=37', './js/04-grafieken.js?v=37', './js/05-portefeuille.js?v=37', './js/06-plannen.js?v=37', './js/07-onderzoek.js?v=37', './js/08-risico.js?v=37', './js/09-weergaven.js?v=37', './js/10-navigatie.js?v=37', './js/11-uitbreidingen.js?v=37', './js/12-nieuws.js?v=37', './js/13-app.js?v=37', './js/14-demo.js?v=37', './js/15-start.js?v=37',
+  './js/nieuws-preact.js?v=37', './js/plannen-preact.js?v=37', './vendor/preact-htm.js',
   './icon-192.png', './icon-512.png', './apple-touch-icon.png', './favicon.png'];
 
 // Een nieuwe versie wacht tot de gebruiker op de site "Nu bijwerken" kiest (of alle vensters sluit)
@@ -33,4 +33,23 @@ self.addEventListener('fetch', (e) => {
       return res;
     }).catch(() => caches.match(req, { ignoreSearch: req.mode === 'navigate' }).then((hit) => hit || caches.match('./index.html')))
   );
+});
+
+// Meldingen van je Worker (Web Push): tonen, en bij een klik de tracker op de juiste pagina openen
+self.addEventListener('push', (e) => {
+  let m = {};
+  try { m = e.data ? e.data.json() : {}; } catch (err) { m = { body: e.data ? e.data.text() : '' }; }
+  e.waitUntil(self.registration.showNotification(m.title || 'Investeringstracker', {
+    body: m.body || '', tag: m.tag || undefined, icon: './icon-192.png', badge: './favicon.png', data: { url: m.url || '' },
+  }));
+});
+
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const target = new URL('./' + (e.notification.data && e.notification.data.url ? e.notification.data.url : ''), self.registration.scope).href;
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+    const open = list.find((c) => c.url.startsWith(self.registration.scope));
+    if (open) { open.focus(); return open.navigate ? open.navigate(target) : null; }
+    return self.clients.openWindow(target);
+  }));
 });
