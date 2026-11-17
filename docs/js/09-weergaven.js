@@ -140,7 +140,7 @@ function renderDetailDesktop(c, swapDir) {
   const sw = swapDir ? ' swap-' + swapDir : '';
   return '<div class="band">' +
       '<div class="d-top"><button type="button" class="btn dark" data-act="back">← Terug</button>' +
-        '<div class="d-nav"><button type="button" class="btn line" data-act="compare">Vergelijken</button><button type="button" class="btn line" data-act="prev" aria-label="Vorige: ' + esc(prev.name) + '">← ' + esc(prev.tk) + '</button>' +
+        '<div class="d-nav">' + (typeof tradingOn === 'function' && tradingOn() && !sharedView && c.qty ? '<button type="button" class="btn primary" data-trade="BUY" data-tk="' + esc(c.tk) + '">Kopen</button><button type="button" class="btn line" data-trade="SELL" data-tk="' + esc(c.tk) + '">Verkopen</button>' : '') + '<button type="button" class="btn line" data-act="compare">Vergelijken</button><button type="button" class="btn line" data-act="prev" aria-label="Vorige: ' + esc(prev.name) + '">← ' + esc(prev.tk) + '</button>' +
         '<button type="button" class="btn line" data-act="next" aria-label="Volgende: ' + esc(next.name) + '">' + esc(next.tk) + ' →</button></div></div>' +
       '<div class="hero-head' + sw + '"><div><p class="hero-label">' + esc(c.name) + '</p>' +
         '<h2 id="d-title" class="hero-value">' + esc(c.tk) + ' ' + esc(eur(c.value)) + '</h2>' +
@@ -326,30 +326,55 @@ function renderMStats() {
   fill('m-patterns', patternTiles(TOTAL, S));
 }
 
+// Knoppen onder de grafiek: kopen en verkopen (als handelen aan staat), vergelijken en koersalarm
+function detailActs(c) {
+  const trade = typeof tradingOn === 'function' && tradingOn() && !sharedView && c.qty;
+  return '<div class="d-acts">' +
+    (trade ? '<button type="button" class="btn primary" data-trade="BUY" data-tk="' + esc(c.tk) + '">Kopen</button><button type="button" class="btn ghost" data-trade="SELL" data-tk="' + esc(c.tk) + '">Verkopen</button>' : '') +
+    '<button type="button" class="btn ghost" data-act="compare">Vergelijken</button>' +
+    '<button type="button" class="btn ghost" data-jump="d-alarm">Koersalarm</button></div>';
+}
+
+document.addEventListener('click', (e) => {
+  const t = /** @type {Element} */ (e.target);
+  const b = /** @type {HTMLElement|null} */ (t && t.closest ? t.closest('[data-jump]') : null);
+  const el = b && $(b.dataset.jump || '');
+  if (el) el.scrollIntoView({ behavior: reduceMotion() ? 'auto' : 'smooth', block: 'start' });
+});
+
+// Telefoon: één lange pagina in de volgorde van het ontwerp, met een kop per onderdeel
 function renderDetailMobile(c, swapDir) {
   const { prev, next } = detailNav(c);
   const I = companyInfo(c);
   const sw = swapDir ? ' swap-' + swapDir : '';
-  const tabs = [['pos', 'Positie'], ['res', 'Onderzoek'], ['cmp', 'Vergelijk'], ['hist', 'Historie'], ['pat', 'Patronen']];
-  const panel = ui.mTab === 'hist' ? I.histTile : ui.mTab === 'pat' ? '<div class="m-stack">' + I.patterns.join('') + '</div>'
-    : ui.mTab === 'cmp' ? I.riskTile + valuationTile(c) + overlapTileC(c) + '<button type="button" class="btn ghost" data-act="compare">Naast een ander aandeel zetten</button>' + I.market.tiles.join('') + I.market.table
-    : ui.mTab === 'res' ? I.research.join('') : I.rangeTile + I.posTile + I.tradeTile + I.agendaTile + priceAlertTile(c.tk, c.priceNative, c.cur);
+  const head = (t) => '<div class="m-head"><h2>' + esc(t) + '</h2></div>';
+  const block = (t, html) => (html ? head(t) + '<div class="m-stack">' + html + '</div>' : '');
+  const kind = isFundC(c) ? 'fonds in bezit' : 'in bezit';
   return '<div class="md">' +
-    '<div class="m-dtop"><button type="button" class="m-back" data-act="back">‹ Terug</button><span class="t">' + esc(c.tk) + '</span>' +
+    '<div class="m-dtop"><button type="button" class="m-back" data-act="back">‹ Bedrijven</button><span class="t">' + esc(c.tk) + '</span>' +
       '<div class="m-nav"><button type="button" data-act="prev" aria-label="Vorige: ' + esc(prev.name) + '">‹</button><button type="button" data-act="next" aria-label="Volgende: ' + esc(next.name) + '">›</button></div></div>' +
     '<div class="m-hero">' +
-      '<div class="m-swipe' + sw + '"><p class="hero-label">' + esc(c.name) + '</p><h2 id="d-title" class="m-value">' + esc(eur(c.value)) + '</h2>' +
+      '<div class="m-swipe' + sw + '"><p class="hero-label">' + esc(c.name) + ' · ' + esc(kind) + '</p><h2 id="d-title" class="m-value"><span class="d-tk">' + esc(c.tk) + '</span> ' + esc(eur(c.value)) + '</h2>' +
         '<p><span class="pill-chg ' + tone(c.change) + '">' + esc(changeLine(c)) + '</span></p><span class="base">' + esc(baseText(c)) + '</span></div>' +
       '<div id="d-chart" class="chart m-chart" role="img" aria-label="' + esc('Verloop van ' + c.name) + '"></div><div id="d-x" class="xlabels"></div>' +
       '<div id="d-ranges" class="m-seg" role="group" aria-label="Periode van de grafiek"></div>' +
-      '<label class="check"><input type="checkbox" id="d-compare"' + (ui.compare ? ' checked' : '') + '> Vergelijk met portefeuille</label>' +
+      '<label class="check d-cmp"><input type="checkbox" id="d-compare"' + (ui.compare ? ' checked' : '') + '> Vergelijk met je portefeuille</label>' +
       '<div id="d-legend"></div><p id="d-note" class="chart-note"></p>' +
+      detailActs(c) +
     '</div>' +
     '<div class="m-body' + sw + '">' +
       '<div class="m-grid2">' + I.kpis.join('') + '</div>' +
-      '<div class="m-dtabs" role="tablist" aria-label="Onderdelen" style="margin-top:16px">' + tabs.map(([k, l]) =>
-        '<button type="button" role="tab" data-tab="' + k + '" aria-selected="' + (ui.mTab === k) + '">' + l + '</button>').join('') + '</div>' +
-      '<div class="m-stack" role="tabpanel">' + panel + '</div>' +
+      block('Je positie', I.posTile + I.tradeTile) +
+      block('Koers en bereik', I.rangeTile) +
+      block('Agenda', I.agendaTile) +
+      block('Risico', I.riskTile) +
+      block('Waardering', valuationTile(c)) +
+      block('Nieuws, analisten en cijfers', I.research.join('')) +
+      block('Sector en vergelijkbare bedrijven', I.market.tiles.join('') + (I.market.table || '')) +
+      block('Ook in je fondsen', overlapTileC(c)) +
+      '<div id="d-alarm">' + block('Koersalarm', priceAlertTile(c.tk, c.priceNative, c.cur)) + '</div>' +
+      block('Historie', I.histTile) +
+      block('Patronen', I.patterns.join('')) +
       '<p class="foot">' + esc(FOOT) + '</p>' +
     '</div></div>';
 }
