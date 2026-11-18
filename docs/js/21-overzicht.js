@@ -189,21 +189,46 @@ function dayLineText() {
   return txt + breadth + (newsMoodSentence() ? ' ' + newsMoodSentence() : '');
 }
 
-// ---------- Strook met de drie grootste stijgers en dalers van vandaag ----------
-function moversStrip() {
-  if (calmMode()) return '';
-  const pool = M.companies.filter((c) => isNum(c.changePct));
-  if (pool.length < 2) return '';
-  const by = pool.slice().sort((a, b) => b.changePct - a.changePct);
-  const up = by.slice(0, 3);
-  const down = by.slice(-3).reverse().filter((c) => !up.includes(c));
-  const chip = (c) => '<button type="button" class="mv-chip" data-ticker="' + esc(c.tk) + '" aria-label="' +
-    esc(c.name + ', ' + spct(c.changePct) + ' ' + M.dayWord + ', ' + seur(c.change) + '. Openen') + '">' +
-    '<span class="mv-tk">' + esc(c.tk) + '</span>' +
-    '<span class="mv-p ' + tone(c.changePct) + '">' + esc(spct(c.changePct)) + '</span>' +
-    '<span class="mv-e">' + esc(seur(c.change)) + '</span></button>';
-  return '<div class="mv-strip" role="group" aria-label="' + esc('Drie grootste stijgers en dalers ' + M.dayWord) + '">' +
-    up.map(chip).join('') + (down.length ? '<span class="mv-sep" aria-hidden="true"></span>' + down.map(chip).join('') : '') + '</div>';
+// Samenvatting als blokken over de hele breedte: verandering, grootste stijger en daler, en de toon van het nieuws
+function daySumItems() {
+  if (!M) return [];
+  const mood = newsMood(48);
+  const news = mood ? { k: 'Nieuws over je aandelen', v: mood.word.charAt(0).toUpperCase() + mood.word.slice(1),
+    s: mood.pos + ' positief · ' + mood.neg + ' negatief van ' + mood.n + ' koppen', t: mood.pos > mood.neg ? 'gain' : mood.neg > mood.pos ? 'loss' : '' } : null;
+  if (calmMode()) {
+    const m = monthNow();
+    const cur = m.cur || m.prev;
+    return [
+      cur ? { k: m.cur ? 'Deze maand' : fMonLong.format(cur.t), v: seur(cur.v), s: (isNum(cur.pct) ? spct(cur.pct) + ', ' : '') + cur.weeks + (cur.weeks === 1 ? ' weekmeting' : ' weekmetingen'), t: tone(cur.v) }
+        : { k: 'Deze maand', v: '–', s: 'Volgt na twee weekmetingen' },
+      news,
+      { k: 'Rustige modus', v: 'Aan', s: 'Dagveranderingen blijven verborgen' },
+    ].filter(Boolean);
+  }
+  const T = M.tot;
+  if (!isNum(T.change)) return [{ k: M.dayWord.charAt(0).toUpperCase() + M.dayWord.slice(1), v: 'Nog geen metingen', s: 'De tracker meet op werkdagen tussen 08:00 en 22:30' }].concat(news ? [news] : []);
+  const withChange = M.companies.filter((c) => isNum(c.change));
+  const by = withChange.slice().sort((x, y) => y.change - x.change);
+  const best = by[0] && by[0].change > 0 ? by[0] : null;
+  const worst = by.length && by[by.length - 1].change < 0 ? by[by.length - 1] : null;
+  const share = (c) => (Math.abs(T.change) >= 0.01 && Math.sign(c.change) === Math.sign(T.change) ? ', ' + PCT0.format(Math.min(1, c.change / T.change)) + ' van de ' + (T.change > 0 ? 'winst' : 'daling') : '');
+  const pos = (c, k) => ({ k, v: c.tk, s: spct(c.changePct) + ' · ' + seur(c.change) + share(c), t: tone(c.change), tk: c.tk, name: c.name });
+  return [
+    { k: M.dayWord.charAt(0).toUpperCase() + M.dayWord.slice(1), v: seur(T.change), s: spct(T.changePct) + ' · ' + withChange.filter((c) => c.change > 0).length + ' van ' + withChange.length + ' posities omhoog', t: tone(T.change) },
+    best ? pos(best, 'Grootste stijger') : { k: 'Grootste stijger', v: '–', s: 'Geen positie steeg' },
+    worst ? pos(worst, 'Grootste daler') : { k: 'Grootste daler', v: '–', s: 'Geen positie daalde' },
+    news,
+  ].filter(Boolean);
+}
+function daySumHtml() {
+  const items = daySumItems();
+  if (!items.length) return '';
+  const cell = (x) => {
+    const inner = '<span class="ds-k">' + esc(x.k) + '</span><span class="ds-v ' + (x.t || '') + '">' + esc(x.v) + '</span><span class="ds-s">' + esc(x.s || '') + '</span>';
+    return x.tk ? '<button type="button" class="ds-c" data-ticker="' + esc(x.tk) + '" aria-label="' + esc(x.k + ': ' + (x.name || x.v) + ', ' + x.s + '. Openen') + '">' + inner + '</button>'
+      : '<div class="ds-c">' + inner + '</div>';
+  };
+  return items.map(cell).join('');
 }
 
 // ---------- Dividend dat eraan komt: hoeveel dagen, welk bedrag ----------
@@ -370,11 +395,9 @@ function homeExtraTiles() {
   return (calmMode() ? [monthTile()] : []).concat([divCountTile(), mileTile(), streakTile()]);
 }
 
-// Dagsamenvatting, strook en extra tegels tekenen (aangeroepen vanuit renderHome en renderMHome)
+// Dagsamenvatting en extra tegels tekenen (aangeroepen vanuit renderHome en renderMHome)
 function renderHomeExtra(p) {
-  const line = $(p + 'day-line');
-  if (line) line.textContent = dayLineText();
-  const strip = $(p + 'movers-strip');
-  if (strip) { const html = moversStrip(); strip.innerHTML = html; strip.hidden = !html; }
+  const sum = $(p + 'day-line');
+  if (sum) { sum.innerHTML = daySumHtml(); sum.setAttribute('aria-label', dayLineText()); }
   if ($(p + 'home-extra')) fill(p + 'home-extra', homeExtraTiles());
 }
