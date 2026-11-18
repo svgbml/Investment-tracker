@@ -120,6 +120,7 @@ export default {
       await ensureSchema(envIn);
       const c = await shareConf(envIn);
       if (!c || !c.token || !safeEqual(c.token, shr[1])) return json({ ok: false, error: 'Deze deel-link werkt niet (meer).' }, 404, cors);
+      if (shareExpired(c)) return json({ ok: false, error: 'Deze deel-link is verlopen op ' + String(c.until).slice(0, 10) + '.' }, 410, cors);
       let body = await getKv(envIn, 'data_share');
       if (!body) { await saveDataCache(envIn, await buildData(await withKeys(envIn))); body = await getKv(envIn, 'data_share'); }
       return new Response(body, { status: 200, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...cors } });
@@ -133,8 +134,9 @@ export default {
       catch (err) { return json({ ok: false, error: String(err && err.message || err) }, 500, cors); }
     }
 
-    if (!authorized(request, url, envIn)) {
-      return json({ ok: false, error: 'Ongeldige of ontbrekende toegangscode.' }, 401, cors);
+    const auth = await authCheck(request, url, envIn);
+    if (!auth.ok) {
+      return json({ ok: false, error: auth.error || 'Ongeldige of ontbrekende toegangscode.' }, 401, cors);
     }
     try {
       await ensureSchema(envIn);
@@ -147,7 +149,8 @@ export default {
           tok = btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
           await setKv(env, 'cal_token', tok);
         }
-        if (body && body.off) { await setKv(env, 'cal_token', ''); return json({ ok: true, url: null }, 200, cors); }
+        if (body && body.off) { await setKv(env, 'cal_token', ''); await auditLog(env, 'link', 'agenda-link uitgezet'); return json({ ok: true, url: null }, 200, cors); }
+        if (body && body.rotate) await auditLog(env, 'link', 'nieuwe agenda-link gemaakt');
         return json({ ok: true, url: url.origin + '/cal/' + tok + '.ics' }, 200, cors);
       }
       // Eigen adres onthouden (voor meldingen en de link in de weekmail)
@@ -196,15 +199,22 @@ export default {
         return json({ ok: true, results }, 200, cors);
       }
       if (url.pathname === '/api/trade/order' && request.method === 'POST') {
-        try { return json(Object.assign({ ok: true }, await placeOrder(env, await request.json().catch(() => ({})))), 200, cors); }
-        catch (e) { return json({ ok: false, error: String(e && e.message || e) }, 400, cors); }
+        const b = await request.json().catch(() => ({}));
+        try {
+          const out = await placeOrder(env, b);
+          await auditLog(env, 'order', 'order geplaatst: ' + String((b && b.side) || '?') + ' ' + String((b && b.ticker) || '?'));
+          return json(Object.assign({ ok: true }, out), 200, cors);
+        } catch (e) {
+          await auditLog(env, 'order', 'order geweigerd: ' + String(e && e.message || e).slice(0, 100));
+          return json({ ok: false, error: String(e && e.message || e) }, 400, cors);
+        }
       }
       if (url.pathname === '/api/trade/orders' && request.method === 'GET') {
         try { return json(Object.assign({ ok: true }, await openOrders(env)), 200, cors); }
         catch (e) { return json({ ok: false, error: String(e && e.message || e) }, 400, cors); }
       }
       if (url.pathname === '/api/trade/cancel' && request.method === 'POST') {
-        try { const b = await request.json().catch(() => ({})); return json(Object.assign({ ok: true }, await cancelOrder(env, b.id)), 200, cors); }
+        try { const b = await request.json().catch(() => ({})); const out = await cancelOrder(env, b.id); await auditLog(env, 'order', 'order ingetrokken'); return json(Object.assign({ ok: true }, out), 200, cors); }
         catch (e) { return json({ ok: false, error: String(e && e.message || e) }, 400, cors); }
       }
       if (url.pathname === '/api/trade/instruments' && request.method === 'GET') {
@@ -238,6 +248,36 @@ export default {
       }
       if (url.pathname === '/api/mail/test' && request.method === 'POST') {
         return json({ ok: true, message: await weeklyMail(env, true) }, 200, cors);
+      }
+      // Meldingslogboek en wachtrij (ideeën 65, 66, 67)
+      if (url.pathname === '/api/alerts' && request.method === 'GET') {
+        let log = [];
+        try { log = JSON.parse((await getKv(env, 'alert_log')) || '[]'); } catch (e) { log = []; }
+        const q = await alertQueue(env);
+        return json({ ok: true, log: log.slice(-60).reverse(), queue: q.map((x) => ({ at: x.at, title: x.title })), rules: await alertRules(env) }, 200, cors);
+      }
+      // Logboek van je tracker (idee 161)
+      if (url.pathname === '/api/audit' && request.method === 'GET') {
+        return json({ ok: true, log: (await auditList(env)).slice(-100).reverse() }, 200, cors);
+      }
+      // Apparaatcodes (idee 157)
+      if (url.pathname === '/api/sessions' && request.method === 'GET') {
+        return json({ ok: true, devices: (await sessionList(env)).map(sessionPublic), current: auth.kind === 'session' ? auth.id : null, master: auth.kind === 'master' }, 200, cors);
+      }
+      if (url.pathname === '/api/sessions' && request.method === 'POST') {
+        const b = await request.json().catch(() => ({}));
+        const made = await newSession(env, b && b.label, b && b.days);
+        return json({ ok: true, session: made.token, device: made.session }, 200, cors);
+      }
+      // Alles intrekken: deel-link, agenda-link en de codes van alle apparaten (ideeën 68, 157)
+      if (url.pathname === '/api/revoke' && request.method === 'POST') {
+        const b = await request.json().catch(() => ({}));
+        return json(Object.assign({ ok: true }, await revokeThings(env, b)), 200, cors);
+      }
+      // Vergelijken met een gedeelde link van iemand anders, alleen percentages (idee 84)
+      if (url.pathname === '/api/friend' && request.method === 'POST') {
+        try { return json(Object.assign({ ok: true }, await friendCompare(env, await request.json().catch(() => ({})))), 200, cors); }
+        catch (e) { return json({ ok: false, error: String(e && e.message || e) }, 400, cors); }
       }
       if (url.pathname === '/api/share' && request.method === 'GET') {
         const c = await shareConf(env);
@@ -439,6 +479,7 @@ async function saveKey(env, name, value) {
   try { stored = JSON.parse((await getKv(env, 'keys')) || '{}'); } catch (e) { stored = {}; }
   if (v) stored[name] = v; else delete stored[name];
   await setKv(env, 'keys', JSON.stringify(stored));
+  await auditLog(env, 'sleutel', (v ? 'ingevuld of vervangen: ' : 'gewist: ') + name);
   // Nieuwe sleutel: de externe gegevens van vandaag opnieuw plannen
   await setKv(env, 'mkt_planned', '');
 }
@@ -611,9 +652,15 @@ async function loginWithT212(request, envIn, cors) {
   if (!ok) {
     lim.ips[who] = fails + 1; lim.total++;
     await setKv(envIn, 'login_fail', JSON.stringify(lim));
+    await auditLog(envIn, 'inloggen', 'mislukte poging met een Trading 212-sleutel (' + (fails + 1) + 'e deze keer)');
     return json({ ok: false, error: 'Deze sleutel en secret horen niet bij deze Worker. Controleer ze, en het adres van de Worker.' }, 401, cors);
   }
-  return json({ ok: true, token: envIn.WEB_TOKEN, features: await featureStatus(env, envIn) }, 200, cors);
+  await auditLog(envIn, 'inloggen', 'ingelogd met de Trading 212-sleutel');
+  // Dit apparaat krijgt zijn eigen code, zodat de toegangscode zelf niet in de browser hoeft (idee 157).
+  // Oudere versies van de site gebruiken 'token'; die blijft werken.
+  let device = null;
+  try { device = await newSession(envIn, (body && body.label) || 'Nieuw apparaat', (body && body.days) || 0); } catch (e) { console.error('apparaatcode', e); }
+  return json({ ok: true, token: envIn.WEB_TOKEN, session: device ? device.token : null, device: device ? device.session : null, features: await featureStatus(env, envIn) }, 200, cors);
 }
 
 function safeEqual(a, b) {
@@ -650,15 +697,46 @@ async function buildIcs(env) {
   return lines.map((l) => { let out = '', rest = l; while (rest.length > 74) { out += rest.slice(0, 74) + '\r\n '; rest = rest.slice(74); } return out + rest; }).join('\r\n') + '\r\n';
 }
 
+// De meegestuurde code: bij voorkeur in de Authorization-kop, ?token= blijft voor oude clients
+function givenToken(request, url) {
+  const h = request.headers.get('Authorization') || '';
+  return h.startsWith('Bearer ') ? h.slice(7) : (url.searchParams.get('token') || '');
+}
+
 function authorized(request, url, env) {
   const want = env.WEB_TOKEN || '';
   if (!want) return false;
-  const h = request.headers.get('Authorization') || '';
-  const given = h.startsWith('Bearer ') ? h.slice(7) : (url.searchParams.get('token') || '');
+  const given = givenToken(request, url);
   if (given.length !== want.length) return false;
   let diff = 0;
   for (let i = 0; i < want.length; i++) diff |= want.charCodeAt(i) ^ given.charCodeAt(i);
   return diff === 0;
+}
+
+// Toegang: de toegangscode (WEB_TOKEN, geheim bij Cloudflare) of een apparaatcode die via de site is
+// gemaakt. Van een apparaatcode bewaart de Worker alleen de SHA-256, dus de code zelf staat nergens.
+async function authCheck(request, url, envIn) {
+  if (authorized(request, url, envIn)) return { ok: true, kind: 'master' };
+  const given = givenToken(request, url);
+  if (given.length < 20 || given.length > 120) return { ok: false };
+  try {
+    await ensureSchema(envIn);
+    const list = await sessionList(envIn);
+    if (!list.length) return { ok: false };
+    const hash = await sha256Hex(given);
+    const i = list.findIndex((x) => x && typeof x.hash === 'string' && safeEqual(x.hash, hash));
+    if (i < 0) return { ok: false };
+    const s = list[i];
+    const now = Date.now();
+    if (s.until && Date.parse(s.until) < now) {
+      list.splice(i, 1);
+      await setKv(envIn, 'sessions', JSON.stringify(list));
+      return { ok: false, error: 'De code van dit apparaat is verlopen. Log opnieuw in.' };
+    }
+    // Laatst gezien hoogstens één keer per uur wegschrijven
+    if (!s.seen || now - Date.parse(s.seen) > HOUR_MS) { s.seen = isoLocal(now); await setKv(envIn, 'sessions', JSON.stringify(list)); }
+    return { ok: true, kind: 'session', id: s.id };
+  } catch (e) { return { ok: false }; }
 }
 
 // ---------- Tijd ----------
@@ -817,7 +895,7 @@ async function tick(env, now, force) {
         await setKv(env, 'cash_now', JSON.stringify({ cash: r2(cash), at: isoLocal(ts) }));
       } catch (e) { console.error('saldo', e); }
       try { const m = await alertMoves(env, rows, now); if (m) msgs.push(m); } catch (e) { console.error('meldingen', e); }
-      try { const m = await checkPriceAlerts(env, rows); if (m) msgs.push(m); } catch (e) { console.error('koersalarm', e); }
+      try { const m = await checkPriceAlerts(env, rows, now); if (m) msgs.push(m); } catch (e) { console.error('koersalarm', e); }
       try { const m = await depositReminder(env, now); if (m) msgs.push(m); } catch (e) { console.error('inleg', e); }
     }
   }
@@ -828,6 +906,8 @@ async function tick(env, now, force) {
     const year = p.day.slice(0, 4);
     if (!(await getKv(env, 'peil_' + year))) msgs.push(await takePeildatum(env, year));
   }
+  try { const m = await flushAlerts(env, now); if (m) msgs.push(m); } catch (e) { console.error('wachtrij', e); }
+
   const lastHk = await getKv(env, 'hk_hour');
   const curHour = String(hourStart(now.getTime()));
   if (force || lastHk !== curHour) {
@@ -1566,7 +1646,9 @@ async function saveSettings(env, body) {
   }
   if (body && body.alerts && typeof body.alerts === 'object') {
     const a = body.alerts, num2 = (x, lo, hi) => { const v = Number(x); return isFinite(v) && v >= lo && v <= hi ? v : null; };
-    clean.alerts = { move: num2(a.move, 0, 50), earnings: !!a.earnings, insider: !!a.insider, drift: num2(a.drift, 0, 50), ratings: a.ratings !== false };
+    const hr = (x) => { const v = Math.floor(Number(x)); return isFinite(v) && v >= 0 && v <= 23 ? v : 0; };
+    clean.alerts = { move: num2(a.move, 0, 50), earnings: !!a.earnings, insider: !!a.insider, drift: num2(a.drift, 0, 50),
+      quietFrom: hr(a.quietFrom), quietTo: hr(a.quietTo), digest: !!a.digest, digestHour: a.digestHour === undefined ? 18 : hr(a.digestHour), ratings: a.ratings !== false };
   }
   if (body && typeof body.mailAmounts === 'boolean') clean.mailAmounts = body.mailAmounts;
   if (body && typeof body.depositReminder === 'boolean') clean.depositReminder = body.depositReminder;
@@ -2871,15 +2953,26 @@ async function sendPush(env, msg) {
   return sent;
 }
 
-const ALERT_DEFAULTS = { move: 5, earnings: true, insider: true, drift: 5, ratings: true };
+// Stille uren staan uit (quietFrom gelijk aan quietTo) en meldingen gaan los, niet gebundeld
+const ALERT_DEFAULTS = { move: 5, earnings: true, insider: true, drift: 5, quietFrom: 0, quietTo: 0, digest: false, digestHour: 18, ratings: true };
 async function alertRules(env) { const s = await getSettings(env); return Object.assign({}, ALERT_DEFAULTS, (s && s.alerts) || {}); }
 
-// Eén keer per sleutel (bijvoorbeeld "move|2026-11-17|AAPL"); de laatste 400 sleutels worden onthouden
-async function alertOnce(env, key, msg) {
+// Eén keer per sleutel (bijvoorbeeld "move|2026-11-17|AAPL"); de laatste 400 sleutels worden onthouden.
+// 'at' is het moment van de meting: stille uren en de dagbundel worden daaraan afgemeten, niet aan de klok
+// op het moment dat deze functie toevallig draait (die lopen in de cron gelijk, maar in tests niet).
+async function alertOnce(env, key, msg, at) {
   let sent = {};
   try { sent = JSON.parse((await getKv(env, 'alerts_sent')) || '{}'); } catch (e) { sent = {}; }
   if (sent[key]) return false;
-  const n = await sendPush(env, msg);
+  const rules = await alertRules(env);
+  const now = at ? new Date(at) : new Date();
+  // Stille uren en de dagbundel gelden voor alle meldingen, ook de dringende: anders is "stil" niet stil.
+  // Wat wacht, gaat als één melding uit zodra het weer mag (flushAlerts).
+  const quiet = inQuiet(rules, now);
+  const bundle = !!rules.digest;
+  let n = 0;
+  if (quiet || bundle) await queueAlert(env, msg, quiet ? 'stille uren' : 'dagbundel');
+  else { n = await sendPush(env, msg); await alertLogAdd(env, { title: msg.title, body: String(msg.body || '').slice(0, 160), mode: 'direct', devices: n }); }
   sent[key] = isoLocal(Date.now());
   const keys = Object.keys(sent);
   if (keys.length > 400) keys.slice(0, keys.length - 400).forEach((k) => { delete sent[k]; });
@@ -2912,7 +3005,7 @@ async function alertMoves(env, rows, now) {
       title: (tot ? 'Je portefeuille' : h.r.ticker) + ' ' + pct + ' vandaag',
       body: tot ? 'Je beleggingen bewegen vandaag meer dan gewoonlijk.' : (h.r.name || h.r.ticker) + ' ' + (h.ch > 0 ? 'stijgt' : 'daalt') + ' ' + pct + ' sinds het slot van de vorige handelsdag.',
       url: tot ? '#overzicht' : '#bedrijf/' + encodeURIComponent(h.r.ticker), tag: 'move-' + h.r.ticker, urgent: Math.abs(h.ch) >= lim * 2 / 100,
-    });
+    }, now);
   }
   return hits.length ? hits.length + ' meldingen over koersbewegingen.' : '';
 }
@@ -3114,6 +3207,149 @@ async function weeklyMail(env, test) {
 }
 
 // =====================================================================
+// ---------- Logboek en apparaatcodes ----------
+
+// Logboek: wat er met je tracker gebeurde (sleutels gewijzigd, inloggen, orders, deel-links, apparaatcodes).
+// Alleen korte beschrijvingen: nooit een sleutel, code, bedrag of e-mailadres.
+async function auditList(env) { try { const l = JSON.parse((await getKv(env, 'audit')) || '[]'); return Array.isArray(l) ? l : []; } catch (e) { return []; } }
+async function auditLog(env, kind, msg) {
+  try {
+    const list = await auditList(env);
+    list.push({ at: isoLocal(Date.now()), kind: String(kind || '').slice(0, 24), msg: String(msg == null ? '' : msg).replace(/[\u0000-\u001f]/g, ' ').slice(0, 160) });
+    await setKv(env, 'audit', JSON.stringify(list.slice(-100)));
+  } catch (e) { console.error('logboek', e); }
+}
+
+// kv 'sessions' = [{ id, hash, label, at, seen, until }]
+const SESSION_MAX = 10;
+async function sessionList(env) { try { const l = JSON.parse((await getKv(env, 'sessions')) || '[]'); return Array.isArray(l) ? l : []; } catch (e) { return []; } }
+const sessionPublic = (s) => ({ id: s.id, label: s.label, at: s.at, seen: s.seen, until: s.until || null });
+
+async function newSession(env, label, days) {
+  const list = await sessionList(env);
+  const token = b64u(crypto.getRandomValues(new Uint8Array(24)));
+  const d = Number(days);
+  const now = Date.now();
+  const s = {
+    id: b64u(crypto.getRandomValues(new Uint8Array(6))),
+    hash: await sha256Hex(token),
+    label: (String(label || '').replace(/[^A-Za-z0-9 /+.()-]/g, '').trim().slice(0, 40)) || 'Apparaat',
+    at: isoLocal(now), seen: isoLocal(now),
+    until: d > 0 && d <= 400 ? isoLocal(now + d * 864e5) : null,
+  };
+  await setKv(env, 'sessions', JSON.stringify(list.concat([s]).slice(-SESSION_MAX)));
+  await auditLog(env, 'apparaat', 'eigen code gemaakt voor ' + s.label);
+  return { token, session: sessionPublic(s) };
+}
+
+async function revokeThings(env, body) {
+  const out = { devices: 0, links: [] };
+  if (body && body.devices) {
+    out.devices = (await sessionList(env)).length;
+    await setKv(env, 'sessions', '[]');
+    await auditLog(env, 'apparaat', 'alle apparaatcodes ingetrokken (' + out.devices + ')');
+  }
+  if (body && body.links) {
+    if (await getKv(env, 'share')) { await setKv(env, 'share', 'null'); await setKv(env, 'data_share', ''); out.links.push('deel-link'); }
+    if (await getKv(env, 'cal_token')) { await setKv(env, 'cal_token', ''); out.links.push('agenda-link'); }
+    if (out.links.length) await auditLog(env, 'link', 'ingetrokken: ' + out.links.join(' en '));
+  }
+  return out;
+}
+
+// ---------- Meldingen: stille uren, dagbundel en een kort logboek ----------
+// alerts: { quietFrom, quietTo (uur, 0-23; gelijk = uit), digest (bundelen), digestHour } – zie ALERT_DEFAULTS
+function inQuiet(rules, now) {
+  const f = Math.floor(Number(rules.quietFrom)), t = Math.floor(Number(rules.quietTo));
+  if (!(f >= 0 && f <= 23) || !(t >= 0 && t <= 23) || f === t) return false;
+  const h = Number(parts(now).hm.slice(0, 2));
+  return f < t ? h >= f && h < t : h >= f || h < t;
+}
+
+async function alertLogAdd(env, o) {
+  try {
+    let list = [];
+    try { list = JSON.parse((await getKv(env, 'alert_log')) || '[]'); } catch (e) { list = []; }
+    list.push(Object.assign({ at: isoLocal(Date.now()) }, o));
+    await setKv(env, 'alert_log', JSON.stringify(list.slice(-60)));
+  } catch (e) { console.error('meldingslog', e); }
+}
+async function alertQueue(env) { try { const l = JSON.parse((await getKv(env, 'alert_queue')) || '[]'); return Array.isArray(l) ? l : []; } catch (e) { return []; } }
+
+// Een melding die nu niet mag (stille uren) of die gebundeld wordt, gaat in de wachtrij
+async function queueAlert(env, msg, why) {
+  const q = await alertQueue(env);
+  q.push({ at: isoLocal(Date.now()), title: msg.title, body: msg.body, url: msg.url || '', tag: msg.tag || '' });
+  await setKv(env, 'alert_queue', JSON.stringify(q.slice(-30)));
+  await alertLogAdd(env, { title: msg.title, body: String(msg.body || '').slice(0, 160), mode: why, devices: 0 });
+}
+
+// Stuurt de wachtrij als één melding zodra het weer mag (na de stille uren, of in de dagbundel één keer per dag)
+async function flushAlerts(env, now) {
+  const q = await alertQueue(env);
+  if (!q.length) return '';
+  const rules = await alertRules(env);
+  if (inQuiet(rules, now)) return '';
+  const day = parts(now).day;
+  if (rules.digest) {
+    if ((await getKv(env, 'digest_day')) === day) return '';
+    const h = Number(parts(now).hm.slice(0, 2));
+    const want = Math.min(23, Math.max(0, Math.floor(Number(rules.digestHour)) || 18));
+    if (h < want) return '';
+    await setKv(env, 'digest_day', day);
+  }
+  await setKv(env, 'alert_queue', '[]');
+  const one = q.length === 1;
+  const msg = {
+    title: one ? q[0].title : q.length + ' meldingen van je tracker',
+    body: one ? q[0].body : q.map((x) => '\u2022 ' + x.title).join('\n').slice(0, 290),
+    url: one ? q[0].url : '#overzicht', tag: 'bundel',
+  };
+  const n = await sendPush(env, msg);
+  await alertLogAdd(env, { title: msg.title, body: String(msg.body || '').slice(0, 160), mode: 'bundel', devices: n, items: q.length });
+  return q.length + (q.length === 1 ? ' melding' : ' meldingen') + ' uit de wachtrij verstuurd.';
+}
+
+// Haalt een gedeelde weergave van iemand anders op en geeft alleen percentages terug (idee 84).
+// Alleen een adres van de vorm https://host/share/<code>; de link wordt niet bewaard.
+async function friendCompare(env, body) {
+  const u = String((body && body.url) || '').trim();
+  const m = /^https:\/\/([A-Za-z0-9.-]{3,80})\/share\/([A-Za-z0-9_-]{20,80})$/.exec(u);
+  if (!m) throw new Error('Dit is geen deel-link. Een deel-link ziet eruit als https://…workers.dev/share/<code>.');
+  let res;
+  try { res = await fetch(u, { headers: { Accept: 'application/json' } }); }
+  catch (e) { throw new Error('De tracker van de ander antwoordde niet: ' + String(e.message || e).slice(0, 80) + '.'); }
+  if (!res.ok) throw new Error(res.status === 404 || res.status === 410 ? 'Deze deel-link werkt niet (meer).' : 'De andere tracker gaf status ' + res.status + '.');
+  const d = await res.json().catch(() => null);
+  if (!d || !d.ok || !Array.isArray(d.weeks)) throw new Error('De link gaf geen bruikbare gegevens.');
+  await auditLog(env, 'vergelijken', 'percentages van een gedeelde link opgehaald');
+  return { pct: pctSummary(d), since: (d.shared && d.shared.since) || null, generated: d.generated || null, weeks: d.weeks.length };
+}
+
+// Rendement in percentages uit de weekmetingen: deze week, 30 dagen, dit jaar en sinds het begin.
+// Per periode: (waardeverandering - nieuwe inleg) / waarde aan het begin. Werkt ook met geschaalde bedragen.
+function pctSummary(d) {
+  const w = (d.weeks || []).filter((x) => x && isFinite(Number(x.accountValue)));
+  const last = w[w.length - 1];
+  if (!last) return { week: null, month: null, ytd: null, total: null };
+  const since = (from) => {
+    const i = w.findIndex((x) => String(x.date) >= from);
+    const base = i > 0 ? w[i - 1] : i === 0 ? w[0] : null;
+    if (!base || !(base.accountValue > 0) || base === last) return null;
+    const res = last.accountValue - base.accountValue - (last.netDeposits - base.netDeposits);
+    return Math.round((res / base.accountValue) * 10000) / 10000;
+  };
+  const dayIso = (ms) => isoLocal(ms).slice(0, 10);
+  const lastT = Date.parse(String(last.date).slice(0, 19)) || Date.now();
+  return {
+    week: last.weekResultPct == null ? null : Math.round(last.weekResultPct * 10000) / 10000,
+    month: since(dayIso(lastT - 30 * 864e5)),
+    ytd: since(String(last.date).slice(0, 4) + '-01-01'),
+    total: last.totalResultPct == null ? null : Math.round(last.totalResultPct * 10000) / 10000,
+  };
+}
+
+// =====================================================================
 // ---------- Deel-link: alleen-lezen weergave voor iemand anders ----------
 // kv 'share' = { token, amounts, since }. Zonder bedragen worden alle euro's met dezelfde factor geschaald
 // (accountwaarde = 10.000), zodat verhoudingen en procenten kloppen maar echte bedragen niet te zien zijn.
@@ -3133,19 +3369,32 @@ function scaleMoney(d) {
   (d.weeks || []).forEach((w) => obj(w, ['accountValue', 'netDeposits', 'cash', 'costBasis', 'investmentsValue', 'unrealized', 'totalResult', 'weekChange', 'newDeposits', 'weekResult']));
   (d.peil || []).forEach((p) => { obj(p, ['total', 'investments', 'cash']); p.positions = []; });
   Object.values(d.posExtra || {}).forEach((x) => obj(x, ['fx', 'cost']));
+  obj(d.cashNow, ['cash']);
+  (((d.ext2 || {}).pies || {}).list || []).forEach((x) => obj(x, ['invested', 'value', 'result', 'cash', 'divGained', 'goal']));
+  ((d.ext2 || {}).interest || []).forEach((x) => obj(x, ['amount']));
   if (d.events) {
     (d.events.received || []).forEach((x) => obj(x, ['amount', 'qty', 'wht']));
     (d.events.dividends || []).forEach((x) => obj(x, ['estEur']));
   }
 }
 
+// Wat de gedeelde weergave mag zien. Een lijst van wat erin mag (geen lijst van wat eruit moet), zodat een
+// nieuw veld in buildData nooit per ongeluk meegaat. Notities, andere rekeningen, voorkeuren, koersalarmen,
+// sleutels, logboeken en apparaatcodes blijven dus altijd binnen je eigen Worker (idee 163).
+const SHARE_KEYS = ['ok', 'generated', 'currency', 'weeks', 'positions', 'positionsDate', 'today', 'cashNow', 'orders', 'posExtra',
+  'peil', 'events', 'market', 'marketNews', 'research', 'fin', 'etf', 'fx', 'hicp', 'idx', 'ext2', 'intraday', 'hours', 'days'];
+// Uit ext2 mag alleen openbare marktinformatie mee; 'pies' heeft namen die je zelf hebt gekozen
+const SHARE_EXT2_KEYS = ['filings', 'f13', 'econ', 'earnHist'];
+
 function shareData(data, conf) {
-  const d = JSON.parse(JSON.stringify(data));
+  const d = {};
+  SHARE_KEYS.forEach((k) => { if (data[k] !== undefined) d[k] = JSON.parse(JSON.stringify(data[k])); });
   const s = data.settings || {};
   d.settings = { targets: s.targets, targetMode: s.targetMode, watchlist: s.watchlist };
   d.features = { flags: (data.features && data.features.flags) || {}, has: (data.features && data.features.has) || {} };
-  d.shared = { amounts: !!conf.amounts, since: conf.since || null };
-  delete d.part;
+  d.shared = { amounts: !!conf.amounts, since: conf.since || null, until: conf.until || null };
+  if (d.ext2) { const e = {}; SHARE_EXT2_KEYS.forEach((k) => { if (d.ext2[k] !== undefined) e[k] = d.ext2[k]; }); d.ext2 = e; }
+  d.ok = true;
   if (!conf.amounts) scaleMoney(d);
   return d;
 }
@@ -3159,17 +3408,27 @@ async function saveShareCache(env, data) {
 async function shareAction(env, body) {
   let c = (await shareConf(env)) || {};
   const act = body && body.action;
-  if (act === 'off') { await setKv(env, 'share', 'null'); await setKv(env, 'data_share', ''); return { on: false }; }
+  if (act === 'off') { await setKv(env, 'share', 'null'); await setKv(env, 'data_share', ''); await auditLog(env, 'link', 'deel-link uitgezet'); return { on: false }; }
   if (act === 'on' || act === 'rotate' || !c.token) {
     if (act === 'rotate' || !c.token) c.token = b64u(crypto.getRandomValues(new Uint8Array(24)));
     c.since = c.since || isoLocal(Date.now());
+    await auditLog(env, 'link', act === 'rotate' ? 'nieuwe deel-link gemaakt (de oude werkt niet meer)' : 'deel-link gemaakt');
   }
   if (body && typeof body.amounts === 'boolean') c.amounts = body.amounts;
+  // Einddatum: aantal dagen (0 of leeg = zonder einddatum)
+  if (body && body.days !== undefined) {
+    const d = Math.floor(Number(body.days));
+    c.until = d > 0 && d <= 400 ? isoLocal(Date.now() + d * 864e5) : null;
+    if (c.token) await auditLog(env, 'link', c.until ? 'deel-link verloopt op ' + c.until.slice(0, 10) : 'deel-link zonder einddatum');
+  }
   c.amounts = !!c.amounts;
   await setKv(env, 'share', JSON.stringify(c));
   await saveDataCache(env, await buildData(env));
-  return { on: true, token: c.token, amounts: c.amounts, since: c.since };
+  return { on: true, token: c.token, amounts: c.amounts, since: c.since, until: c.until || null };
 }
+
+// Is de deel-link verlopen? (idee 68)
+const shareExpired = (c) => !!(c && c.until && Date.parse(String(c.until).replace(' ', 'T')) < Date.now());
 
 // =====================================================================
 // ---------- Geschiedenis inlezen uit een Trading 212-export (CSV) ----------
@@ -3337,7 +3596,7 @@ async function tickFailed(env, at, err) {
   await setKv(env, 'tick_fail', String(n));
   if (n >= 3 && isLive(at)) {
     const msg = String(err && err.message || err).slice(0, 160);
-    await alertOnce(env, 'watchdog|' + parts(at).day, { title: 'Je tracker meet niet meer', body: 'Al ' + n + ' metingen op rij mislukt: ' + msg + (/401|403|sleutel/i.test(msg) ? ' Controleer je Trading 212-sleutel bij Koppelingen.' : ''), url: '#status', tag: 'watchdog', urgent: true });
+    await alertOnce(env, 'watchdog|' + parts(at).day, { title: 'Je tracker meet niet meer', body: 'Al ' + n + ' metingen op rij mislukt: ' + msg + (/401|403|sleutel/i.test(msg) ? ' Controleer je Trading 212-sleutel bij Koppelingen.' : ''), url: '#status', tag: 'watchdog', urgent: true }, at);
   }
 }
 async function tickOk(env) { if ((await getKv(env, 'tick_fail')) !== '0') await setKv(env, 'tick_fail', '0'); await tickHist(env, true); }
@@ -3358,7 +3617,7 @@ async function tickHist(env, ok) {
 // =====================================================================
 // ---------- Koersalarmen per aandeel ----------
 // settings.priceAlerts = [{ id, sym, op: 'below' | 'above', price, on, hit }]; koers in de munt van het aandeel.
-async function checkPriceAlerts(env, rows) {
+async function checkPriceAlerts(env, rows, now) {
   const s = await getSettings(env);
   const list = Array.isArray(s.priceAlerts) ? s.priceAlerts : [];
   const active = list.filter((a) => a.on && isFinite(a.price));
@@ -3384,7 +3643,7 @@ async function checkPriceAlerts(env, rows) {
     hits++;
     a.on = false; a.hit = isoLocal(Date.now()); a.hitPrice = p;
     await alertOnce(env, 'price|' + a.id + '|' + a.hit.slice(0, 10), { title: a.sym + (a.op === 'below' ? ' onder ' : ' boven ') + String(a.price).replace('.', ','),
-      body: 'Koers nu ' + String(Math.round(p * 100) / 100).replace('.', ',') + '. Het alarm staat nu uit; zet het opnieuw aan op de pagina van het aandeel.', url: held.has(a.sym) ? '#bedrijf/' + encodeURIComponent(a.sym) : '#volg/' + encodeURIComponent(a.sym), tag: 'price-' + a.sym, urgent: true });
+      body: 'Koers nu ' + String(Math.round(p * 100) / 100).replace('.', ',') + '. Het alarm staat nu uit; zet het opnieuw aan op de pagina van het aandeel.', url: held.has(a.sym) ? '#bedrijf/' + encodeURIComponent(a.sym) : '#volg/' + encodeURIComponent(a.sym), tag: 'price-' + a.sym, urgent: true }, now);
   }
   if (hits) { const cur = await getSettings(env); cur.priceAlerts = list; await setKv(env, 'settings', JSON.stringify(cur)); }
   return hits ? hits + ' koersalarmen.' : '';
@@ -3407,7 +3666,7 @@ async function depositReminder(env, now) {
   if (!(s.monthly > 0) || s.depositReminder === false || !(await pushSubs(env)).length) return '';
   const D = await depositsThisMonth(env, now);
   if (!D.known || D.deposited >= s.monthly * 0.9) return '';
-  await alertOnce(env, 'deposit|' + D.month, { title: 'Inleg deze maand', body: 'Tot nu toe ' + nlEur(D.deposited) + ' van de ' + nlEur(s.monthly) + ' die je per maand wilt inleggen (stand weekmeting ' + (D.asOf || '') + ').', url: '#plannen', tag: 'deposit' });
+  await alertOnce(env, 'deposit|' + D.month, { title: 'Inleg deze maand', body: 'Tot nu toe ' + nlEur(D.deposited) + ' van de ' + nlEur(s.monthly) + ' die je per maand wilt inleggen (stand weekmeting ' + (D.asOf || '') + ').', url: '#plannen', tag: 'deposit' }, now);
   return 'Herinnering inleg verstuurd.';
 }
 

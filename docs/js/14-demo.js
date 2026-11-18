@@ -400,8 +400,35 @@ function makeDemoData() {
   };
   const yNow = new Date().getFullYear();
   const peilDemo = [{ date: yNow + '-01-01', total: 1180.55, investments: 1131.2, cash: 49.35, positions: [] }, { date: (yNow - 1) + '-01-01', total: 742.1, investments: 700.4, cash: 41.7, positions: [] }];
+  // Privacy en veiligheid: voorbeelden voor het meldingslogboek, het logboek, de apparaten en de vergelijking
+  const demoPriv = {
+    alerts: {
+      rules: { move: 5, earnings: true, insider: true, drift: 5, quietFrom: 23, quietTo: 7, digest: false, digestHour: 18 },
+      queue: [{ at: dIn(0), title: 'Voorbeeld: PLTR +6,1% vandaag' }],
+      log: [
+        { at: dIn(0), title: 'Voorbeeld: PLTR +6,1% vandaag', body: 'Palantir stijgt +6,1% sinds het slot van de vorige handelsdag.', mode: 'stille uren', devices: 0 },
+        { at: dIn(-1), title: 'Voorbeeld: 3 meldingen van je tracker', body: '\u2022 ASML +5,4% vandaag \u2022 MSFT: morgen kwartaalcijfers \u2022 Je verdeling wijkt af van je doel', mode: 'bundel', devices: 2, items: 3 },
+        { at: dIn(-2), title: 'Voorbeeld: NVDA: morgen kwartaalcijfers', body: 'Verwachte winst per aandeel 1,31.', mode: 'direct', devices: 2 },
+        { at: dIn(-5), title: 'Voorbeeld: MSFT boven 440', body: 'Je koersalarm ging af.', mode: 'direct', devices: 1 },
+      ],
+    },
+    audit: { log: [
+      { at: dIn(0), kind: 'inloggen', msg: 'ingelogd met de Trading 212-sleutel' },
+      { at: dIn(0), kind: 'apparaat', msg: 'eigen code gemaakt voor iPhone/iPad' },
+      { at: dIn(-1), kind: 'order', msg: 'order geplaatst: BUY ASML' },
+      { at: dIn(-3), kind: 'link', msg: 'deel-link gemaakt' },
+      { at: dIn(-3), kind: 'link', msg: 'deel-link verloopt op ' + dIn(27).slice(0, 10) },
+      { at: dIn(-9), kind: 'sleutel', msg: 'ingevuld of vervangen: FINNHUB_KEY' },
+      { at: dIn(-12), kind: 'inloggen', msg: 'mislukte poging met een Trading 212-sleutel (1e deze keer)' },
+    ] },
+    devices: { master: false, current: 'demo1', devices: [
+      { id: 'demo1', label: 'Mac', at: dIn(-30), seen: dIn(0), until: null },
+      { id: 'demo2', label: 'iPhone/iPad', at: dIn(-12), seen: dIn(-1), until: null },
+    ] },
+    friend: { pct: { week: 0.0062, month: 0.0184, ytd: 0.1142, total: 0.0917 }, since: dIn(-60), generated: dIn(0), weeks: 40 },
+  };
   return Object.assign({
-    ok: true, generated: iso(now), currency: 'EUR', weeks, positionsDate: iso(now), positions, today, events, market, marketNews, demoNotes, demoAccounts, demoPrefs, demoViews,
+    ok: true, generated: iso(now), currency: 'EUR', weeks, positionsDate: iso(now), positions, today, events, market, marketNews, demoNotes, demoAccounts, demoPrefs, demoViews, demoPriv,
     orders: { columns: ['time', 'ticker', 'name', 'side', 'qty', 'price', 'currency', 'fxRate', 'net', 'realised', 'feeFx', 'feeOther', 'kind'], rows: orders },
     posExtra, etf, peil: peilDemo, settings: {}, demoTrade,
     intraday: { columns: ['time', 'ticker', 'value'], rows: intraday },

@@ -39,6 +39,7 @@ function openSettings(showImport) {
   if (F && (!F.t212 || !F.fmp || !F.finnhub || !F.sec)) $('links-box').open = true;
   loadLinks();
   if (typeof renderPush === 'function') { renderPush(); renderShare(); }
+  if (typeof renderPrivacy === 'function') renderPrivacy();
   $('dlg-settings').showModal();
   if (!getToken() && !demo) setGo('account');
   else if (showImport === true) setGo('import');
