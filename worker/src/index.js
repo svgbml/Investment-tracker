@@ -81,6 +81,17 @@ function countedEnv(env) {
 }
 // Cloudflare-tellingen per UTC-dag (daar rekent Cloudflare de gratis limieten mee)
 const CF_KEYS = ['d1_read', 'd1_write', 'worker_req'];
+const D1_READ_LIMIT = 5e6, D1_WRITE_LIMIT = 1e5;
+const D1_WARN_AT = 0.7, D1_SAVE_AT = 0.85;
+const SAVE_BUILD_MS = 30 * 60e3;   // in de spaarstand het overzicht hoogstens eens per half uur opbouwen
+// Hoe ver de database vandaag (UTC) is: het hoogste van gelezen en geschreven rijen tegenover hun limiet
+function cfShare(c) { return Math.max((Number(c.d1_read) || 0) / D1_READ_LIMIT, (Number(c.d1_write) || 0) / D1_WRITE_LIMIT); }
+async function cfToday(env) {
+  try { const c = JSON.parse((await getKv(env, 'cf_usage')) || '{}'); return c.day === new Date().toISOString().slice(0, 10) ? c : {}; } catch (e) { return {}; }
+}
+// Spaarstand: vanaf 85% van de daglimiet tot middernacht UTC. Metingen gaan door; opbouwen gaat langzamer,
+// marktgegevens wachten en de site ververst minder vaak.
+async function saveMode(env) { return cfShare(await cfToday(env)) >= D1_SAVE_AT; }
 
 // Schrijf de tellingen van deze aanroep weg (één schrijfactie), per dag, 14 dagen bewaard
 async function flushCalls(env) {
@@ -96,7 +107,18 @@ async function flushCalls(env) {
       try { c = JSON.parse((await getKv(env, 'cf_usage')) || '{}'); } catch (e) { c = {}; }
       if (c.day !== day) c = { day };
       CF_KEYS.forEach((k) => { if (cf[k]) c[k] = (c[k] || 0) + cf[k]; });
+      // Eén keer per dag melden bij 70% en bij het ingaan van de spaarstand (85%)
+      const share = cfShare(c);
+      const step = share >= D1_SAVE_AT ? 'save' : share >= D1_WARN_AT ? 'warn' : null;
+      const fresh = step && c.noted !== step && !(c.noted === 'save' && step === 'warn');
+      if (fresh) c.noted = step;
       await setKv(env, 'cf_usage', JSON.stringify(c));
+      if (fresh && (await pushSubs(env)).length) {
+        const pct = Math.round(share * 100);
+        await alertOnce(env, 'd1|' + step + '|' + day, step === 'save'
+          ? { title: 'Spaarstand: database bijna vol voor vandaag', body: 'De database van je tracker heeft ' + pct + '% van zijn gratis daglimiet gebruikt. Tot middernacht UTC meet hij gewoon door, maar ververst hij minder vaak en wachten de marktgegevens.', url: '#status', tag: 'd1' }
+          : { title: 'Database op ' + pct + '% van de daglimiet', body: 'De database van je tracker heeft vandaag ' + pct + '% van zijn gratis leeslimiet gebruikt. Bij 85% gaat hij vanzelf in de spaarstand.', url: '#status', tag: 'd1' });
+      }
     } catch (e) { /* niet erg */ }
   }
   if (!Object.keys(add).length) return;
@@ -146,6 +168,7 @@ const WORKER = {
         if (isLive(at)) return null;
         // Buiten de meettijden: eerst (1x per dag) de orders, anders een portie marktgegevens
         if (env.T212_KEY && (await getKv(env, 'orders_synced')) !== parts(at).day) return syncOrders(env);
+        if (await saveMode(env)) return 'Spaarstand: marktgegevens wachten tot na middernacht (UTC).';
         return marketStep(env);
       })
       .catch(async (e) => {
@@ -374,6 +397,17 @@ const WORKER = {
         if (part === 'series' && url.searchParams.has('since')) {
           const d = await seriesDelta(env, url.searchParams.get('since'));
           if (d) return new Response(JSON.stringify(d), { status: 200, headers: jh });
+        }
+        // In de spaarstand: de site ververst dan minder vaak (kop X-Tracker-Save)
+        if (await saveMode(env)) jh['X-Tracker-Save'] = '1';
+        // Heeft de site deze versie al (If-None-Match), dan alleen de vingerafdrukken lezen: één rij in plaats van vier
+        const inm = request.headers.get('If-None-Match');
+        if (inm && (part === 'core' || part === 'extra' || part === 'series') && !url.searchParams.has('fresh')) {
+          let t0 = {};
+          try { t0 = JSON.parse((await getKv(env, 'data_etags')) || '{}'); } catch (e) { t0 = {}; }
+          const split0 = url.searchParams.get('split') === '1';
+          const tag0 = part === 'core' && !split0 ? (t0.core && t0.series ? '"' + t0.core.slice(1, 13) + t0.series.slice(1, 13) + '"' : null) : t0[part];
+          if (tag0 && inm === tag0) return new Response(null, { status: 304, headers: { ...jh, ETag: tag0 } });
         }
         let core = await getKv(env, 'data_core'), extra = await getKv(env, 'data_extra'), series = await getKv(env, 'data_series');
         if (!core || !extra || !series || url.searchParams.has('fresh')) {
@@ -697,7 +731,7 @@ function corsHeaders(request, env) {
     'Access-Control-Allow-Origin': allow,
     'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Authorization, Content-Type, If-None-Match',
-    'Access-Control-Expose-Headers': 'ETag',
+    'Access-Control-Expose-Headers': 'ETag, X-Tracker-Save',
     'Vary': 'Origin',
   };
 }
@@ -726,7 +760,7 @@ async function saveDataCache(env, data) {
     env.DB.prepare('INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)').bind('data_core', cs),
     env.DB.prepare('INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)').bind('data_extra', es),
     env.DB.prepare('INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)').bind('data_series', ss),
-    env.DB.prepare('INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)').bind('data_etags', JSON.stringify({ core: await tagOf(core), extra: await tagOf(extra), series: await tagOf(series) })),
+    env.DB.prepare('INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)').bind('data_etags', JSON.stringify({ core: await tagOf(core), extra: await tagOf(extra), series: await tagOf(series), at: Date.now() })),
     env.DB.prepare('DELETE FROM kv WHERE key = ?').bind('data_cache'),
   ]);
   try { await saveShareCache(env, data); } catch (e) { console.error('share', e); }
@@ -1034,8 +1068,15 @@ async function tick(env, now, force) {
     }
   }
   const text = msgs.filter(Boolean).join(' ');
-  if (text) await saveDataCache(env, await buildData(env));
+  if (text && (await buildAllowed(env, now))) await saveDataCache(env, await buildData(env));
   return text;
+}
+// Mag het overzicht nu opnieuw worden opgebouwd? Altijd, behalve in de spaarstand: dan hoogstens eens per half uur.
+async function buildAllowed(env, now) {
+  if (!(await saveMode(env))) return true;
+  let at = 0;
+  try { at = Number(JSON.parse((await getKv(env, 'data_etags')) || '{}').at) || 0; } catch (e) { at = 0; }
+  return (now ? new Date(now).getTime() : Date.now()) - at >= SAVE_BUILD_MS;
 }
 
 // Extra per positie: gemiddelde aankoopprijs, valuta en valuta-effect (fxImpact) van Trading 212
@@ -3045,7 +3086,7 @@ function isDst(localIso) {
 
 export const _test = { parts, isLive, shortTicker, isoLocal, isDst, hourStart, dayOf, newsHistTask, storeNews, noteOpinionDay,
   tradingDay, usTradingDay, shiftDay, weekdayOf, srcPause, srcFail, srcOk, srcState, srcHistState, checkPositions, splitRatio,
-  planResearch, uniqTasks, dbWatch, testKey, r2Backup, r2Info, r2Preview, healthInfo, budgetInfo, buildData, bumpMarket, ensureMarketTables, ensureIndexes, countingDb, flushCalls, srcFail, searchCompanies, checkPriceAlerts };
+  planResearch, uniqTasks, dbWatch, testKey, r2Backup, r2Info, r2Preview, healthInfo, budgetInfo, buildData, bumpMarket, ensureMarketTables, ensureIndexes, countingDb, flushCalls, srcFail, searchCompanies, checkPriceAlerts, saveMode, buildAllowed };
 
 
 // =====================================================================
@@ -4043,12 +4084,12 @@ async function budgetInfo(env) {
   let cf = {};
   try { cf = JSON.parse((await getKv(env, 'cf_usage')) || '{}'); } catch (e) { cf = {}; }
   const cfDay = new Date().toISOString().slice(0, 10);
-  const cfToday = cf.day === cfDay ? cf : {};
+  const cfNow = cf.day === cfDay ? cf : {};
   const cloud = Object.entries(CF_BUDGETS).map(([src, b]) => {
-    const used = Number(cfToday[src] || 0);
+    const used = Number(cfNow[src] || 0);
     return { src, name: b.name, used, limit: b.limit, per: 'dag', utc: true, cloudflare: true, pct: Math.min(1, used / b.limit), note: b.note };
   });
-  return { day, cfDay, cloudflare: cloud, sources: Object.entries(SRC_BUDGETS).map(([src, b]) => {
+  return { day, cfDay, cloudflare: cloud, saveMode: cfShare(cfNow) >= D1_SAVE_AT, sources: Object.entries(SRC_BUDGETS).map(([src, b]) => {
     let used = Number(today[src] || 0);
     // De eigen teller is de waarheid voor de dagbudgetten: die telt ook verzoeken van vóór vandaag mee als de dag gelijk is
     if (src === 'fmp' && fmpC && fmpC.day === day) used = Math.max(used, Number(fmpC.n) || 0);

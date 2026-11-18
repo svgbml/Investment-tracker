@@ -278,7 +278,7 @@ Object.assign(EN, {
   'Volgend dividend': 'Next dividend', 'Stortingen op rij': 'Deposits in a row', 'Maandresultaten': 'Monthly results', 'Net bereikt': 'Just reached',
   'Eerste € 1.000': 'First € 1,000', 'Eerste dividend': 'First dividend', 'Eén jaar beleggen': 'One year of investing', '12 maanden storten op rij': '12 months of deposits in a row',
   'Rustig kijken': 'Calm view', 'Rustige modus: geen dagveranderingen, alleen maandresultaten': 'Calm mode: no daily changes, monthly results only',
-  'Grootste stijger': 'Biggest riser', 'Cloudflare (je Worker en database)': 'Cloudflare (your Worker and database)', 'Reserves per functie': 'Backups per feature', 'bij een limiet of storing': 'when a limit or outage hits', 'gratis abonnement': 'free plan', 'Bijna op': 'Almost used up', 'Let op': 'Watch out', 'Ruim': 'Plenty left', 'Grootste daler': 'Biggest faller', 'Nieuws over je aandelen': 'News about your stocks', 'Rustige modus': 'Calm mode',
+  'Grootste stijger': 'Biggest riser', 'Cloudflare (je Worker en database)': 'Cloudflare (your Worker and database)', 'Reserves per functie': 'Backups per feature', 'Spaarstand': 'Saving mode', 'bij een limiet of storing': 'when a limit or outage hits', 'gratis abonnement': 'free plan', 'Bijna op': 'Almost used up', 'Let op': 'Watch out', 'Ruim': 'Plenty left', 'Grootste daler': 'Biggest faller', 'Nieuws over je aandelen': 'News about your stocks', 'Rustige modus': 'Calm mode',
 });
 EN_RE.push([/^Vraag (\d+) van (\d+)$/, 'Question $1 of $2'], [/^(\d+) van (\d+) goed\.$/, '$1 of $2 correct.'],
   [/^Dat was: (.*)\.$/, 'That was: $1.'], [/^Gegevens bijgewerkt, (.*)$/, 'Data updated, $1'],

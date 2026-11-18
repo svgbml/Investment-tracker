@@ -1307,5 +1307,44 @@ await test('reserves bij een limiet: minuutlimiet kort, vergelijkbare bedrijven 
   setKv('src_health', {});
 });
 
+await test('spaarstand bij de D1-daglimiet en antwoorden zonder de gegevens te lezen', async () => {
+  const T = WM._test;
+  const day = new Date().toISOString().slice(0, 10);
+  // Waarschuwing bij 70%: één keer per dag genoteerd
+  setKv('cf_usage', { day, d1_read: 3.6e6 });
+  const fake = { prepare: () => ({ bind() { return this; }, all: async () => ({ results: [], meta: { rows_read: 1 } }), run: async () => ({ meta: {} }) }), batch: async () => [] };
+  await T.countingDb(fake).prepare('x').all();
+  await T.flushCalls(env);
+  assert.equal(JSON.parse(kv('cf_usage')).noted, 'warn');
+  assert.equal(await T.saveMode(env), false, 'bij 72% nog geen spaarstand');
+  // Spaarstand vanaf 85%: opbouwen hoogstens eens per half uur
+  setKv('cf_usage', { day, d1_read: 4.4e6 });
+  assert.equal(await T.saveMode(env), true);
+  const tags = JSON.parse(kv('data_etags') || '{}');
+  setKv('data_etags', Object.assign({}, tags, { at: Date.now() - 10 * 60e3 }));
+  assert.equal(await T.buildAllowed(env), false, '10 minuten na de vorige opbouw: wachten');
+  setKv('data_etags', Object.assign({}, tags, { at: Date.now() - 31 * 60e3 }));
+  assert.equal(await T.buildAllowed(env), true, 'na een half uur wel');
+  // Een cf_usage van gisteren telt niet
+  setKv('cf_usage', { day: '2000-01-01', d1_read: 4.9e6 });
+  assert.equal(await T.saveMode(env), false);
+
+  // /api/data met If-None-Match: 304 zonder data_core, data_extra en data_series te lezen
+  setKv('cf_usage', { day, d1_read: 4.4e6 });
+  const r1 = await req('/api/data?part=core&split=1');
+  assert.equal(r1.status, 200);
+  assert.equal(r1.headers.get('X-Tracker-Save'), '1', 'site hoort van de spaarstand');
+  const tag = r1.headers.get('ETag');
+  assert.ok(tag, 'ETag');
+  const seen = [];
+  const e = Object.create(env);
+  e.DB = { prepare: (sql) => { seen.push(sql); return DB.prepare(sql); }, batch: (l) => DB.batch(l), exec: (x) => DB.exec(x) };
+  const r2 = await req('/api/data?part=core&split=1', { headers: { 'If-None-Match': tag }, env: e });
+  assert.equal(r2.status, 304);
+  const dataReads = seen.filter((q) => /SELECT value FROM kv/.test(q)).length;
+  assert.ok(dataReads <= 3, 'hooguit vingerafdrukken, spaarstand en schema gelezen (' + dataReads + ')');
+  setKv('cf_usage', {});
+});
+
 console.log((failed ? failed + ' fout, ' : '') + passed + ' geslaagd');
 process.exit(failed ? 1 : 0);

@@ -263,8 +263,9 @@ function cloudflareRow(B) {
   if (!list.length) return '';
   const worst = Math.max(...list.map((b) => b.pct || 0));
   const st = worst >= 0.9 ? '<span class="tag loss">Bijna op</span>' : worst >= 0.7 ? '<span class="tag">Let op</span>' : '<span class="tag gain">Ruim</span>';
-  return '<div class="link-row" data-link="cloudflare"><div class="link-h"><b>Cloudflare (je Worker en database)</b><span class="muted small">gratis abonnement</span>' + st + '</div>' +
-    '<p class="small muted">De Worker en zijn database hebben eigen daglimieten, los van de bronnen hieronder. Ze tellen per dag in UTC: om 01:00 (in de zomer 02:00) begint een nieuwe dag.</p>' +
+  return '<div class="link-row" data-link="cloudflare"><div class="link-h"><b>Cloudflare (je Worker en database)</b><span class="muted small">gratis abonnement</span>' + (B.saveMode ? '<span class="tag loss">Spaarstand</span>' : st) + '</div>' +
+    '<p class="small muted">De Worker en zijn database hebben eigen daglimieten, los van de bronnen hieronder. Ze tellen per dag in UTC: om 01:00 (in de zomer 02:00) begint een nieuwe dag. Bij 70% krijg je een melding; vanaf 85% gaat de Worker in de spaarstand: hij blijft meten, maar bouwt het overzicht hoogstens eens per half uur op, laat de marktgegevens tot na middernacht wachten en de site ververst minder vaak.</p>' +
+    (B.saveMode ? '<p class="small loss">De spaarstand staat nu aan, tot middernacht UTC.</p>' : '') +
     list.map((b) => '<p class="small" style="margin:8px 0 2px"><b>' + esc(b.name) + '</b></p>' + budgetMeter(b) + (b.note && (b.pct || 0) >= 0.7 ? '<p class="small muted">' + esc(b.note) + '</p>' : '')).join('') +
     '</div>';
 }
@@ -489,11 +490,13 @@ async function saveLast(url, d) {
 // met de regels die erbij kwamen (?since=).
 const dataParts = { core: null, extra: null, series: null, tags: {}, seriesTs: 0 };
 let fromSwCache = false;   // het antwoord kwam uit de opslag van de service worker (geen verbinding)
+let serverSave = false;    // de Worker staat in de spaarstand (database bijna aan zijn daglimiet): minder vaak verversen
 async function fetchPart(url, token, part, query) {
   const h = { Authorization: 'Bearer ' + token };
   if (dataParts.tags[part] && dataParts[part]) h['If-None-Match'] = dataParts.tags[part];
   const res = await fetch(url + (url.includes('?') ? '&' : '?') + 'part=' + part + (query || ''), { cache: 'no-store', headers: h });
   if (res.headers.get('X-Tracker-Cached')) fromSwCache = true;
+  serverSave = res.headers.get('X-Tracker-Save') === '1';
   if (res.status === 304) return null;
   const json = await res.json().catch(() => null);
   if (!res.ok || !json) throw new Error((json && json.error) || 'de Worker antwoordde met status ' + res.status);
@@ -625,7 +628,8 @@ async function load() {
       // Niets veranderd: alleen de tijd bijwerken
       $$('.updated').forEach((e) => { e.textContent = (mode === 'm' ? '' : 'Bijgewerkt ') + fDT.format(new Date()); });
     }
-    refreshTimer = setTimeout(load, (Number(CFG.refreshMinutes) || 5) * 60000);
+    // In de spaarstand van de Worker drie keer zo lang wachten (tot middernacht UTC, daarna weer normaal)
+    refreshTimer = setTimeout(load, (Number(CFG.refreshMinutes) || 5) * 60000 * (serverSave ? 3 : 1));
   } catch (err) {
     const offline = !navigator.onLine || err instanceof TypeError;
     if (data && offline) {

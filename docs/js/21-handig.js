@@ -8,6 +8,10 @@
 // (gemaakt met node tools/changelog.mjs); hieronder staat alleen wat de gebruiker merkt.
 // Bij een nieuwe versie: zet de regels van die versie bovenaan, met VERSION uit js/01-basis.js als sleutel.
 const WHATS_NEW = {
+  v64: [
+    'Spaarstand: raakt de database van je Worker 85% van zijn gratis daglimiet, dan blijft hij meten maar ververst hij minder vaak tot middernacht (UTC). Bij 70% krijg je een melding.',
+    'Als er niets nieuws is, leest de Worker nu één rij in plaats van het hele overzicht.',
+  ],
   v63: [
     'De Worker leest veel minder uit zijn database, zodat de gratis daglimiet van Cloudflare niet meer opraakt.',
     'Instellingen > Koppelingen: bij elke bron zie je hoe dicht hij bij zijn limiet zit, en voor je Worker en database hoeveel van de gratis daglimiet er gebruikt is.',
