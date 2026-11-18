@@ -124,7 +124,8 @@ function renderAnalyse() {
   host.innerHTML = (typeof reportHead === 'function' ? reportHead() : '') +
     sec('an-ret', 'Rendement', 'Wat je echt verdiende, tegenover een maatstaf, en met welk risico', [returnsTile(), benchTile(), ratiosTile(), drawdownTile(), AX[0], AX[1], contribTile(), AX[2], concTile(), periodCmpTile(), yearHeatTile(), realUnrealTile(), fxFeeTile(), AX[3], piesTile(), wrappedTile()]) +
     sec('an-exp', 'Doorkijk en kosten', 'Waar je geld werkelijk in zit, en wat het omwisselen kost', [typeof lookAllTile === 'function' ? lookAllTile() : '', typeof fxCalcTile === 'function' ? fxCalcTile() : '']) +
-    sec('an-mkt', 'Markt en onderzoek', 'Indexen, rentes, agenda, en wat insiders en grote beleggers doen', [mkOverviewTile(), econTile(), insiderClusterTile(), earningsMoveTile(), filingsTile(), screenerTile(), etfFinderTile(), f13Tile()]) +
+    sec('an-mkt', 'Markt en onderzoek', 'Indexen, rentes, agenda, en wat insiders en grote beleggers doen', [mkOverviewTile(), econTile(), heatmapTile(), sectorRotTile(), insiderClusterTile(), earningsMoveTile(), filingsTile(), screenerTile(), etfFinderTile(), f13Tile()]) +
+    sec('an-trade', 'Kopen, verkopen en dagboek', 'Oefenen, beveiliging, vragen voor je verkoopt en wat je besloot', [paperTile(), orderSafetyTile(), sellCheckTile(), orderHistoryTile(), decJournalTile(), decYearTile()]) +
     sec('an-tx', 'Transacties en begrippen', 'Alles wat er op je rekening gebeurde, en uitleg van de termen', [openOrdersTile(), ledgerTile(), glossaryTile()]) +
     '<div class="dash-foot"><button type="button" class="btn ghost" data-dash-edit="analyse">Pagina aanpassen</button>' +
     '<button type="button" class="btn ghost" data-report-print title="Afdrukken of opslaan als pdf; in het rapport staan alle secties, ook de verborgen">Rapport (pdf)</button></div>';
@@ -136,7 +137,8 @@ function renderAnalyse() {
 
 // ---------- Telefoon: lange pagina's (Analyse, Plannen) als tabbladen per onderdeel ----------
 const SEC_SHORT = { 'Inleg en doelen': 'Inleg', 'Wat als': 'Wat als', 'Dividend en belasting': 'Dividend', 'Kosten en aankopen': 'Kosten', 'Spreiding en rekeningen': 'Spreiding', 'Delen en exporteren': 'Delen',
-  'Vooruit rekenen': 'Vooruit', 'Belasting, herbalanceren en rente': 'Belasting', 'Rendement': 'Rendement', 'Markt en onderzoek': 'Markt', 'Transacties en begrippen': 'Transacties', 'Doorkijk en kosten': 'Doorkijk' };
+  'Vooruit rekenen': 'Vooruit', 'Belasting, herbalanceren en rente': 'Belasting', 'Rendement': 'Rendement', 'Markt en onderzoek': 'Markt', 'Transacties en begrippen': 'Transacties', 'Doorkijk en kosten': 'Doorkijk',
+  'Kopen, verkopen en dagboek': 'Handel' };
 const secPick = {};
 function secTabs(key) {
   const host = $(key === 'plan' ? 'm-plan-body' : 'm-analyse-body'), bar = $(key === 'plan' ? 'm-plan-tabs' : 'm-analyse-tabs');

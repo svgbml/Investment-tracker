@@ -1792,3 +1792,63 @@ html[data-motion="off"] .mile-dots { display: none; }
 }
 :root[data-theme="dark"] .plx-bank-row select, :root[data-theme="dark"] .plx-bucket select { background: #10141A; border-color: #3A4250; color: var(--ink); }
 :root[data-theme="dark"] .plx-cols > div { background: rgba(255, 255, 255, .04); }
+
+/* ===== Markt en Handel: warmtekaart, sectorrotatie, oefenmodus, orderbeveiliging, vragenlijst en beslisdagboek ===== */
+
+/* Warmtekaart (49): vlakken zo groot als hun gewicht, kleuren van de kalender (heat-g1 … heat-l3) */
+.heatmap { position: relative; width: 100%; aspect-ratio: 16 / 9; margin-top: 10px; }
+.hm-c { position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  padding: 2px; border: 2px solid var(--surface); border-radius: 10px; background: var(--empty); color: #14181F;
+  font: inherit; line-height: 1.1; overflow: hidden; cursor: pointer; transition: transform .18s var(--ease); }
+.hm-c b { font-size: 13px; font-weight: 700; }
+.hm-c i { font-size: 12px; font-style: normal; }
+.hm-c.hm-0 { background: #E7E9ED !important; }
+.hm-c.hm-na { background: var(--empty); color: var(--ink-2); }
+.hm-c.heat-g3, .hm-c.heat-l3 { color: #FFFFFF; }
+.hm-c.hm-s b { font-size: 10px; }
+.hm-c.hm-s i { display: none; }
+.hm-c:hover, .hm-c:focus-visible { transform: scale(1.04); z-index: 2; outline: 2px solid var(--accent); }
+html[data-motion="off"] .hm-c { transition: none; }
+html[data-motion="off"] .hm-c:hover, html[data-motion="off"] .hm-c:focus-visible { transform: none; }
+.heat-key i.hm-0 { background: #E7E9ED; }
+@media (max-width: 700px) { .heatmap { aspect-ratio: 3 / 4; } .hm-c b { font-size: 12px; } }
+
+/* Sectorrotatie (51) */
+.sector-rot tr.mine .co b { color: var(--accent); }
+.sector-rot .rot-own { color: var(--ink-2); font-weight: 400; }
+.rot-bar { display: block; position: relative; width: 70px; height: 8px; border-radius: 4px; background: var(--empty); }
+.rot-bar i { position: absolute; top: 0; left: 0; height: 8px; border-radius: 4px; }
+.rot-bar i.pos { background: var(--gain); }
+.rot-bar i.neg { background: var(--loss); }
+
+/* Oefenmodus (56): overal te herkennen aan oranje */
+.paper-tile.on { outline: 2px solid #D9822B; }
+.paper-badge { align-self: center; padding: 2px 10px; border-radius: 999px; background: #D9822B; color: #FFFFFF; font-size: 12px; font-weight: 700; }
+.paper-warn { color: #8A4A0E; }
+:root[data-theme="dark"] .paper-warn { color: #EDB27A; }
+.paper-banner, .demo-banner-dlg { margin: 8px 0 0; padding: 8px 12px; border-radius: 12px; background: #F8E1C9; color: #8A4A0E; font-size: 13px; }
+.demo-banner-dlg { background: var(--band); color: var(--band-ink); }
+.trade-dlg.paper .dlg-card { border: 2px solid #D9822B; }
+.trade-dlg.paper .btn.primary, .trade-btns.paper .btn.primary { background: #D9822B; border-color: #D9822B; color: #FFFFFF; }
+
+/* Tweede bevestiging (53) en extra controle (158) */
+.ord-big, .ord-lock { margin-top: 10px; padding: 10px 12px; border-radius: 12px; background: var(--bg); border: 1px solid var(--rule); }
+.ord-big p, .ord-lock p { margin: 0 0 6px; }
+.ord-lock .wm-l { margin-top: 6px; }
+.ord-safety .seg.light { flex-wrap: wrap; }
+
+/* Vragenlijst bij verkopen (74) */
+.sell-check { margin-top: 10px; border-top: 1px solid var(--rule); padding-top: 8px; }
+.sell-check summary { cursor: pointer; font-weight: 600; font-size: 14px; }
+.sell-check ul { margin: 6px 0 4px; padding-left: 20px; }
+.sc-qs { display: grid; gap: 10px; margin-top: 12px; }
+.sc-q p { margin: 0 0 4px; }
+
+/* Orders met hun reden (55) en beslisdagboek (75) */
+.tx-why { padding: 6px 0; border-bottom: 1px solid var(--rule); }
+.tx-why:last-child { border-bottom: 0; }
+.tx-why.stale { background: color-mix(in srgb, var(--loss) 7%, transparent); border-radius: 12px; padding: 6px 8px; }
+.why-ask { padding: 4px 0 8px; }
+.why-ask p { margin: 0 0 6px; }
+.dec-journal textarea, .dec-journal input[type="date"] { font: inherit; }
+.dec-journal .tx-v, .dec-year .tx-v { display: flex; align-items: center; gap: 6px; }

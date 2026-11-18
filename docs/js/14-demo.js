@@ -171,9 +171,13 @@ function makeDemoData() {
     const hist = i % 3 === 2 ? mDays.slice(-1) : mDays;
     prices[sym] = hist.slice().reverse().map((d) => { const out = [d, +v.toFixed(2)]; v /= 1 + gauss() * 0.015; return out; }).reverse();
   });
+  // Sectorrotatie (idee 51) heeft een half jaar dagveranderingen nodig, dus een langere reeks dagen
+  const rotDays = [];
+  const rd = new Date(now); rd.setDate(rd.getDate() - 1);
+  while (rotDays.length < 190) { if (rd.getDay() % 6) rotDays.unshift(iso(rd).slice(0, 10)); rd.setDate(rd.getDate() - 1); }
   const sectorsMk = {}, industriesMk = {};
   ['Technology', 'Healthcare', 'Industrials', 'Communication Services', 'Consumer Cyclical', 'Consumer Defensive', 'Financial Services', 'Energy', 'Basic Materials', 'Real Estate', 'Utilities']
-    .forEach((sec) => { const drift = gauss() * 0.15; sectorsMk[sec] = { NASDAQ: mDays.map((d) => [d, +(drift + gauss() * 0.8).toFixed(3)]), NYSE: mDays.map((d) => [d, +(drift + gauss() * 0.7).toFixed(3)]) }; });
+    .forEach((sec) => { const drift = gauss() * 0.15; sectorsMk[sec] = { NASDAQ: rotDays.map((d) => [d, +(drift + gauss() * 0.8).toFixed(3)]), NYSE: rotDays.map((d) => [d, +(drift + gauss() * 0.7).toFixed(3)]) }; });
   new Set(Object.values(sectorOfSym).map((x) => x[1])).forEach((ind) => { const drift = gauss() * 0.2; industriesMk[ind] = { NASDAQ: mDays.map((d) => [d, +(drift + gauss() * 1.1).toFixed(3)]), NYSE: mDays.map((d) => [d, +(drift + gauss() * 1).toFixed(3)]) }; });
   // Waardering: koers-winstverhouding en dividendrendement, nu en per jaar (voorbeelden)
   const valuation = {};
@@ -199,6 +203,8 @@ function makeDemoData() {
     const nBuys = 1 + (i % 3);
     for (let k = 0; k < nBuys; k++) {
       const d = new Date(dates[Math.max(0, nD - 60 + k * 17 + i)]); d.setHours(15, 30 + i, 0, 0);
+      // Idee 55: de eerste aankoop van KO ligt ruim een half jaar terug, zodat de vraag "klopt je reden nog?" te zien is
+      if (pp.ticker === 'KO' && k === 0) d.setDate(d.getDate() - 190);
       const q = pp.quantity / nBuys, net = +(pp.cost / nBuys).toFixed(2);
       orders.push([iso(d), pp.ticker, pp.name, 'BUY', +q.toFixed(6), +(posExtra[pp.ticker].avg).toFixed(2), cur, fxr, net, 0, cur === 'USD' ? +(net * 0.0015).toFixed(2) : 0, 0, 'TRADE']);
     }
@@ -374,12 +380,30 @@ function makeDemoData() {
   // Hoe vaak een bedrijfspagina is geopend (normaal per apparaat bijgehouden; hier een voorbeeld)
   const demoViews = {};
   demoViews[String(yNow0)] = { ASML: 23, NVDA: 17, MSFT: 12, PLTR: 9, KO: 5, TSM: 4 };
+  // Ideeën 56, 74 en 75: oefenboek, antwoorden op de vragenlijst en notities in het beslisdagboek
+  const nvdaPr = (profiles.NVDA && profiles.NVDA.price) || 180;   // koersen uit de demo zelf, anders klopt het oefenresultaat niet
+  const asmlPr = (posExtra.ASML && posExtra.ASML.price) || 636;
+  const oefTrade = (id, dag, key, label, side, qty, pr, usd) => ({ id, t: dIn(dag) + (side === 'SELL' ? 'T11:30' : 'T10:12'), key, label, side, qty,
+    eur: +(qty * pr / (usd ? 1.16 : 1)).toFixed(2), price: +pr.toFixed(2), cur: usd ? 'USD' : 'EUR' });
+  const oefTrades = [oefTrade('oef1', -24, '~NVDA', 'NVDA', 'BUY', 1.2, nvdaPr * 0.94, true),
+    oefTrade('oef2', -11, 'ASML', 'ASML', 'BUY', 0.3, asmlPr * 0.98, false),
+    oefTrade('oef3', -4, '~NVDA', 'NVDA', 'SELL', 0.4, nvdaPr * 1.01, true)];
+  const oefSaldo = oefTrades.reduce((v, x) => v + (x.side === 'SELL' ? x.eur : -x.eur), 1000);
+  const demoTrade = {
+    paper: { on: false, start: 1000, cash: +oefSaldo.toFixed(2), trades: oefTrades },
+    sellCheck: { KO: { d: dIn(-9), a: { reden: 'ja', koop: 'ja', groot: 'ja', plan: 'weet', kosten: 'nee' } } },
+    decisions: [
+      { id: 'dec1', d: dIn(-6), key: 'PLTR', text: 'Een deel verkocht: de positie werd groter dan ik wilde en de waardering is hoog.' },
+      { id: 'dec2', d: dIn(-52), key: 'ASML', text: 'Bijgekocht na de daling; de reden van de eerste aankoop staat nog.' },
+      { id: 'dec3', d: dIn(-400), key: '', text: 'Besloten elke maand hetzelfde bedrag in te leggen en niet meer op het nieuws te reageren.' },
+    ],
+  };
   const yNow = new Date().getFullYear();
   const peilDemo = [{ date: yNow + '-01-01', total: 1180.55, investments: 1131.2, cash: 49.35, positions: [] }, { date: (yNow - 1) + '-01-01', total: 742.1, investments: 700.4, cash: 41.7, positions: [] }];
   return Object.assign({
     ok: true, generated: iso(now), currency: 'EUR', weeks, positionsDate: iso(now), positions, today, events, market, marketNews, demoNotes, demoAccounts, demoPrefs, demoViews,
     orders: { columns: ['time', 'ticker', 'name', 'side', 'qty', 'price', 'currency', 'fxRate', 'net', 'realised', 'feeFx', 'feeOther', 'kind'], rows: orders },
-    posExtra, etf, peil: peilDemo, settings: {},
+    posExtra, etf, peil: peilDemo, settings: {}, demoTrade,
     intraday: { columns: ['time', 'ticker', 'value'], rows: intraday },
     hours: { columns: ['hour', 'ticker', 'open', 'close', 'low', 'high', 'avg'], rows: hours },
     days: { columns: ['date', 'ticker', 'open', 'close', 'low', 'high', 'avg', 'range', 'rangePct'], rows: days },

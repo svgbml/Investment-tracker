@@ -39,6 +39,7 @@ const demoSettings = () => {
   }
   // Voorbeeldvoorkeuren uit 14-demo.js aanvullen (alleen wat nog niet is ingesteld)
   if (data && data.demoPrefs) o.prefs = Object.assign({}, data.demoPrefs, o.prefs);
+  if (data && data.demoTrade) o.prefs = Object.assign({}, data.demoTrade, o.prefs);
   return o;
 };
 const plan = { mode: null, draft: null, amount: 100, years: 10, monthly: null, goal: null, status: '', year: null };

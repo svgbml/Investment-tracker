@@ -477,7 +477,7 @@ await test('kopen en verkopen: uit, grenzen, dubbel, verkopen, sleutelrecht, ann
   routes = [[/t212\.test\/api\/v0\/equity\/orders\/market/, async (u, init) => { sent.push(JSON.parse(init.body)); return reply({ id: 9001, status: 'NEW', ticker: 'AAPL_US_EQ' }); }],
     [/t212\.test\/api\/v0\/equity\/orders\/limit/, async (u, init) => { sent.push(JSON.parse(init.body)); return reply({ id: 9002, status: 'NEW' }); }],
     [/t212\.test\/api\/v0\/equity\/orders\/9002$/, (u, init) => { assert.equal(init.method, 'DELETE'); return reply('', 200); }],
-    [/t212\.test\/api\/v0\/equity\/orders$/, reply([{ id: 9002, ticker: 'AAPL_US_EQ', type: 'LIMIT', status: 'NEW', quantity: 1, limitPrice: 200 }])]];
+    [/t212\.test\/api\/v0\/equity\/orders$/, reply([{ id: 9002, ticker: 'AAPL_US_EQ', type: 'LIMIT', status: 'NEW', quantity: 1, filledQuantity: 0.25, limitPrice: 200, creationTime: '2026-11-18T10:00:00Z' }])]];
   // Boven de grens per order
   r = await jsonOf(await req('/api/trade/order', { method: 'POST', body: { side: 'BUY', type: 'market', ticker: 'AAPL_US_EQ', quantity: 2, estEur: 350, clientId: 'abcdefgh-2' } }));
   assert.equal(r.ok, false); assert.match(r.error, /grens per order/);
@@ -502,6 +502,10 @@ await test('kopen en verkopen: uit, grenzen, dubbel, verkopen, sleutelrecht, ann
   // Openstaande orders en annuleren
   const o = await jsonOf(await req('/api/trade/orders'));
   assert.equal(o.open[0].id, 9002); assert.ok(o.log.length >= 2);
+  // De lijst met openstaande orders geeft ook door wat er al uitgevoerd is en wanneer de order is ingelegd
+  assert.equal(o.open[0].filled, 0.25);
+  assert.equal(o.open[0].created, '2026-11-18T10:00:00Z');
+  assert.equal(o.open[0].limitPrice, 200);
   r = await jsonOf(await req('/api/trade/cancel', { method: 'POST', body: { id: 9002 } }));
   assert.equal(r.ok, true, JSON.stringify(r));
   // Sleutel zonder orderrecht: duidelijke uitleg

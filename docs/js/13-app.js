@@ -97,8 +97,22 @@ Object.assign(EN, {
   'Dag en tijdzone': 'Day and time zone', 'Testen': 'Test', 'Voorbeeld': 'Preview', 'Nu een kopie maken': 'Make a copy now', 'Bronnen': 'Sources',
   'Grootste veranderingen': 'Biggest changes', 'Alle bedrijven bekijken': 'View all companies', 'Zoek op naam of ticker': 'Search by name or ticker', 'Nog geen metingen van vandaag': 'No measurements today yet',
 });
+// Markt en handel: warmtekaart, sectorrotatie, oefenmodus, orderbeveiliging, vragenlijst en beslisdagboek
 // Bedrijven en volglijst: indeling, aankopen per keer, dagboek, eigen koersdoel en de tickerkaart
 Object.assign(EN, {
+  'Warmtekaart': 'Heatmap', 'Mijn posities': 'My positions', 'Sectorrotatie': 'Sector rotation', 'Jouw deel': 'Your share',
+  '1 maand': '1 month', '3 maanden': '3 months', '6 maanden': '6 months', 'Alleen wat mijn munten of landen raakt': 'Only what affects my currencies or countries',
+  'Kopen, verkopen en dagboek': 'Buying, selling and journal', 'Handel': 'Trading',
+  'Oefenmodus': 'Practice mode', 'Oefenmodus aan': 'Practice mode on', 'Oefenorders': 'Practice orders', 'Oefensaldo': 'Practice balance',
+  'Oefenorder plaatsen': 'Place practice order', 'Oefenboek leegmaken': 'Clear practice book', 'Oefensaldo bij opnieuw beginnen': 'Practice balance when starting over',
+  'Oefenposities': 'Practice positions', 'Totaal oefenboek': 'Practice book total', 'Oefensaldo vrij': 'Practice cash free',
+  'Orderbeveiliging': 'Order security', 'Ontgrendelen': 'Unlock', 'PIN bewaren': 'Save PIN', 'PIN wissen': 'Clear PIN', 'Extra controle na': 'Extra check after', 'Controle met': 'Check with',
+  'Moet ik verkopen?': 'Should I sell?', 'Vragen om eerst na te lopen': 'Questions to run through first', 'Antwoorden bewaren': 'Save answers',
+  'Als notitie in je beslisdagboek': 'Save as a note in your decision journal', 'Ja': 'Yes', 'Nee': 'No', 'Weet ik niet': 'Not sure',
+  'Orders met hun reden': 'Orders and your reasons', 'Reden toevoegen': 'Add reason', 'Reden bewerken': 'Edit reason', 'Reden bijwerken': 'Update reason', 'Ja, nog geldig': 'Yes, still valid',
+  'Beslisdagboek': 'Decision journal', 'Notitie bewaren': 'Save note', 'Jaaroverzicht van je beslissingen': 'Annual review of your decisions',
+  'Datum': 'Date', 'Notitie': 'Note', 'Aandeel': 'Stock', 'Na deze order': 'After this order', 'Als je dit echt zou doen': 'If you really did this', 'Sector daarna': 'Sector afterwards', 'Risicoklasse portefeuille': 'Portfolio risk class',
+  'Bedrag ter bevestiging': 'Amount to confirm', 'Grote order.': 'Large order.', 'Extra controle.': 'Extra check.',
   'Indeling': 'Grouping', 'Tegels': 'Tiles', 'Lijst': 'List', 'Eén lijst': 'One list', 'Munt': 'Currency', 'Pie': 'Pie', 'Deel': 'Share',
   'Koersalarm': 'Price alert', 'Aankopen per keer': 'Purchases one by one', 'Kostprijsmethode': 'Cost basis method', 'FIFO': 'FIFO',
   'Aantal nu': 'Quantity now', 'Kostprijs per stuk': 'Cost per share', 'Ingelegd in wat je nog hebt': 'Invested in what you still hold',
@@ -107,6 +121,7 @@ Object.assign(EN, {
   'Dagboek': 'Journal', 'Toevoegen': 'Add', 'Openen': 'Open', 'Bekijken': 'Preview', 'Sluiten': 'Close',
   'Lijst met symbolen invoeren': 'Import a list of tickers', 'Zonder label': 'Without a label', 'Waarom volg je dit?': 'Why are you watching this?',
 });
+
 // Duits en Frans: dezelfde sleutels als EN; wat hier ontbreekt, valt terug op het Engels
 const DE = {
   'Overzicht': 'Übersicht', 'Bedrijven': 'Firmen', 'Plannen': 'Planen', 'Nieuws': 'News', 'Statistieken': 'Statistiken', 'Instellingen': 'Einstellungen', 'Analyse': 'Analyse',

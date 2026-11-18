@@ -49,12 +49,18 @@ function econItems() {
   return out.filter((o) => o.t != null && o.t >= today).sort((a, b) => a.t - b.t).slice(0, 12);
 }
 function econTile() {
-  const L = econItems();
+  const all = econItems();
   const has = !!(ext2().econ && ext2().econ.items);
+  // Filter (idee 50): alleen gebeurtenissen die een flink deel van je beleggingen raken, via de munt of het land
+  const mine = econMineOn();
+  const L = mine ? all.filter((o) => econImpact(o).share >= ECON_MIN) : all;
+  const hidden = all.length - L.length;
   return '<section class="tile pad"><h3>Economische agenda</h3>' +
-    (L.length ? '<div class="tx-list">' + L.map((o) => '<div class="tx"><span class="tag' + (o.who === 'ECB' ? ' gain' : '') + '">' + esc(o.who) + '</span><span class="tx-m"><b>' + esc(o.name) + '</b><span class="sub">' + esc(fD.format(o.t) + ', ' + whenText(o.t)) + '</span></span></div>').join('') + '</div>'
-      : '<p class="muted">Geen bekende data in de komende weken.</p>') +
-    '<p class="sub" style="margin-top:8px">' + (has ? 'Publicaties uit de VS komen van FRED; ' : 'Met een gratis FRED-sleutel (FRED_KEY) zie je ook inflatie, banen en groei in de VS; ') + 'rentebesluiten volgens de vergaderkalenders van de ECB en de Fed. Op zulke dagen bewegen beurzen vaak meer.</p></section>';
+    '<label class="check small"><input type="checkbox" data-econ-mine' + (mine ? ' checked' : '') + '> Alleen wat mijn munten of landen raakt</label>' +
+    (L.length ? '<div class="tx-list" style="margin-top:8px">' + L.map((o) => '<div class="tx"><span class="tag' + (o.who === 'ECB' ? ' gain' : '') + '">' + esc(o.who) + '</span><span class="tx-m"><b>' + esc(o.name) + '</b><span class="sub">' + esc(fD.format(o.t) + ', ' + whenText(o.t) + (econShareText(o) ? ' · ' + econShareText(o) : '')) + '</span></span></div>').join('') + '</div>'
+      : '<p class="muted">' + (mine && all.length ? 'Geen gebeurtenis in de komende weken die minstens ' + esc(P1.format(ECON_MIN)) + ' van je beleggingen raakt.' : 'Geen bekende data in de komende weken.') + '</p>') +
+    (mine && hidden > 0 ? '<p class="small muted" style="margin-top:6px">' + hidden + (hidden === 1 ? ' gebeurtenis valt' : ' gebeurtenissen vallen') + ' buiten het filter.</p>' : '') +
+    '<p class="sub" style="margin-top:8px">' + (has ? 'Publicaties uit de VS komen van FRED; ' : 'Met een gratis FRED-sleutel (FRED_KEY) zie je ook inflatie, banen en groei in de VS; ') + 'rentebesluiten volgens de vergaderkalenders van de ECB en de Fed. Op zulke dagen bewegen beurzen vaak meer. Het filter kijkt naar de munt waarin je aandelen noteren en het land uit het bedrijfsprofiel; de agenda zelf bevat geen sectorinformatie.</p></section>';
 }
 
 // ---------- Screener over de bedrijven die de Worker kent ----------
