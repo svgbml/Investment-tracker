@@ -51,6 +51,18 @@ if (vers.size !== 1 || !cache || !vers.has(cache[1]) || !ver || ver[1] !== cache
 for (const m of index.matchAll(/src="(js\/[^"?]+)/g)) if (!files.includes(m[1].slice(3))) fail('index.html laadt ' + m[1] + ', dat bestand bestaat niet');
 files.forEach((f) => { if (!sw.includes('./js/' + f)) fail('js/' + f + ' staat niet in de cachelijst van sw.js'); });
 
+// 4a. index.html: elk blok-element afgesloten en geen id dubbel (na samenvoegen bleven er eens een <section> en een </div> scheef staan)
+{
+  const html = index.replace(/<!--[\s\S]*?-->/g, '');
+  for (const tag of ['div', 'section', 'dialog', 'form', 'nav', 'header', 'main', 'ul', 'ol', 'details', 'button', 'label', 'p', 'span']) {
+    const open = (html.match(new RegExp('<' + tag + '\\b', 'g')) || []).length, close = (html.match(new RegExp('</' + tag + '>', 'g')) || []).length;
+    if (open !== close) fail('index.html: ' + open + ' keer <' + tag + '> maar ' + close + ' keer </' + tag + '>');
+  }
+  const ids = new Map();
+  for (const m of html.matchAll(/\sid="([^"]+)"/g)) ids.set(m[1], (ids.get(m[1]) || 0) + 1);
+  ids.forEach((n, id) => { if (n > 1) fail('index.html: id "' + id + '" staat er ' + n + ' keer'); });
+}
+
 // 4. CSS: elke { heeft een }. Eén ontbrekende accolade (bijvoorbeeld na samenvoegen) zet alles daarna stil in een @media-blok.
 {
   const css = readFileSync(join(root, 'style.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g, '""');

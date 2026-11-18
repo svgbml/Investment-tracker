@@ -592,7 +592,7 @@ function drawHero(p, animate) {
   const r = heroRangeNow();
   const pts = seriesFor(TOTAL, r);
   // Periodekeuze (bewaard per apparaat) en de keuze voor een vergelijkingslijn: zie js/21-overzicht.js
-  segButtons($(p + 'hero-ranges'), heroRangeList(), r, (k) => { ui.heroRange = k; saveHeroRange(k); drawHero(p, true); });
+  segButtons($(p + 'hero-ranges'), heroRangeList(), r, (k) => { ui.heroRange = k; saveHeroRange(k); if (typeof heroCmpFitRange === 'function') heroCmpFitRange(k); drawHero(p, true); });
   heroCmpButtons(p);
   const cmp = heroCmpSets(pts);
   lineChart($(p + 'hero-chart'), [{ pts, color: C.accent, width: 2.5, label: 'Jouw beleggingen' }].concat(cmp.sets), {

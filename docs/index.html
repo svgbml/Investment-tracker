@@ -15,10 +15,10 @@
   <meta name="apple-mobile-web-app-title" content="Beleggen">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>Investeringstracker</title>
-  <script src="config.js?v=59"></script>
-  <script src="js/00-vroeg.js?v=59"></script>
+  <script src="config.js?v=60"></script>
+  <script src="js/00-vroeg.js?v=60"></script>
   <link rel="preload" href="fonts/figtree-latin.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="style.css?v=59">
+  <link rel="stylesheet" href="style.css?v=60">
 </head>
 <body data-page="home">
 
@@ -67,13 +67,12 @@
     <div id="offline-banner" class="banner offline" role="status" hidden></div>
     <div id="update-banner" class="banner update" role="status" hidden>Er is een nieuwe versie van de tracker. <button type="button" class="btn primary" data-upd="now">Nu bijwerken</button> <button type="button" class="linklike" data-upd="later">Later</button></div>
     </div>
-    <section id="welcome" class="welcome" aria-labelledby="wl-h1" hidden>
     <section id="whatsnew" class="banner whatsnew" role="status" hidden>
       <b id="whatsnew-title">Wat is er nieuw</b>
       <ul id="whatsnew-list"></ul>
       <button type="button" class="btn ghost" data-wn-close>Begrepen</button>
     </section>
-    <section id="welcome" class="welcome" hidden>
+    <section id="welcome" class="welcome" aria-labelledby="wl-h1" hidden>
       <div class="wl-top">
         <span class="wl-brand"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-logo"/></svg>Investeringstracker</span>
         <div class="wl-lang" role="group" aria-label="Taal">
@@ -378,12 +377,14 @@
       <button type="button" class="btn primary" id="lock-go">Ontgrendelen</button>
       <p class="small" id="lock-st" role="status"></p>
       <button type="button" class="linklike small" id="lock-escape" hidden>Vergrendeling kwijt? Tracker van dit apparaat wissen</button>
+    </div>
+  </div>
+
   <dialog id="dlg-alarm" class="dlg-alarm" aria-labelledby="dlg-alarm-title">
     <div class="dlg-alarm-top">
       <h2 id="dlg-alarm-title">Koersalarm</h2>
       <button type="button" class="set-close" data-alarm-close aria-label="Sluiten"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-sluiten"/></svg></button>
     </div>
-  </div>
     <div id="alarm-body"></div>
   </dialog>
 
@@ -563,49 +564,48 @@
   <div id="tip" class="tip" role="tooltip" hidden></div>
   <!-- Korte meldingen voor schermlezers (gegevens bijgewerkt, order verstuurd, volglijst aangepast) -->
   <div id="a11y-live" class="sr-only" role="status" aria-live="polite"></div>
-  <div id="tip" class="tip" role="status" hidden></div>
   <!-- Meldingen (gelukt of mislukt): één live-gebied, zie js/15-ui.js -->
   <div id="toasts" class="toasts" role="status" aria-live="polite" aria-atomic="false"></div>
   <div id="print-area" aria-hidden="true"></div>
 
   <!-- De site: gewone scripts op volgorde (één gedeeld bereik), daarna de Preact-componenten als module -->
-  <script src="js/00-kern.js?v=59"></script>
-  <script src="js/01-basis.js?v=59"></script>
-  <script src="js/02-instellingen.js?v=59"></script>
-  <script src="js/03-model.js?v=59"></script>
-  <script src="js/04-grafieken.js?v=59"></script>
-  <script src="js/05-portefeuille.js?v=59"></script>
-  <script src="js/06-plannen.js?v=59"></script>
-  <script src="js/07-onderzoek.js?v=59"></script>
-  <script src="js/08-risico.js?v=59"></script>
-  <script src="js/09-weergaven.js?v=59"></script>
-  <script src="js/10-navigatie.js?v=59"></script>
-  <script src="js/11-uitbreidingen.js?v=59"></script>
-  <script src="js/12-nieuws.js?v=59"></script>
-  <script src="js/13-app.js?v=59"></script>
-  <script src="js/15-prestaties.js?v=59"></script>
-  <script src="js/15-ui.js?v=59"></script>
-  <script src="js/15-risico-analyse.js?v=59"></script>
-  <script src="js/15-toon.js?v=59"></script>
-  <script src="js/15-bronnen.js?v=59"></script>
-  <script src="js/16-analyse.js?v=59"></script>
-  <script src="js/17-markt.js?v=59"></script>
-  <script src="js/18-gemak.js?v=59"></script>
-  <script src="js/20-handel.js?v=59"></script>
-  <script src="js/21-toegankelijk.js?v=59"></script>
-  <script src="js/21-pwa.js?v=59"></script>
-  <script src="js/21-privacy.js?v=59"></script>
-  <script src="js/21-markt-extra.js?v=59"></script>
-  <script src="js/22-handel-extra.js?v=59"></script>
-  <script src="js/21-plannen2.js?v=59"></script>
-  <script src="js/21-nieuwsplus.js?v=59"></script>
-  <script src="js/26-posities.js?v=59"></script>
-  <script src="js/27-volglijst.js?v=59"></script>
-  <script src="js/28-tickerkaart.js?v=59"></script>
-  <script src="js/21-overzicht.js?v=59"></script>
-  <script src="js/21-handig.js?v=59"></script>
-  <script src="js/19-start.js?v=59"></script>
-  <script type="module" src="js/nieuws-preact.js?v=59"></script>
-  <script type="module" src="js/plannen-preact.js?v=59"></script>
+  <script src="js/00-kern.js?v=60"></script>
+  <script src="js/01-basis.js?v=60"></script>
+  <script src="js/02-instellingen.js?v=60"></script>
+  <script src="js/03-model.js?v=60"></script>
+  <script src="js/04-grafieken.js?v=60"></script>
+  <script src="js/05-portefeuille.js?v=60"></script>
+  <script src="js/06-plannen.js?v=60"></script>
+  <script src="js/07-onderzoek.js?v=60"></script>
+  <script src="js/08-risico.js?v=60"></script>
+  <script src="js/09-weergaven.js?v=60"></script>
+  <script src="js/10-navigatie.js?v=60"></script>
+  <script src="js/11-uitbreidingen.js?v=60"></script>
+  <script src="js/12-nieuws.js?v=60"></script>
+  <script src="js/13-app.js?v=60"></script>
+  <script src="js/15-prestaties.js?v=60"></script>
+  <script src="js/15-ui.js?v=60"></script>
+  <script src="js/15-risico-analyse.js?v=60"></script>
+  <script src="js/15-toon.js?v=60"></script>
+  <script src="js/15-bronnen.js?v=60"></script>
+  <script src="js/16-analyse.js?v=60"></script>
+  <script src="js/17-markt.js?v=60"></script>
+  <script src="js/18-gemak.js?v=60"></script>
+  <script src="js/20-handel.js?v=60"></script>
+  <script src="js/21-toegankelijk.js?v=60"></script>
+  <script src="js/21-pwa.js?v=60"></script>
+  <script src="js/21-privacy.js?v=60"></script>
+  <script src="js/21-markt-extra.js?v=60"></script>
+  <script src="js/22-handel-extra.js?v=60"></script>
+  <script src="js/21-plannen2.js?v=60"></script>
+  <script src="js/21-nieuwsplus.js?v=60"></script>
+  <script src="js/26-posities.js?v=60"></script>
+  <script src="js/27-volglijst.js?v=60"></script>
+  <script src="js/28-tickerkaart.js?v=60"></script>
+  <script src="js/21-overzicht.js?v=60"></script>
+  <script src="js/21-handig.js?v=60"></script>
+  <script src="js/19-start.js?v=60"></script>
+  <script type="module" src="js/nieuws-preact.js?v=60"></script>
+  <script type="module" src="js/plannen-preact.js?v=60"></script>
 </body>
 </html>

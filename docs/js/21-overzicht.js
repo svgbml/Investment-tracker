@@ -31,8 +31,17 @@ function heroCmpButtons(p) {
   segButtons(host, HERO_CMP, heroCmp, (k) => {
     heroCmp = k;
     try { localStorage.setItem(LS_HERO_CMP, k); } catch (e) { /* niet erg */ }
+    // Een vergelijkingslijn heeft minstens 30 dagen nodig: bij Vandaag of 1 week meteen naar 30 dagen, anders lijkt de knop niets te doen
+    if (k !== 'none' && SHORT_RANGES.includes(heroRangeNow())) { ui.heroRange = '1m'; saveHeroRange('1m'); }
     drawHero(p, true);
   });
+}
+const SHORT_RANGES = ['today', '1w'];
+// Kies je zelf een korte periode, dan vervalt de vergelijking (en staat de knop weer op "Alleen waarde")
+function heroCmpFitRange(k) {
+  if (heroCmp === 'none' || !SHORT_RANGES.includes(k)) return;
+  heroCmp = 'none';
+  try { localStorage.setItem(LS_HERO_CMP, 'none'); } catch (e) { /* niet erg */ }
 }
 
 const MIN_CMP_MS = 20 * DAY;   // korter dan dit heeft geen zin: maatstaf en stortingen komen één keer per dag binnen

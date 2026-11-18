@@ -8,6 +8,11 @@
 // (gemaakt met node tools/changelog.mjs); hieronder staat alleen wat de gebruiker merkt.
 // Bij een nieuwe versie: zet de regels van die versie bovenaan, met VERSION uit js/01-basis.js als sleutel.
 const WHATS_NEW = {
+  v60: [
+    'Grafieken: wijs een punt aan en je ziet weer het tijdstip van de meting en de waarde.',
+    'Maatstaf en Netto gestort bij de grote grafiek schakelen zelf naar 30 dagen; korter heeft die vergelijking geen zin.',
+    'Het kaartje "Wat is er nieuw" verschijnt weer na een update.',
+  ],
   v59: [
     'Overzicht: de samenvatting van vandaag staat in vier blokken over de hele breedte (verandering, grootste stijger en daler, nieuws); de kleine strook met stijgers en dalers is weg.',
     'Telefoon: een bedrijfspagina valt niet meer deels buiten beeld.',
