@@ -50,7 +50,8 @@ function riskModel() {
     if (s) for (let i = 1; i < s.pts.length; i++) { const a = s.pts[i - 1].v, b2 = s.pts[i].v; if (a > 0 && b2 > 0) { const r = b2 / a - 1; if (Math.abs(r) < 0.5) rets.set(s.pts[i].day, r); } }
     const arr = [...rets.values()];
     const vol = arr.length >= 20 ? stdev(arr) * Math.sqrt(252) : null;
-    return { c, w: total ? c.value / total : 0, basis: s ? s.basis : null, rets, n: arr.length, vol, cls: srri(vol) };
+    // contrib en betaP worden hieronder gevuld voor posities met genoeg dagen
+    return { c, w: total ? c.value / total : 0, basis: s ? s.basis : null, rets, n: arr.length, vol, cls: srri(vol), contrib: null, betaP: null };
   });
   const withData = items.filter((x) => x.n >= 60);
   const coverage = sum(withData.map((x) => x.w));

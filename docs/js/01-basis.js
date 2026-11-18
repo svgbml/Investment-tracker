@@ -45,7 +45,8 @@ const isNum = (v) => typeof v === 'number' && isFinite(v);
 // Bedragen verbergen (privacyknop): alle euro's in de weergave worden puntjes
 let hideAmounts = (() => { try { return localStorage.getItem('tracker.hide') === '1'; } catch (e) { return false; } })();
 const HIDDEN = '€ ••••';
-const eur = (v) => (!isNum(v) ? '–' : hideAmounts ? HIDDEN : EUR.format(v));
+// v === 0 vangt ook −0: anders zou Intl "€ -0,00" maken (zie tools/test-reken.mjs)
+const eur = (v) => (!isNum(v) ? '–' : hideAmounts ? HIDDEN : EUR.format(v === 0 ? 0 : v));
 const sgn = (v, f) => (!isNum(v) ? '–' : (v > 0 ? '+\u2060' : v < 0 ? '−\u2060' : '') + f.format(Math.abs(v)));
 const seur = (v) => (hideAmounts && isNum(v) ? (v > 0 ? '+' : v < 0 ? '−' : '') + HIDDEN : sgn(v, EUR));
 const spct = (v) => sgn(v, P2);
@@ -106,7 +107,9 @@ const toneColor = (v) => (isNum(v) && v < 0 ? C.loss : C.gain);
 
 const MQ = window.matchMedia('(max-width: 700px)');
 let mode = MQ.matches ? 'm' : 'd';
+/** Gegevens van de Worker, zoals /api/data ze stuurt (zie types.d.ts). @type {TrackerData} */
 let data = null;
+/** Afgeleid model voor de tegels, gemaakt door derive() (zie types.d.ts). @type {Model} */
 let M = null;
 let demo = false;
 let refreshTimer = null;
