@@ -17,7 +17,7 @@ const MIN_DAYS_CORR = 10;    // voor samenhang met de portefeuille
 const ZOOM_MS = 450;
 const unfolded = new Set();
 const FOLD_ROOTS = ['page-home', 'm-home', 'm-stats'];
-const FOLD_SKIP = '.grid.stats, .m-grid2, #kpis, #movers, #stats, #m-analyse-body';
+const FOLD_SKIP = '.grid.stats, .m-grid2, #kpis, #movers, #stats, #m-analyse-body, #onboard, #m-onboard';
 let foldTimer = null;
 const HOUR = 3600e3;
 const DAY = 864e5;
@@ -28,9 +28,23 @@ const LANG = (() => { try { const l = localStorage.getItem('tracker.lang'); retu
 const LOCALE = { en: 'en-GB', de: 'de-DE', fr: 'fr-FR' }[LANG] || 'nl-NL';
 const VERSION = 'v57';
 const nf = (o) => new Intl.NumberFormat(LOCALE, o);
-const EUR = nf({ style: 'currency', currency: 'EUR' });
-const P2 = nf({ style: 'percent', minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const P1 = nf({ style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1 });
+// Getallen: per apparaat te kiezen bij Instellingen > Weergave (zie js/15-ui.js).
+// numFmtKort: bedragen vanaf duizend afgekort (€ 12,3K) in plaats van volledig (€ 12.345,60).
+// numFmtDec: aantal decimalen voor bedragen en procenten (0, 1 of 2).
+let numFmtKort = (() => { try { return localStorage.getItem('tracker.num') === 'kort'; } catch (e) { return false; } })();
+let numFmtDec = (() => { try { const v = localStorage.getItem('tracker.dec'); return v === '0' ? 0 : v === '1' ? 1 : 2; } catch (e) { return 2; } })();
+const NUM_KORT_VAN = 1000; // vanaf dit bedrag afkorten
+let EUR, EURK, P2, P1;
+function buildNumFmt() {
+  const d = numFmtDec;
+  EUR = nf({ style: 'currency', currency: 'EUR', minimumFractionDigits: d, maximumFractionDigits: d });
+  EURK = nf({ style: 'currency', currency: 'EUR', notation: 'compact', compactDisplay: 'short', minimumFractionDigits: 0, maximumFractionDigits: 1 });
+  P2 = nf({ style: 'percent', minimumFractionDigits: d, maximumFractionDigits: d });
+  P1 = nf({ style: 'percent', minimumFractionDigits: Math.min(d, 1), maximumFractionDigits: Math.min(d, 1) });
+}
+buildNumFmt();
+// Opmaker voor bedragen: kiest zelf tussen volledig en afgekort
+const EURF = { format: (v) => (numFmtKort && Math.abs(v) >= NUM_KORT_VAN ? EURK.format(v) : EUR.format(v)) };
 const N2 = nf({ minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const N4 = nf({ maximumFractionDigits: 4 });
 const N1 = nf({ maximumFractionDigits: 1 });
@@ -45,9 +59,9 @@ const isNum = (v) => typeof v === 'number' && isFinite(v);
 // Bedragen verbergen (privacyknop): alle euro's in de weergave worden puntjes
 let hideAmounts = (() => { try { return localStorage.getItem('tracker.hide') === '1'; } catch (e) { return false; } })();
 const HIDDEN = '€ ••••';
-const eur = (v) => (!isNum(v) ? '–' : hideAmounts ? HIDDEN : EUR.format(v));
+const eur = (v) => (!isNum(v) ? '–' : hideAmounts ? HIDDEN : EURF.format(v));
 const sgn = (v, f) => (!isNum(v) ? '–' : (v > 0 ? '+\u2060' : v < 0 ? '−\u2060' : '') + f.format(Math.abs(v)));
-const seur = (v) => (hideAmounts && isNum(v) ? (v > 0 ? '+' : v < 0 ? '−' : '') + HIDDEN : sgn(v, EUR));
+const seur = (v) => (hideAmounts && isNum(v) ? (v > 0 ? '+' : v < 0 ? '−' : '') + HIDDEN : sgn(v, EURF));
 const spct = (v) => sgn(v, P2);
 const spct1 = (v) => sgn(v, P1);
 const tone = (v) => (!isNum(v) || v === 0 ? '' : v > 0 ? 'gain' : 'loss');
@@ -89,7 +103,7 @@ function countTo(el, v, fmt) {
   const step = (now) => { const k = Math.min(1, (now - t0) / dur); const e = 1 - Math.pow(1 - k, 3); el.firstChild.nodeValue = fmt(from + (v - from) * e); if (k < 1) el._raf = requestAnimationFrame(step); };
   el._raf = requestAnimationFrame(step);
 }
-const C = { accent: '#2B5BD7', gain: '#0B7A4B', loss: '#B4311F', ink2: '#5B6472', soft: '#8FAEF0', ink: '#14181F' };
+const C = { accent: '#2B5BD7', gain: '#0B7A4B', loss: '#B4311F', ink2: '#5B6472', soft: '#8FAEF0', ink: '#14181F', grid: '#9AA3B5' };
 // Thema: licht, donker of automatisch (volgt het apparaat)
 const THEME_MQ = window.matchMedia('(prefers-color-scheme: dark)');
 const themePref = () => { try { return localStorage.getItem('tracker.theme') || 'auto'; } catch (e) { return 'auto'; } };
@@ -100,6 +114,7 @@ function applyTheme() {
   const cs = getComputedStyle(document.documentElement);
   const v = (n, d) => (cs.getPropertyValue(n).trim() || d);
   C.accent = v('--accent', '#2B5BD7'); C.gain = v('--gain', '#0B7A4B'); C.loss = v('--loss', '#B4311F'); C.ink2 = v('--ink-2', '#5B6472'); C.ink = v('--ink', '#14181F'); C.soft = v('--accent-soft', '#8FAEF0');
+  C.grid = v('--grid', '#9AA3B5'); // hulplijnen in grafieken (donker lichter, zodat ze zichtbaar blijven)
 }
 applyTheme();
 const toneColor = (v) => (isNum(v) && v < 0 ? C.loss : C.gain);

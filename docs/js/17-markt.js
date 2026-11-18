@@ -305,7 +305,7 @@ document.addEventListener('click', async (e) => {
   if (o.note) o.d = o.note === prev.note && prev.d ? prev.d : today10();
   if (!o.tags.length && !o.note && o.lo == null && o.hi == null) delete meta[sym]; else meta[sym] = o;
   try { await savePrefs({ watchMeta: meta }); if (st) { st.textContent = 'Bewaard.'; st.className = 'small plan-status gain'; } renderWatch(); }
-  catch (err) { if (st) { st.textContent = 'Opslaan is mislukt: ' + err.message + '.'; st.className = 'small plan-status loss'; } }
+  catch (err) { const t = foutTekst('De maatstaf kon niet worden opgeslagen', err); if (st) { st.textContent = t; st.className = 'small plan-status loss'; } toastErr(t); }
 });
 
 // ---------- Nieuws: bronnen dempen en ochtendmelding ----------

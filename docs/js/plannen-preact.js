@@ -30,7 +30,7 @@ function TargetTile({ bump }) {
   const save = async () => {
     plan.status = 'Bezig met opslaan…'; redraw();
     try { await saveSettings({ targets: plan.draft.t, targetMode: plan.mode }); plan.status = 'Doelen opgeslagen' + (demo ? ' (in deze browser).' : '; ze gelden ook op je andere apparaten.'); }
-    catch (err) { plan.status = 'Opslaan is mislukt: ' + err.message + '.'; }
+    catch (err) { plan.status = foutTekst('Opslaan is niet gelukt', err, 'Je plan staat in je Worker; controleer bij Instellingen je toegangscode en probeer het opnieuw.'); }
     redraw(); renderDriftNote();
   };
   const row = (x) => {
@@ -107,7 +107,7 @@ function ForecastTile() {
   const save = async () => {
     plan.status = 'Bezig met opslaan…'; setTick((n) => n + 1);
     try { await saveSettings({ monthly: P.monthly, goal: P.goal || 0 }); plan.status = 'Inleg en doel opgeslagen.'; }
-    catch (err) { plan.status = 'Opslaan is mislukt: ' + err.message + '.'; }
+    catch (err) { plan.status = foutTekst('Opslaan is niet gelukt', err, 'Je plan staat in je Worker; controleer bij Instellingen je toegangscode en probeer het opnieuw.'); }
     setTick((n) => n + 1);
   };
   const fY = (t) => new Date(t).getFullYear();

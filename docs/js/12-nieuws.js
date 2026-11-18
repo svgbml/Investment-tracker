@@ -302,13 +302,19 @@ document.addEventListener('click', async (e) => {
     const box = b.closest('.note'); const st = box.querySelector('.note-st'); const txt = box.querySelector('textarea').value.trim().slice(0, 500);
     const next = Object.assign({}, notesMap()); if (txt) next[b.dataset.k] = txt; else delete next[b.dataset.k];
     st.textContent = 'Bezig met opslaan…';
-    try { await saveSettings({ notes: next }); rerenderAll(); } catch (err) { st.textContent = 'Opslaan is mislukt: ' + err.message + '.'; st.className = 'small note-st loss'; }
+    try { await saveSettings({ notes: next }); toastOk(txt ? 'Notitie opgeslagen.' : 'Notitie verwijderd.'); rerenderAll(); }
+    catch (err) { const t = foutTekst('De notitie kon niet worden opgeslagen', err, 'Je notities staan in je Worker; controleer bij Instellingen je toegangscode en probeer het opnieuw.'); st.textContent = t; st.className = 'small note-st loss'; toastErr(t); }
     return;
   }
   if (a === 'box3-copy' || a === 'box3-csv') {
     const B = box3Model(xs.taxYear); const st = $('box3-status');
-    if (a === 'box3-copy') { try { await navigator.clipboard.writeText(box3Text(B)); if (st) st.textContent = 'Gekopieerd.'; } catch (err) { if (st) st.textContent = 'Kopiëren lukte niet in deze browser.'; } }
-    else download('dividend-' + B.Y + '.csv', csvOf(['datum', 'ticker', 'netto_eur', 'bruto_eur', 'bronbelasting_eur', 'valuta', 'methode'], B.divs.map((x) => [x.d.date, x.d.ticker, x.d.amount, x.gross.toFixed(2), x.tax.toFixed(2), x.cur, x.how])));
+    if (a === 'box3-copy') {
+      try { await navigator.clipboard.writeText(box3Text(B)); if (st) st.textContent = 'Gekopieerd.'; toastOk('De cijfers voor box 3 staan op je klembord.'); }
+      catch (err) { const t = 'Kopiëren lukte niet: deze browser geeft de site geen toegang tot het klembord. Selecteer de tekst hieronder en kopieer hem zelf.'; if (st) st.textContent = t; toastErr(t); }
+    } else {
+      download('dividend-' + B.Y + '.csv', csvOf(['datum', 'ticker', 'netto_eur', 'bruto_eur', 'bronbelasting_eur', 'valuta', 'methode'], B.divs.map((x) => [x.d.date, x.d.ticker, x.d.amount, x.gross.toFixed(2), x.tax.toFixed(2), x.cur, x.how])));
+      toastOk('dividend-' + B.Y + '.csv is gedownload.');
+    }
     return;
   }
   if (a === 'ws-share' || a === 'ws-png' || a === 'ws-mail') { shareWeek(a.slice(3), b); return; }
@@ -341,7 +347,7 @@ document.addEventListener('change', async (e) => {
       if (P.cash) f.querySelector('[data-a="cash"]').value = Math.round(P.cash * 100) / 100;
       f.querySelector('[data-a="updated"]').value = new Date().toISOString().slice(0, 10);
       st.textContent = P.holdings.length + ' posities ingelezen. Controleer ze en kies Opslaan.'; st.className = 'small plan-status acct-st gain';
-    } catch (err) { st.textContent = 'Inlezen is mislukt: ' + err.message + '.'; st.className = 'small plan-status acct-st loss'; }
+    } catch (err) { st.textContent = foutTekst('Het CSV-bestand kon niet worden ingelezen', err, 'Exporteer de posities opnieuw bij je broker en kies het onbewerkte CSV-bestand.'); st.className = 'small plan-status acct-st loss'; }
     el.value = '';
   }
 });

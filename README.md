@@ -98,11 +98,12 @@ Zet ze aan op de website onder *Instellingen → Koppelingen en functies*. Sleut
 | Rendement na inflatie | [ECB Data Portal](https://data.ecb.europa.eu/main-figures/inflation) (HICP) | niets (staat standaard aan) |
 | Wat als alles in de S&P 500 of Nasdaq-100 had gezeten; risico van indexfondsen | [FRED](https://fred.stlouisfed.org/) (SP500, NASDAQ100) | niets; weigert FRED de download aan je Worker, dan een [gratis FRED-sleutel](https://fred.stlouisfed.org/docs/api/api_key.html) (`FRED_KEY`) |
 | Werkelijke spreiding via de samenstelling van indexfondsen | iShares holdings-CSV | niets; als iShares het bestand niet aan de Worker geeft, voeg je het zelf toe op *Plannen* |
+| Startchecklist op het overzicht (sleutel, nieuws, volglijst, doel, alarm, app; weg te klikken en terug te zetten bij *Weergave*), kruimelpad op detailpagina's, meldingen bij gelukt en mislukt, foutteksten die zeggen wat je kunt doen, plaatshouders tijdens het laden, bedragen afgekort (€ 12,3K) of met 0, 1 of 2 decimalen, afdrukken op A4 (detailpagina's en *Analyse*), drie kolommen vanaf 1800 pixels | de site zelf | niets extra |
 
 ## Wat er in de repository staat
 
 - `worker/`: de Cloudflare Worker (meten, opslaan, externe bronnen, `/api/data` voor de website). Zie [worker/README.md](worker/README.md).
-- `docs/`: de website (GitHub Pages), zonder build-stap. De code staat in `docs/js/` in genummerde bestanden die op volgorde laden, met een paar eigen bouwstenen (`00-kern.js`). De nieuwspagina is gebouwd met Preact-componenten; Preact staat zelf in `docs/vendor/`, zodat de app ook zonder verbinding werkt:
+- `docs/`: de website (GitHub Pages), zonder build-stap. De code staat in `docs/js/` in genummerde bestanden die op volgorde laden, met een paar eigen bouwstenen (`00-kern.js` en `15-ui.js`: meldingen, plaatshouders, kruimelpad, getalweergave, foutteksten en de startchecklist). De nieuwspagina is gebouwd met Preact-componenten; Preact staat zelf in `docs/vendor/`, zodat de app ook zonder verbinding werkt:
   - **Overzicht**: grafiek van de totale waarde, kerncijfers (klik op Accountwaarde voor de verdeling), 2 stijgers, de markt en 2 dalers, agenda, sectoren, valuta en koopkracht, weken, patronen en statistieken.
   - **Bedrijven**: alle posities als tegels met grafiek, zoeken, filteren en sorteren.
   - **Bedrijfspagina** (`#bedrijf/TICKER`): grafiek, positie, valuta-effect, transacties, historie, agenda, nieuws, analisten, insiderhandel, bedrijfscijfers, sector en vergelijkbare bedrijven, patronen.

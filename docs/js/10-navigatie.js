@@ -436,6 +436,7 @@ let foldResize = null;
 window.addEventListener('resize', () => { clearTimeout(foldResize); foldResize = setTimeout(foldAll, 200); });
 
 function render() {
+  clearSkeleton();
   $('welcome').hidden = true;
   document.body.classList.remove('welcoming');
   $('app').hidden = false;

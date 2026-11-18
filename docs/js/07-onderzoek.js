@@ -253,7 +253,7 @@ function setWatchlist(next, statusEl, note) {
         watchFetchTimer = setTimeout(fetchWatchData, 1500);
       }
       return true;
-    } catch (err) { say('Mislukt: ' + err.message, 'loss'); throw err; }
+    } catch (err) { say(foutTekst('De volglijst kon niet worden opgeslagen', err, 'Je volglijst staat in je Worker; controleer bij Instellingen je toegangscode en probeer het opnieuw.'), 'loss'); throw err; }
   };
   const p = watchQueue.then(run, run);
   watchQueue = p.catch(() => {});
@@ -313,11 +313,11 @@ function renderWatchDetail(sym) {
   const chart = '<div class="chart ' + (mode === 'm' ? 'm-chart' : 'hero-chart') + '" data-chart="watch" data-sym="' + esc(sym) + '" role="img" aria-label="' + esc('Koers van ' + c.name) + '"></div><div class="xlabels" data-x="watch"></div>';
   const remove = '<button type="button" class="btn ghost danger" data-unwatch="' + esc(sym) + '">Van volglijst halen</button>';
   if (mode === 'm') {
-    return '<div class="md"><div class="m-dtop"><button type="button" class="m-back" data-act="back">‹ Terug</button><span class="t">' + esc(sym) + '</span><span></span></div>' +
+    return '<div class="md"><div class="m-dtop"><button type="button" class="m-back" data-act="back">' + esc(crumbBack()) + '</button><span class="t">' + esc(sym) + '</span><span></span></div>' + crumbNav(sym + ' · volglijst') +
       '<div class="m-hero"><div class="m-swipe">' + head + '</div>' + chart + '</div>' +
       '<div class="m-body"><div class="m-stack">' + agenda + priceAlertTile(sym, p && p.price, (p && p.currency) || 'USD') + myTargetTile(sym) + watchMetaTile(sym, p) + watchTradeTile(sym, p) + research.join('') + market.tiles.join('') + market.table + '<div style="padding:8px 0">' + remove + '</div></div></div></div>';
   }
-  return '<div class="band"><div class="d-top"><button type="button" class="btn dark" data-act="back">← Terug</button>' + remove + '</div>' +
+  return '<div class="band">' + crumbNav(sym + ' · volglijst') + '<div class="d-top"><button type="button" class="btn dark" data-act="back">← Terug</button>' + remove + '</div>' +
     '<div class="hero-head"><div>' + head + '</div></div>' + chart + '</div>' +
     '<div class="wrap"><div class="grid wide">' + agenda + priceAlertTile(sym, p && p.price, (p && p.currency) || 'USD') + myTargetTile(sym) + watchMetaTile(sym, p) + watchTradeTile(sym, p) + market.tiles.join('') + '</div>' +
     '<div class="section-head"><h2>Nieuws, analisten en cijfers</h2></div><div class="grid wide">' + research.join('') + '</div>' +

@@ -134,6 +134,7 @@
 
         <div class="wrap">
           <div id="drift-note"></div>
+          <div id="onboard"></div>
           <p id="day-line" class="day-line"></p>
           <div id="kpis" class="grid stagger"></div>
           <div class="section-head" data-daily>
@@ -239,6 +240,7 @@
         </div>
         <div class="m-body">
           <div id="m-drift-note"></div>
+          <div id="m-onboard" class="m-stack"></div>
           <p id="m-day-line" class="day-line"></p>
           <div id="m-kpis" class="m-grid2 stagger"></div>
           <div class="m-head" data-daily><h2 id="m-movers-title">Grootste veranderingen</h2><span id="m-breadth" class="breadth"></span></div>
@@ -512,6 +514,8 @@
   </dialog>
 
   <div id="tip" class="tip" role="status" hidden></div>
+  <!-- Meldingen (gelukt of mislukt): één live-gebied, zie js/15-ui.js -->
+  <div id="toasts" class="toasts" role="status" aria-live="polite" aria-atomic="false"></div>
   <div id="print-area" aria-hidden="true"></div>
 
   <!-- De site: gewone scripts op volgorde (één gedeeld bereik), daarna de Preact-componenten als module -->
@@ -529,6 +533,7 @@
   <script src="js/11-uitbreidingen.js?v=57"></script>
   <script src="js/12-nieuws.js?v=57"></script>
   <script src="js/13-app.js?v=57"></script>
+  <script src="js/15-ui.js?v=57"></script>
   <script src="js/15-risico-analyse.js?v=57"></script>
   <script src="js/15-toon.js?v=57"></script>
   <script src="js/15-bronnen.js?v=57"></script>

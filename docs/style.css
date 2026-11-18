@@ -1886,4 +1886,179 @@ html[data-motion="off"] .privacy-blur #app, html[data-motion="off"] .privacy-blu
 @media (max-width: 760px) {
   .set-search { padding: 12px 16px 0; }
   .set-search input, .set-hits { max-width: none; }
+
+/* ===================== UI-groep 117–130: kruimelpad, getalweergave, donkere grafieken, skeletons,
+   meldingen, startchecklist, afdrukken en brede schermen ===================== */
+
+/* 117 Kruimelpad bovenaan een detailpagina (computer en telefoon) */
+.crumbs { padding: 12px 40px 0; font-size: 13px; }
+.crumbs ol { display: flex; flex-wrap: wrap; align-items: center; gap: 0 6px; margin: 0; padding: 0; list-style: none; min-width: 0; }
+.crumbs li { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.crumbs li + li::before { content: "\203A"; color: var(--ink-2); }
+.crumbs a { display: inline-flex; align-items: center; min-height: 32px; color: var(--band-ink); text-decoration: none; font-weight: 600; }
+.crumbs a:hover { color: var(--accent); text-decoration: underline; }
+.crumbs [aria-current="page"] { max-width: 48ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); }
+.md .crumbs { padding: 6px 16px 0; background: var(--bg); }
+@media (max-width: 1280px) and (min-width: 761px) { .crumbs { padding-left: 24px; padding-right: 24px; } }
+@media (max-width: 700px) { .crumbs { padding: 6px 16px 0; font-size: 12px; } .crumbs a { min-height: 36px; } }
+
+/* 119 Getalweergave: afgekorte bedragen en het aantal decimalen */
+.num-dec { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; font-size: 14px; }
+.num-dec select {
+  min-height: 44px; padding: 0 10px; border: 1px solid var(--rule); border-radius: 10px;
+  background: var(--surface); color: var(--ink); font: inherit;
+}
+
+/* 121 Grafieken in de donkere modus: hulplijnen en labels met meer contrast, zachtere kleuren */
+:root { --grid: #9AA3B5; }
+:root[data-theme="dark"] {
+  --grid: #56637B;
+  --gain: #4CC08D;
+  --loss: #E8836E;
+}
+:root[data-theme="dark"] .cursor { background: rgba(230, 233, 239, .45); }
+:root[data-theme="dark"] .cursor-dot { border-color: var(--surface); }
+:root[data-theme="dark"] .xlabels, :root[data-theme="dark"] .tile .xlabels, :root[data-theme="dark"] .bar-labels,
+:root[data-theme="dark"] .range-labels, :root[data-theme="dark"] .heat-key, :root[data-theme="dark"] .legend,
+:root[data-theme="dark"] .chart-note, :root[data-theme="dark"] .chart-empty { color: #B3BDCC; }
+:root[data-theme="dark"] .bars .half.down, :root[data-theme="dark"] .eps-b::after { border-color: var(--grid); }
+:root[data-theme="dark"] .hbars .mid, :root[data-theme="dark"] .range .rail { background: var(--grid); }
+/* Dagkalender: op donker geen lichte pastelvlakken, maar dezelfde reeks in donkere tinten
+   (niet in de kleurenblindvriendelijke weergave: die houdt blauw en oranje) */
+:root[data-theme="dark"]:not([data-cb="1"]) .heat-g1 { background: #1D3A2D !important; }
+:root[data-theme="dark"]:not([data-cb="1"]) .heat-g2 { background: #2C7254 !important; }
+:root[data-theme="dark"]:not([data-cb="1"]) .heat-g3 { background: #4CC08D !important; }
+:root[data-theme="dark"]:not([data-cb="1"]) .heat-l1 { background: #3C2320 !important; }
+:root[data-theme="dark"]:not([data-cb="1"]) .heat-l2 { background: #8A4435 !important; }
+:root[data-theme="dark"]:not([data-cb="1"]) .heat-l3 { background: #E8836E !important; }
+
+/* 122 Skeletons: grijze plaatshouders zolang de eerste gegevens nog komen */
+.skel { display: block; position: relative; overflow: hidden; border-radius: 8px; background: var(--empty); }
+.skel + .skel { margin-top: 10px; }
+.skel::after {
+  content: ""; position: absolute; inset: 0; transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .6), transparent);
+  animation: skelShine 1.4s linear infinite;
+}
+:root[data-theme="dark"] .skel::after { background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .07), transparent); }
+:root[data-motion="off"] .skel::after { animation: none; }
+@keyframes skelShine { to { transform: translateX(100%); } }
+.skel-h { width: 42%; height: 15px; margin-bottom: 14px; }
+.skel-line { height: 12px; }
+.skel-line.short { width: 58%; }
+.skel-value { width: min(360px, 72%); height: 54px; border-radius: 14px; }
+.skel-chart { height: 110px; }
+.skel-chart.tall { height: 100%; min-height: 200px; }
+.skel-tile { min-height: 148px; }
+.skel-rows { display: grid; gap: 16px; padding: 16px; }
+.skel-row { display: grid; gap: 8px; }
+.hero-value .skel-value, .m-value .skel-value { width: 360px; max-width: 72vw; margin-top: 4px; }
+body.skeleton .section-head, body.skeleton .m-head { opacity: .45; }
+body.skeleton footer.foot-page { visibility: hidden; }
+
+/* 126 Meldingen (toasts): één vorm voor gelukt en mislukt */
+.toasts {
+  position: fixed; z-index: 300; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+  display: flex; flex-direction: column; gap: 8px; width: min(460px, calc(100vw - 32px)); pointer-events: none;
+}
+.toasts:empty { display: none; }
+.toast {
+  pointer-events: auto; display: flex; align-items: flex-start; gap: 8px; padding: 12px 8px 12px 16px;
+  border-radius: 14px; background: var(--ink); color: var(--surface); font-size: 14px; line-height: 1.4;
+  box-shadow: 0 10px 30px rgba(20, 24, 31, .28); animation: toastIn .22s var(--ease) both;
+}
+.toast .t { flex: 1; min-width: 0; }
+.toast.ok { box-shadow: 0 10px 30px rgba(20, 24, 31, .28), inset 4px 0 0 var(--gain); padding-left: 20px; }
+.toast.err { box-shadow: 0 10px 30px rgba(20, 24, 31, .28), inset 4px 0 0 var(--loss); padding-left: 20px; }
+.toast .x {
+  flex: none; width: 30px; height: 30px; margin: -3px 0; display: grid; place-items: center;
+  border: 0; border-radius: 50%; background: transparent; color: inherit; opacity: .75; cursor: pointer;
+}
+.toast .x:hover { opacity: 1; background: rgba(255, 255, 255, .14); }
+.toast .x svg { width: 15px; height: 15px; }
+.toast.out { opacity: 0; transform: translateY(8px); transition: opacity .2s, transform .2s; }
+:root[data-motion="off"] .toast { animation: none; }
+:root[data-motion="off"] .toast.out { transition: none; }
+@keyframes toastIn { from { opacity: 0; transform: translateY(10px); } }
+@media (max-width: 700px) { .toasts { bottom: calc(92px + env(safe-area-inset-bottom)); } }
+
+/* 128 Startchecklist: welke stappen staan al, en welke nog niet */
+.onb { margin-bottom: 16px; }
+.onb-head { display: flex; align-items: center; justify-content: space-between; gap: 10px 16px; }
+.onb-head h3 { margin: 0; }
+.btn.small { min-height: 36px; padding: 0 12px; font-size: 13px; }
+.onb .meter { margin: 12px 0 8px; }
+.onb-list { list-style: none; margin: 8px 0 0; padding: 0; }
+.onb-list li { display: flex; align-items: flex-start; gap: 10px; padding: 6px 0; border-top: 1px solid var(--rule); }
+.onb-mark {
+  flex: none; width: 22px; height: 22px; margin-top: 9px; display: grid; place-items: center;
+  border: 2px solid var(--track); border-radius: 50%; font-size: 13px; font-weight: 700; line-height: 1;
+}
+.onb-list li.done .onb-mark { border-color: var(--gain); background: var(--gain); color: #FFFFFF; }
+.onb-list .onb-t { display: flex; flex-direction: column; gap: 2px; min-height: 40px; justify-content: center; padding: 4px 0; font-weight: 600; }
+.onb-list li.done .onb-t { color: var(--ink-2); font-weight: 500; }
+.onb-list button.onb-t { flex: 1; border: 0; background: none; font: inherit; font-weight: 600; color: var(--ink); text-align: left; cursor: pointer; }
+.onb-list button.onb-t:hover { color: var(--accent); }
+.onb-list .onb-t .sub { font-size: 13px; font-weight: 400; color: var(--ink-2); }
+#m-onboard:empty { display: none; }
+
+/* 129 Afdrukken: de open detailpagina of de pagina die je bekijkt, netjes op A4 */
+@media print {
+  @page { size: A4; margin: 14mm; }
+  :root[data-theme="dark"] {
+    --bg: #FFFFFF; --surface: #FFFFFF; --band: #FFFFFF; --band-ink: #444C5C; --ink: #14181F; --ink-2: #4C5563;
+    --rule: #CDD3DD; --track: #DDE1E7; --empty: #EFF1F4; --accent: #1E429F; --gain: #0B6B43; --loss: #A32B1B; --grid: #8A93A3;
+  }
+  body { background: #FFFFFF; }
+  /* Knoppen en navigatie horen niet op papier */
+  .topbar, .m-top, .m-tabs, .m-ptabs, .pillnav, .pill, #notices, .seg, .m-seg, .d-nav, .m-nav, .d-acts, .controls,
+  .icon-btn, .m-icon, .btn, .fold-btn, .zoom-reset, .chart-hover, .toasts, .tip, .tour, .m-back, .onb,
+  .m-list-tools, .news-more, .set-top, #welcome, .marker, .hero-ctrl, .check, .sec-tabs { display: none !important; }
+  /* Donkere chips en vlakken gaan op papier terug naar licht */
+  :root[data-theme="dark"] .pill-chg.gain, :root[data-theme="dark"] .tag.gain { background: #E4F3EB; color: #0B6B43; }
+  :root[data-theme="dark"] .pill-chg.loss, :root[data-theme="dark"] .tag.loss { background: #FBE9E5; color: #A32B1B; }
+  :root[data-theme="dark"] .pill-chg, :root[data-theme="dark"] .seg.light, :root[data-theme="dark"] .m-dtabs { background: var(--empty); }
+  :root[data-theme="dark"] .xlabels, :root[data-theme="dark"] .tile .xlabels, :root[data-theme="dark"] .bar-labels,
+  :root[data-theme="dark"] .range-labels, :root[data-theme="dark"] .heat-key, :root[data-theme="dark"] .legend,
+  :root[data-theme="dark"] .chart-note, :root[data-theme="dark"] .chart-empty { color: var(--ink-2); }
+  :root[data-theme="dark"] .range .rail, :root[data-theme="dark"] .hbars .mid { background: var(--track); }
+  :root[data-theme="dark"]:not([data-cb="1"]) .heat-g1 { background: #CDEBDB !important; }
+  :root[data-theme="dark"]:not([data-cb="1"]) .heat-g2 { background: #7CC4A0 !important; }
+  :root[data-theme="dark"]:not([data-cb="1"]) .heat-g3 { background: #0B6B43 !important; }
+  :root[data-theme="dark"]:not([data-cb="1"]) .heat-l1 { background: #F3D3CC !important; }
+  :root[data-theme="dark"]:not([data-cb="1"]) .heat-l2 { background: #E08B79 !important; }
+  :root[data-theme="dark"]:not([data-cb="1"]) .heat-l3 { background: #A32B1B !important; }
+  /* Alleen wat je op dit moment bekijkt: staat een detailpagina open, dan juist die */
+  html.locked #shell, html.locked #mshell { display: none !important; }
+  #detail, .detail { position: static !important; inset: auto !important; width: auto !important; height: auto !important;
+    max-height: none !important; overflow: visible !important; transform: none !important; opacity: 1 !important; background: #FFFFFF; }
+  .detail-inner { position: static !important; overflow: visible !important; }
+  /* Ingeklapte tegels helemaal uitklappen, geen verloop of hoekjes */
+  .tile.fold.folded, .tile.fold { max-height: none !important; overflow: visible !important; min-height: 0 !important; }
+  .tile.fold::before, .tile.fold::after { display: none !important; }
+  .tile, .m-stat, .m-card { break-inside: avoid; box-shadow: none !important; border: 1px solid var(--rule); background: #FFFFFF; }
+  .grid, .grid.wide, .grid.stats, .grid.movers, .plan-grid, .m-grid2 { grid-template-columns: 1fr 1fr !important; gap: 8px !important; }
+  .chart, .chart.hero-chart, .chart.m-chart { height: 120px !important; margin-left: 0 !important; margin-right: 0 !important; break-inside: avoid; }
+  .wrap, .page > .wrap, .detail-inner > .wrap, .m-body, .band .hero-head, .d-top, .crumbs { padding-left: 0 !important; padding-right: 0 !important; }
+  .hero-value, .m-value { font-size: 34px !important; }
+  .section-head, .m-head { margin: 14px 0 6px !important; break-after: avoid; }
+  .section-head h2, .m-head h2 { font-size: 17px; }
+  .crumbs { padding-top: 0 !important; }
+  .crumbs a { color: var(--ink-2); text-decoration: none; }
+  table, tr, .kv div, .onb-list li { break-inside: avoid; }
+  a[href^="http"]::after { content: ""; }
+}
+
+/* 130 Brede schermen (vanaf 1800px): drie kolommen in plaats van tegels die meerekken.
+   De site blijft de volle breedte gebruiken; alleen de rasters krijgen een vaste indeling. */
+@media (min-width: 1800px) {
+  .grid.wide, .plan-grid, .ins-grid, #patterns { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  /* Rasters met kleine tegels: lege kolommen open laten in plaats van twee tegels uitrekken */
+  .grid, .grid.movers, .grid.stats { grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr)); }
+  .chart.hero-chart, #hero-chart, #d-chart { height: 340px; }
+  .foot, .sug-list li p, .tbl .co .nm { max-width: 96ch; }
+  .hero-value { font-size: 76px; }
+}
+@media (min-width: 2400px) {
+  .grid, .grid.movers, .grid.stats { grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); }
 }

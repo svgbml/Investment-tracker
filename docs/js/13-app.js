@@ -232,6 +232,26 @@ Object.assign(EN, {
   'Drie grootste stijgers en dalers vandaag': 'Three biggest risers and fallers today',
 });
 EN_RE.push([/^Alleen (.+)$/, 'Only $1'], [/^Posities (\d+)$/, 'Positions $1'], [/^Volglijst (\d+)$/, 'Watchlist $1']);
+// Kruimelpad, getalweergave, meldingen en de startchecklist
+Object.assign(EN, {
+  'Kruimelpad': 'Breadcrumb', '\u2039 Overzicht': '\u2039 Overview', '\u2039 Bedrijven': '\u2039 Companies', 'Melding sluiten': 'Close message',
+  'Getallen': 'Numbers', 'Grote bedragen afkorten (\u20ac 12,3K)': 'Abbreviate large amounts (\u20ac 12.3K)',
+  'Decimalen bij bedragen en procenten': 'Decimals for amounts and percentages',
+  'geen (\u20ac 12)': 'none (\u20ac 12)', '\u00e9\u00e9n (\u20ac 12,3)': 'one (\u20ac 12.3)', 'twee (\u20ac 12,34)': 'two (\u20ac 12.34)',
+  'Niet meer tonen': 'Hide this', 'Startchecklist terugzetten': 'Restore the checklist',
+  'Zo haal je alles uit de tracker. Elke stap is optioneel; de basis werkt met Trading 212 alleen.':
+    'This is how you get everything out of the tracker. Every step is optional; the basics work with Trading 212 alone.',
+  'Trading 212 gekoppeld': 'Trading 212 connected', 'Nieuws en analisten aan': 'News and analysts on', 'Volglijst gevuld': 'Watchlist filled',
+  'Doel ingesteld': 'Goal set', 'Koersalarm of meldingen': 'Price alert or notifications', 'App op je beginscherm': 'App on your home screen',
+  'De basis: je posities, orders en saldo.': 'The basics: your positions, orders and cash.',
+  'Een gratis Finnhub-sleutel geeft nieuws, koersdoelen en insiderhandel.': 'A free Finnhub key adds news, price targets and insider trading.',
+  'Volg een aandeel dat je nog niet hebt.': 'Follow a stock you do not own yet.',
+  'Op Plannen zie je dan hoe ver je bent en wat er nog nodig is.': 'Plans then shows how far along you are and what is still needed.',
+  'Een bericht bij een koersgrens, kwartaalcijfers of insiderhandel.': 'A message on a price limit, earnings or insider trading.',
+  'Opent sneller en werkt zonder verbinding met de laatste stand.': 'Opens faster and works offline with the last known state.',
+});
+EN_RE.push([/^(\d+) van (\d+) stappen klaar$/, '$1 of $2 steps done']);
+
 EN_RE.push([/^Inloggen is mislukt: (.*)$/, 'Sign-in failed: $1'], [/^Ingelogd\. Al gekoppeld: (.*)$/, 'Signed in. Already connected: $1'], [/^Ingelogd\. Trading 212 is gekoppeld\.$/, 'Signed in. Trading 212 is connected.']);
 const DICT = LANG === 'de' ? Object.assign({}, EN, DE) : LANG === 'fr' ? Object.assign({}, EN, FR) : EN;
 const T = (s) => (LANG !== 'nl' ? DICT[s] || s : s);
@@ -294,6 +314,8 @@ document.addEventListener('click', async (e) => {
   try {
     const res = await fetch(url.replace(/\/api\/data$/, '/api/login'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: v('key'), secret: v('secret'), label: /android/i.test(navigator.userAgent) ? 'Android' : /iphone|ipad/i.test(navigator.userAgent) ? 'iPhone/iPad' : /windows/i.test(navigator.userAgent) ? 'Windows' : /mac os/i.test(navigator.userAgent) ? 'Mac' : 'Apparaat' }) });
     const j = await res.json().catch(() => null);
+    if (!res.ok || !j || !j.ok || !j.token) throw new Error((j && j.error) || (res.status === 404 ? 'deze Worker kent inloggen met een sleutel nog niet; werk hem bij (Sync fork)' : 'de Worker antwoordde met status ' + res.status));
+    localStorage.setItem(LS_TOKEN, j.token);
     if (!res.ok || !j || !j.ok || !j.token) throw new Error((j && j.error) || (res.status === 404 ? 'deze Worker kent inloggen met een sleutel nog niet; werk hem bij (Sync fork)' : 'de Worker gaf status ' + res.status));
     // Liever de eigen code van dit apparaat dan de toegangscode zelf (zie Privacy en veiligheid)
     localStorage.setItem(LS_TOKEN, j.session || j.token);
@@ -305,7 +327,7 @@ document.addEventListener('click', async (e) => {
     demo = false;
     if ($('dlg-settings').open) $('dlg-settings').close();
     load();
-  } catch (err) { say('Inloggen is mislukt: ' + err.message + '.', 'loss'); }
+  } catch (err) { say(foutTekst('Inloggen is niet gelukt', err, 'Controleer het adres van je Worker en of je dezelfde Trading 212-sleutel en secret gebruikt als in de Worker.'), 'loss'); }
   finally { b.disabled = false; }
 });
 
@@ -431,7 +453,7 @@ document.addEventListener('click', async (e) => {
       await saveSettings({ alerts: { move: Number(v('move').value) || 0, drift: Number(v('drift').value) || 0, earnings: v('earnings').checked, insider: v('insider').checked, ratings: v('ratings').checked } });
       await renderPush('Regels opgeslagen.');
     }
-  } catch (err) { await renderPush('Mislukt: ' + err.message + '.'); }
+  } catch (err) { await renderPush(foutTekst('Meldingen aanzetten is niet gelukt', err, 'Sta meldingen toe in de site-instellingen van je browser en probeer het opnieuw.')); }
   finally { b.disabled = false; }
 });
 
@@ -440,14 +462,14 @@ document.addEventListener('change', async (e) => {
   const cb = e.target.closest && e.target.closest('input[data-mail-amounts]');
   if (!cb) return;
   try { await saveSettings({ mailAmounts: cb.checked }); renderLinks(cb.checked ? 'De weekmail bevat bedragen.' : 'De weekmail bevat alleen procenten.'); }
-  catch (err) { renderLinks('Mislukt: ' + err.message); }
+  catch (err) { renderLinks(foutTekst('De instelling kon niet worden opgeslagen', err)); }
 });
 document.addEventListener('click', async (e) => {
   const b = e.target.closest && e.target.closest('[data-mail-test]');
   if (!b) return;
   b.disabled = true;
   try { const r = await workerCall('/api/mail/test', { method: 'POST' }); renderLinks(r.message || 'Testmail verstuurd.'); }
-  catch (err) { renderLinks('Testmail mislukt: ' + err.message); }
+  catch (err) { renderLinks(foutTekst('De testmail is niet verstuurd', err, 'Controleer je Resend-sleutel en of het ontvangstadres bij je Resend-account hoort.')); }
   finally { b.disabled = false; }
 });
 
@@ -484,14 +506,14 @@ document.addEventListener('click', async (e) => {
     const amounts = $('share-amounts') ? $('share-amounts').checked : false;
     await workerCall('/api/share', { method: 'POST', body: JSON.stringify({ action: act, amounts }) });
     await renderShare(act === 'off' ? 'Deel-link uitgezet; de oude link werkt niet meer.' : act === 'rotate' ? 'Nieuwe link gemaakt; de oude werkt niet meer.' : 'Deel-link gemaakt.');
-  } catch (err) { await renderShare('Mislukt: ' + err.message + '.'); }
+  } catch (err) { await renderShare(foutTekst('De deel-link kon niet worden gewijzigd', err)); }
   finally { b.disabled = false; }
 });
 document.addEventListener('change', async (e) => {
   const cb = e.target.closest && e.target.closest('input[data-share-amounts]');
   if (!cb) return;
   try { await workerCall('/api/share', { method: 'POST', body: JSON.stringify({ action: 'update', amounts: cb.checked }) }); await renderShare(cb.checked ? 'De link toont nu bedragen.' : 'De link toont nu alleen procenten.'); }
-  catch (err) { await renderShare('Mislukt: ' + err.message + '.'); }
+  catch (err) { await renderShare(foutTekst('De deel-link kon niet worden bijgewerkt', err)); }
 });
 
 // ---------- Geschiedenis inlezen uit een Trading 212-export (CSV) ----------
@@ -540,7 +562,7 @@ document.addEventListener('change', async (e) => {
     }
     say(o + ' orders, ' + dv + ' dividenden en ' + it + ' rentebetalingen toegevoegd' + (sk ? '; ' + sk + ' orders stonden er al' : '') + '. De gegevens worden opnieuw geladen.', 'gain');
     load();
-  } catch (err) { say('Inlezen is mislukt: ' + err.message + '.', 'loss'); }
+  } catch (err) { say(foutTekst('Het bestand kon niet worden ingelezen', err, 'Kies het JSON-bestand dat je met Reservekopie downloaden hebt opgeslagen.'), 'loss'); }
   el.value = '';
 });
 
@@ -592,7 +614,7 @@ function renderStatusView() {
     loadStatus().then(() => { if (ui.detail === STATUS) renderDetail(false); }).catch((err) => { statusCache = { error: err.message }; if (ui.detail === STATUS) renderDetail(false); });
     return pseudoPage('Status', pseudoHead('Status van je tracker', 'Bezig met laden…', ''), [[]], []);
   }
-  if (S.error) return pseudoPage('Status', pseudoHead('Status van je tracker', 'Niet beschikbaar', S.error + '.'), [[]], []);
+  if (S.error) return pseudoPage('Status', pseudoHead('Status van je tracker', 'Niet beschikbaar', foutTekst('De status kon niet worden opgehaald', S.error, 'Controleer bij Instellingen je toegangscode en het adres van je Worker.')), [[]], []);
   const lastM = S.lastMeasurement ? new Date(S.lastMeasurement).getTime() : null;
   const stale = S.live && lastM && Date.now() - lastM > 2 * HOUR;
   const ok = !stale && !(S.tickFails >= 3);
@@ -678,7 +700,7 @@ document.addEventListener('click', async (e) => {
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'investeringstracker-reservekopie-' + new Date().toISOString().slice(0, 10) + '.json';
     document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 3000);
     say('Reservekopie gedownload (' + kb(blob.size) + '). Bewaar hem op een veilige plek; er staan geen sleutels in.', 'gain');
-  } catch (err) { say('Mislukt: ' + err.message + '.', 'loss'); }
+  } catch (err) { say(foutTekst('De reservekopie kon niet worden gemaakt', err, 'Probeer het opnieuw; bij een grote database kan het even duren.'), 'loss'); }
   finally { b.disabled = false; }
 });
 document.addEventListener('change', async (e) => {
@@ -694,7 +716,7 @@ document.addEventListener('change', async (e) => {
     await restoreBackup(b, say);
     say('Teruggezet. De gegevens worden opnieuw geladen.', 'gain');
     load();
-  } catch (err) { say('Terugzetten is mislukt: ' + err.message + '.', 'loss'); }
+  } catch (err) { say(foutTekst('Terugzetten is niet gelukt', err, 'De gegevens in je Worker zijn niet veranderd. Probeer het opnieuw met hetzelfde bestand.'), 'loss'); }
   el.value = '';
 });
 
@@ -795,5 +817,5 @@ document.addEventListener('click', async (e) => {
   else if (b.dataset.palert === 'del') next = all.filter((a) => a.id !== b.dataset.id);
   b.disabled = true;
   try { await saveSettings({ priceAlerts: next }); rerenderAll(); }
-  catch (err) { st.textContent = 'Opslaan is mislukt: ' + err.message + '.'; st.className = 'small plan-status palert-st loss'; b.disabled = false; }
+  catch (err) { const t = foutTekst('Het koersalarm kon niet worden opgeslagen', err, 'Alarmen staan in je Worker; controleer bij Instellingen je toegangscode en probeer het opnieuw.'); st.textContent = t; st.className = 'small plan-status palert-st loss'; b.disabled = false; toastErr(t); }
 });

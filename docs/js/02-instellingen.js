@@ -127,8 +127,8 @@ $('btn-import').addEventListener('click', async () => {
   const u = $('in-sheet-url').value.trim();
   const tk = $('in-sheet-token').value.trim();
   const say = (txt, cls) => { st.textContent = txt; st.className = 'small ' + (cls || 'muted'); };
-  if (!SHEET_RE.test(u)) { say('Vul het adres van de sheet-web-app in; het eindigt op /exec.', 'loss'); return; }
-  if (!tk) { say('Vul de toegangscode van de sheet in.', 'loss'); return; }
+  if (!SHEET_RE.test(u)) { say('Het adres van de sheet-web-app ontbreekt of wordt niet herkend. Kopieer het uit Apps Script; het eindigt op /exec.', 'loss'); return; }
+  if (!tk) { say('De toegangscode van de sheet ontbreekt. Dat is de code die je in de sheet zelf hebt gemaakt.', 'loss'); return; }
   say('Bezig met overnemen. Dit kan een halve minuut duren…');
   btn.disabled = true;
   try {
@@ -138,14 +138,17 @@ $('btn-import').addEventListener('click', async () => {
       body: JSON.stringify({ url: u, token: tk }),
     });
     const j = await res.json().catch(() => null);
-    if (!res.ok || !j || !j.ok) throw new Error((j && j.error) || 'de Worker gaf status ' + res.status);
+    if (!res.ok || !j || !j.ok) throw new Error((j && j.error) || 'de Worker antwoordde met status ' + res.status);
     const im = j.imported || {};
     say('Overgenomen: ' + NI.format(im.weeks || 0) + ' weken, ' + NI.format(im.days || 0) + ' dagregels, ' + NI.format(im.hours || 0) +
       ' uurregels en ' + NI.format(im.intraday || 0) + ' metingen. De gegevens worden opnieuw geladen.', 'gain');
+    toastOk('Geschiedenis overgenomen uit de Google Sheet.');
     $('in-sheet-token').value = '';
     load();
   } catch (err) {
-    say('Overnemen is mislukt: ' + err.message + '.', 'loss');
+    const t = foutTekst('De geschiedenis kon niet worden overgenomen', err, 'Controleer het adres en de toegangscode van de sheet, en of Live tracking in de sheet nog aanstaat.');
+    say(t, 'loss');
+    toastErr(t);
   } finally {
     btn.disabled = false;
   }
@@ -196,7 +199,7 @@ let linkState = null;
 async function workerCall(path, init) {
   const res = await fetch(getUrl().replace(/\/api\/data$/, path), Object.assign({ headers: { Authorization: 'Bearer ' + getToken(), 'Content-Type': 'application/json' } }, init || {}));
   const j = await res.json().catch(() => null);
-  if (!res.ok || !j || !j.ok) throw new Error((j && (j.error || j.message)) || 'de Worker gaf status ' + res.status);
+  if (!res.ok || !j || !j.ok) throw new Error((j && (j.error || j.message)) || 'de Worker antwoordde met status ' + res.status);
   return j;
 }
 
@@ -239,7 +242,7 @@ async function loadLinks() {
   if (demo || !isWorker() || !getToken()) { renderLinks(); return; }
   linkState = null; renderLinks();
   try { linkState = (await workerCall('/api/features', { method: 'GET' })).features; renderLinks(); }
-  catch (err) { $('links-body').innerHTML = '<p class="small loss">Koppelingen konden niet worden geladen: ' + esc(err.message) + '.</p>'; }
+  catch (err) { $('links-body').innerHTML = '<p class="small loss">' + esc(foutTekst('De koppelingen konden niet worden geladen', err, 'Controleer je toegangscode en het adres van je Worker onder Toegang en Worker.')) + '</p>'; }
 }
 
 async function afterLinkChange(note) {
@@ -248,7 +251,7 @@ async function afterLinkChange(note) {
     await workerCall('/api/market?plan=1', { method: 'POST' });
     renderLinks(note + ' De eerste gegevens zijn opgehaald; de rest volgt binnen een uur buiten de meettijden.');
     load();
-  } catch (err) { renderLinks(note + ' Ophalen lukte nog niet: ' + err.message + '. De Worker probeert het later opnieuw.'); }
+  } catch (err) { renderLinks(note + ' ' + foutTekst('De eerste gegevens ophalen lukte nog niet', err, 'De Worker probeert het binnen een uur zelf opnieuw; je hoeft niets te doen.')); }
 }
 
 $('links-body').addEventListener('click', async (e) => {
@@ -256,12 +259,13 @@ $('links-body').addEventListener('click', async (e) => {
   if (!sv && !dl) return;
   const name = (sv || dl).dataset[sv ? 'savekey' : 'delkey'];
   const value = sv ? ($('key-' + name).value || '').trim() : '';
-  if (sv && !value) { renderLinks('Vul eerst een waarde in.'); return; }
+  if (sv && !value) { renderLinks('Het veld is nog leeg, dus er is niets om op te slaan. Vul de sleutel in en kies daarna Opslaan.'); return; }
   try {
     linkState = (await workerCall('/api/keys', { method: 'POST', body: JSON.stringify({ name, value }) })).features;
-    if (name.startsWith('T212')) { renderLinks(sv ? 'Opgeslagen.' : 'Gewist.'); if (linkState.keys.T212_KEY && linkState.keys.T212_SECRET) { try { await workerCall('/api/run', { method: 'POST' }); } catch (err) { renderLinks('Opgeslagen, maar de eerste meting lukte niet: ' + err.message + '.'); return; } load(); } }
+    toastOk(sv ? 'Sleutel opgeslagen in je Worker.' : 'Sleutel gewist.');
+    if (name.startsWith('T212')) { renderLinks(sv ? 'Opgeslagen.' : 'Gewist.'); if (linkState.keys.T212_KEY && linkState.keys.T212_SECRET) { try { await workerCall('/api/run', { method: 'POST' }); } catch (err) { renderLinks(foutTekst('Opgeslagen, maar de eerste meting lukte niet', err, 'Controleer in Trading 212 of de sleutel nog geldig is; de Worker meet binnen tien minuten zelf opnieuw.')); return; } load(); } }
     else await afterLinkChange(sv ? 'Opgeslagen.' : 'Gewist.');
-  } catch (err) { renderLinks('Mislukt: ' + err.message); }
+  } catch (err) { const t = foutTekst(sv ? 'De sleutel kon niet worden opgeslagen' : 'De sleutel kon niet worden gewist', err); renderLinks(t); toastErr(t); }
 });
 $('links-body').addEventListener('change', async (e) => {
   const cb = e.target.closest('input[data-flag]');
@@ -269,7 +273,7 @@ $('links-body').addEventListener('change', async (e) => {
   try {
     linkState = (await workerCall('/api/features', { method: 'POST', body: JSON.stringify({ features: { [cb.dataset.flag]: cb.checked } }) })).features;
     if (cb.checked) await afterLinkChange('Aangezet.'); else { renderLinks('Uitgezet.'); load(); }
-  } catch (err) { renderLinks('Mislukt: ' + err.message); }
+  } catch (err) { const t = foutTekst('De schakelaar kon niet worden omgezet', err); renderLinks(t); toastErr(t); }
 });
 
 
@@ -327,7 +331,7 @@ $('links-body').addEventListener('click', async (e) => {
     calUrl = j.url;
     try { if (calUrl) localStorage.setItem('tracker.cal', calUrl); else localStorage.removeItem('tracker.cal'); } catch (err) { /* niet erg */ }
     renderLinks(act === 'off' ? 'Agenda-link uitgezet.' : act === 'rotate' ? 'Nieuwe link gemaakt; de oude werkt niet meer.' : 'Agenda-link gemaakt.');
-  } catch (err) { renderLinks('Mislukt: ' + err.message); }
+  } catch (err) { renderLinks(foutTekst('De agenda-link kon niet worden gewijzigd', err)); }
 });
 
 $$('.btn-settings').forEach((b) => b.addEventListener('click', () => openSettings(false)));
@@ -413,7 +417,7 @@ async function fetchPart(url, token, part, query) {
   const res = await fetch(url + (url.includes('?') ? '&' : '?') + 'part=' + part + (query || ''), { cache: 'no-store', headers: h });
   if (res.status === 304) return null;
   const json = await res.json().catch(() => null);
-  if (!res.ok || !json) throw new Error((json && json.error) || 'de web-app gaf status ' + res.status);
+  if (!res.ok || !json) throw new Error((json && json.error) || 'de Worker antwoordde met status ' + res.status);
   if (!json.ok) throw new Error(json.error || 'onbekende fout');
   if (json.part !== part) {
     // Een oudere Worker kent geen delen en stuurt alles in één keer; kent hij alleen geen 'series', dan negeren
@@ -479,28 +483,30 @@ async function load() {
   clearTimeout(refreshTimer);
   showError('');
   if (sharedView) {
+    showSkeleton();
     $$('.btn-refresh').forEach((b) => b.classList.add('busy'));
     try {
       const res = await fetch(sharedView.origin + '/share/' + sharedView.token, { cache: 'no-store' });
       const json = await res.json().catch(() => null);
-      if (!res.ok || !json || !json.ok) throw new Error((json && json.error) || 'de link gaf status ' + res.status);
+      if (!res.ok || !json || !json.ok) throw new Error((json && json.error) || 'de deellink antwoordde met status ' + res.status);
       data = json;
       if (!json.shared || !json.shared.amounts) { hideAmounts = true; syncHideButtons(); }
       $('share-banner').hidden = false;
       render();
       refreshTimer = setTimeout(load, 15 * 60000);
-    } catch (err) { showError('Deze gedeelde weergave kon niet worden geladen: ' + err.message + '.'); }
+    } catch (err) { showError(foutTekst('Deze gedeelde weergave kon niet worden geladen', err, 'Vraag de eigenaar om een nieuwe link: een deellink vervalt zodra die vernieuwd wordt.')); }
     finally { $$('.btn-refresh').forEach((b) => b.classList.remove('busy')); }
     return;
   }
   if (demo) {
-    try { await loadDemoScript(); } catch (err) { showError('Voorbeeldweergave: ' + err.message + '.'); return; }
+    showSkeleton();
+    try { await loadDemoScript(); } catch (err) { showError(foutTekst('De voorbeeldgegevens konden niet worden geladen', err, 'Vernieuw de pagina; blijft het misgaan, dan blokkeert een filter of adblocker het bestand js/14-demo.js.')); return; }
     data = makeDemoData(); render(); return;
   }
   const token = getToken();
   const url = getUrl();
   if (!token) { showWelcome(); return; }
-  if (!url) { showWelcome(); showError('Er is nog geen adres van de web-app ingesteld. Vul het in bij Instellingen of zet het in config.js.'); return; }
+  if (!url) { showWelcome(); showError('Er is nog geen adres van je Worker ingesteld, dus de tracker weet niet waar de gegevens staan. Vul het adres in bij Instellingen, onder Toegang en Worker (of zet het in config.js).'); return; }
   if (!data) {
     const last = await readLast(url);
     if (last && !data) {
@@ -513,6 +519,7 @@ async function load() {
       }
     }
   }
+  if (!data) showSkeleton();
   $$('.btn-refresh').forEach((b) => b.classList.add('busy'));
   try {
     let json;
@@ -522,7 +529,7 @@ async function load() {
       // De oude Apps Script-web-app leest geen kopregels; daar blijft de code in het adres
       const res = await fetch(url + (url.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(token), { cache: 'no-store' });
       json = await res.json().catch(() => null);
-      if (!res.ok || !json) throw new Error((json && json.error) || 'de web-app gaf status ' + res.status);
+      if (!res.ok || !json) throw new Error((json && json.error) || 'de Worker antwoordde met status ' + res.status);
       if (!json.ok) throw new Error(json.error || 'onbekende fout');
     }
     if (json) {
@@ -537,10 +544,10 @@ async function load() {
   } catch (err) {
     const offline = !navigator.onLine || err instanceof TypeError;
     if (data && offline) {
-      showError('Geen verbinding. Je ziet de laatst geladen stand van ' + fDT.format(new Date(data.generated)) + '.');
+      showError('Geen verbinding, dus er kwamen geen nieuwe metingen binnen. Je ziet de laatst geladen stand van ' + fDT.format(new Date(data.generated)) + '. Zodra je weer online bent, haalt de tracker de nieuwe stand zelf op.');
       refreshTimer = setTimeout(load, 60000);
     } else {
-      showError('De gegevens konden niet worden geladen: ' + err.message + '. Controleer de toegangscode en het adres bij Instellingen.');
+      showError(foutTekst('De gegevens konden niet worden geladen', err, 'Controleer bij Instellingen je toegangscode en het adres van je Worker, en probeer het daarna opnieuw.'));
     }
     if (!data) showWelcome();
   } finally {

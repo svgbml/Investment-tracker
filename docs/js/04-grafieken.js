@@ -103,7 +103,7 @@ function lineChart(host, sets, o) {
   const Y = (v) => 100 * (top + (1 - top - bot) * (hi - v) / (hi - lo));
 
   let svg = '<svg viewBox="0 0 1000 100" preserveAspectRatio="none" aria-hidden="true"' + (o.animate && !reduceMotion() ? ' class="reveal"' : '') + '>';
-  if (o.zero) svg += '<line x1="0" x2="1000" y1="' + Y(0).toFixed(2) + '" y2="' + Y(0).toFixed(2) + '" stroke="#9AA3B5" stroke-width="1" stroke-dasharray="3 4" vector-effect="non-scaling-stroke"/>';
+  if (o.zero) svg += '<line x1="0" x2="1000" y1="' + Y(0).toFixed(2) + '" y2="' + Y(0).toFixed(2) + '" stroke="' + C.grid + '" stroke-width="1" stroke-dasharray="3 4" vector-effect="non-scaling-stroke"/>';
   sets.forEach((s, k) => {
     const idx = [...ser[k].keys()].sort((a, b) => a - b);
     if (idx.length < 2) return;

@@ -711,7 +711,7 @@ function readAcctForm(f) {
 async function saveAccounts(list, st) {
   if (st) { st.textContent = 'Bezig met opslaan…'; st.className = 'small plan-status acct-st'; }
   try { await saveSettings({ accounts: list }); rerenderAll(); }
-  catch (err) { if (st) { st.textContent = 'Opslaan is mislukt: ' + err.message + '.'; st.className = 'small plan-status acct-st loss'; } }
+  catch (err) { const t = foutTekst('De rekening kon niet worden opgeslagen', err, 'Andere rekeningen staan in je Worker; controleer bij Instellingen je toegangscode en probeer het opnieuw.'); if (st) { st.textContent = t; st.className = 'small plan-status acct-st loss'; } toastErr(t); }
 }
 
 // =====================================================================
@@ -762,8 +762,8 @@ document.addEventListener('click', async (e) => {
     const v = (k) => r.querySelector('[data-g="' + k + '"]').value.trim();
     return { id: r.dataset.goal || undefined, name: v('name'), target: Number(v('target')), share: Number(v('share')) || 0, date: v('date') || null };
   }).filter((g) => g.name && g.target > 0);
-  try { await saveSettings({ goals }); rerenderAll(); }
-  catch (err) { if (st) { st.textContent = 'Opslaan is mislukt: ' + err.message + '.'; st.className = 'small plan-status loss'; } }
+  try { await saveSettings({ goals }); toastOk(goals.length === 1 ? 'Je doel is opgeslagen.' : goals.length + ' doelen zijn opgeslagen.'); rerenderAll(); }
+  catch (err) { const t = foutTekst('De doelen konden niet worden opgeslagen', err, 'Je doelen staan in je Worker; controleer bij Instellingen je toegangscode en probeer het opnieuw.'); if (st) { st.textContent = t; st.className = 'small plan-status loss'; } toastErr(t); }
 });
 
 // =====================================================================

@@ -144,7 +144,7 @@ function renderDetailDesktop(c, swapDir) {
   const { prev, next } = detailNav(c);
   const I = companyInfo(c);
   const sw = swapDir ? ' swap-' + swapDir : '';
-  return '<div class="band">' +
+  return '<div class="band">' + crumbNav(c.tk + ' · ' + c.name) +
       '<div class="d-top"><button type="button" class="btn dark" data-act="back">← Terug</button>' +
         '<div class="d-nav">' + (typeof tradingOn === 'function' && tradingOn() && !sharedView && c.qty ? '<button type="button" class="btn primary" data-trade="BUY" data-tk="' + esc(c.tk) + '">Kopen</button><button type="button" class="btn line" data-trade="SELL" data-tk="' + esc(c.tk) + '">Verkopen</button>' : '') + '<button type="button" class="btn line" data-act="compare">Vergelijken</button><button type="button" class="btn line" data-act="prev" aria-label="Vorige: ' + esc(prev.name) + '">← ' + esc(prev.tk) + '</button>' +
         '<button type="button" class="btn line" data-act="next" aria-label="Volgende: ' + esc(next.name) + '">' + esc(next.tk) + ' →</button></div></div>' +
@@ -361,8 +361,9 @@ function renderDetailMobile(c, swapDir) {
   const block = (t, html) => (html ? head(t) + '<div class="m-stack">' + html + '</div>' : '');
   const kind = isFundC(c) ? 'fonds in bezit' : 'in bezit';
   return '<div class="md">' +
-    '<div class="m-dtop"><button type="button" class="m-back" data-act="back">‹ Bedrijven</button><span class="t">' + esc(c.tk) + '</span>' +
+    '<div class="m-dtop"><button type="button" class="m-back" data-act="back">' + esc(crumbBack(c.tk)) + '</button><span class="t">' + esc(c.tk) + '</span>' +
       '<div class="m-nav"><button type="button" data-act="prev" aria-label="Vorige: ' + esc(prev.name) + '">‹</button><button type="button" data-act="next" aria-label="Volgende: ' + esc(next.name) + '">›</button></div></div>' +
+    crumbNav(c.tk) +
     '<div class="m-hero">' +
       '<div class="m-swipe' + sw + '"><p class="hero-label">' + esc(c.name) + ' · ' + esc(kind) + '</p><h2 id="d-title" class="m-value"><span class="d-tk">' + esc(c.tk) + '</span> ' + esc(eur(c.value)) + '</h2>' +
         '<p><span class="pill-chg ' + tone(c.change) + '">' + esc(changeLine(c)) + '</span></p><span class="base">' + esc(baseText(c)) + '</span></div>' +
@@ -476,11 +477,11 @@ function renderAccount() {
     '<p class="' + (mode === 'm' ? 'base' : 'hero-change muted') + '" style="' + (mode === 'm' ? 'padding:6px 0 0' : '') + '">' +
     esc(M.cash != null ? 'Beleggingen ' + eur(M.totalValue) + ' nu, plus ' + eur(cash) + ' vrij saldo (stand ' + fDT.format(M.cashAt || lw.t) + ').' : 'Alleen beleggingen; het vrije saldo komt uit de weekmeting.') + '</p>';
   if (mode === 'm') {
-    return '<div class="md"><div class="m-dtop"><button type="button" class="m-back" data-act="back">‹ Terug</button><span class="t">Accountwaarde</span><span></span></div>' +
+    return '<div class="md"><div class="m-dtop"><button type="button" class="m-back" data-act="back">' + esc(crumbBack(ACC)) + '</button><span class="t">Accountwaarde</span><span></span></div>' + crumbNav('Accountwaarde') +
       '<div class="m-hero"><div class="m-swipe">' + head + '</div></div>' +
       '<div class="m-body"><div class="m-stack">' + tiles.slice(0, 2).join('') + secTile + tiles.slice(2).join('') + realisedTile() + '</div></div></div>';
   }
-  return '<div class="band" style="padding-bottom:24px"><div class="d-top"><button type="button" class="btn dark" data-act="back">← Terug</button></div>' +
+  return '<div class="band" style="padding-bottom:24px">' + crumbNav('Accountwaarde') + '<div class="d-top"><button type="button" class="btn dark" data-act="back">← Terug</button></div>' +
     '<div class="hero-head"><div>' + head + '</div></div></div>' +
     '<div class="wrap"><div class="grid wide">' + tiles.slice(0, 2).join('') + secTile + '</div><div class="grid wide" style="margin-top:16px">' + tiles[2] + tiles[3] + realisedTile() + '</div></div>';
 }
@@ -488,11 +489,11 @@ function renderAccount() {
 // ---------- Uitklapweergaven: risico, resultaat, stortingen ----------
 function pseudoPage(title, head, desk, mob) {
   if (mode === 'm') {
-    return '<div class="md"><div class="m-dtop"><button type="button" class="m-back" data-act="back">‹ Terug</button><span class="t">' + esc(title) + '</span><span></span></div>' +
+    return '<div class="md"><div class="m-dtop"><button type="button" class="m-back" data-act="back">' + esc(crumbBack()) + '</button><span class="t">' + esc(title) + '</span><span></span></div>' + crumbNav(title) +
       '<div class="m-hero"><div class="m-swipe">' + head + '</div></div>' +
       '<div class="m-body"><div class="m-stack">' + (mob || desk.flat()).join('') + '</div></div></div>';
   }
-  return '<div class="band" style="padding-bottom:24px"><div class="d-top"><button type="button" class="btn dark" data-act="back">← Terug</button></div>' +
+  return '<div class="band" style="padding-bottom:24px">' + crumbNav(title) + '<div class="d-top"><button type="button" class="btn dark" data-act="back">← Terug</button></div>' +
     '<div class="hero-head"><div>' + head + '</div></div></div>' +
     '<div class="wrap">' + desk.map((row) => '<div class="grid wide" style="margin-top:16px">' + row.join('') + '</div>').join('') + '</div>';
 }
