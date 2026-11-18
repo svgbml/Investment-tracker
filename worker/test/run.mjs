@@ -109,8 +109,7 @@ await test('inloggen met de Trading 212-sleutel, met limiet per verbinding', asy
 
 await test('instellingen: meldingsregels, notities en rekeningen', async () => {
   const r = await jsonOf(await req('/api/settings', { method: 'POST', body: { alerts: { move: 4, earnings: true, insider: false, drift: 6 }, mailAmounts: false, notes: { 'AAPL|1767348000000': 'Waarom' }, accounts: [{ name: 'Broker', cash: 10, holdings: [{ name: 'X', value: 5 }] }] } }));
-  assert.deepEqual(r.settings.alerts, { move: 4, earnings: true, insider: false, drift: 6, ratings: true });
-  assert.deepEqual(r.settings.alerts, { move: 4, earnings: true, insider: false, drift: 6, quietFrom: 0, quietTo: 0, digest: false, digestHour: 18 });
+  assert.deepEqual(r.settings.alerts, { move: 4, earnings: true, insider: false, drift: 6, quietFrom: 0, quietTo: 0, digest: false, digestHour: 18, ratings: true });
   assert.equal(r.settings.mailAmounts, false);
   assert.equal(r.settings.accounts[0].holdings[0].value, 5);
 });
@@ -918,6 +917,8 @@ await test('taken kunnen twee keer draaien zonder schade (idee 155)', async () =
   assert.equal(q.length, new Set(q).size, 'geen dubbele taken: ' + q.join(', '));
   routes = [];
   setKv('mkt_queue', '[]');
+});
+
 await test('meldingen over analisten, insiders en 13F: alleen voor je eigen posities', async () => {
   const e2 = Object.assign({}, env, { FINNHUB_KEY: 'fh', SEC_CONTACT: 'iemand@example.com' });
   await req('/api/push/subscribe', { method: 'POST', body: { sub: { endpoint: 'https://push.test/abc', keys: { p256dh: b64u(pubRaw), auth: b64u(sub.auth) } } } });
@@ -971,6 +972,8 @@ await test('meldingen over analisten, insiders en 13F: alleen voor je eigen posi
   assert.ok(f13.length >= 1, 'melding over de 13F: ' + JSON.stringify(pushes));
   assert.match(f13[0].title, /Berkshire Hathaway/);
   assert.match(f13[0].body, /kwartaalopgave bij de SEC/);
+});
+
 await test('stille uren: melding in de wachtrij, daarna gebundeld verstuurd', async () => {
   ['alerts_sent', 'alert_queue', 'alert_log', 'digest_day'].forEach((k) => setKv(k, k === 'alert_queue' || k === 'alert_log' ? '[]' : '{}'));
   await req('/api/settings', { method: 'POST', body: { priceAlerts: [] } });
@@ -1149,6 +1152,8 @@ await test('inloggen geeft dit apparaat zijn eigen code', async () => {
   assert.equal(r.device.label, 'Mac');
   assert.equal((await req('/api/status', { headers: { Authorization: 'Bearer ' + r.session } })).status, 200);
   setKv('sessions', '[]');
+});
+
 await test('onderzoek per aandeel: part=research&tk= geeft alleen dat aandeel, met ETag', async () => {
   routes = t212Routes();
   setKv('rs_AAPL', { prof: { name: 'Apple', sector: 'Technology' }, target: { mean: 260 } });

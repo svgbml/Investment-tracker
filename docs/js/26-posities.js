@@ -34,7 +34,7 @@ function togglePosShut(g) {
   try { localStorage.setItem(LS_POS_SHUT, JSON.stringify([...posState.shut].slice(-80))); } catch (e) { /* niet erg */ }
 }
 
-const COUNTRY_NL = { US: 'Verenigde Staten', NL: 'Nederland', DE: 'Duitsland', FR: 'Frankrijk', GB: 'Verenigd Koninkrijk', IE: 'Ierland',
+const POS_COUNTRY_NL = { US: 'Verenigde Staten', NL: 'Nederland', DE: 'Duitsland', FR: 'Frankrijk', GB: 'Verenigd Koninkrijk', IE: 'Ierland',
   CH: 'Zwitserland', BE: 'België', ES: 'Spanje', IT: 'Italië', SE: 'Zweden', DK: 'Denemarken', NO: 'Noorwegen', FI: 'Finland', AT: 'Oostenrijk',
   LU: 'Luxemburg', PT: 'Portugal', PL: 'Polen', JP: 'Japan', CN: 'China', HK: 'Hongkong', TW: 'Taiwan', KR: 'Zuid-Korea', IN: 'India',
   CA: 'Canada', AU: 'Australië', BR: 'Brazilië', MX: 'Mexico', IL: 'Israël', SG: 'Singapore', ZA: 'Zuid-Afrika' };
@@ -49,7 +49,7 @@ function posGroupOf(c) {
   if (g === 'country') {
     const p = M.mk && M.mk.ok ? M.mk.profOf(c.tk) : null;
     const k = p && p.country;
-    return k ? (COUNTRY_NL[k] || k) : isFundC(c) ? 'Fondsen' : 'Onbekend';
+    return k ? (POS_COUNTRY_NL[k] || k) : isFundC(c) ? 'Fondsen' : 'Onbekend';
   }
   if (g === 'cur') return c.cur ? (c.cur === 'GBX' ? 'Britse pence (GBX)' : c.cur) : 'Onbekend';
   if (g === 'pie') return posPieOf(c.tk);

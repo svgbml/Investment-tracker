@@ -20,7 +20,8 @@ const fail = (msg) => { errors++; console.log('  FOUT ' + msg); };
 
 // 1. Vingerafdruk: is het bestand nog precies wat er is binnengehaald?
 for (const v of conf.vendored) {
-  const text = readFileSync(root + 'docs/vendor/' + v.file, 'utf8');
+  // Windows-regeleinden (git met autocrlf) tellen niet mee, anders verschilt de vingerafdruk per computer
+  const text = readFileSync(root + 'docs/vendor/' + v.file, 'utf8').replace(/\r\n/g, '\n');
   // De eerste regels zijn onze eigen uitleg boven het bestand; die tellen niet mee
   const body = text.split('\n').slice(v.skipLines || 0).join('\n');
   const sha = createHash('sha256').update(body).digest('hex');

@@ -334,7 +334,7 @@ function openCmd() {
     const q = inp.value.trim().toLowerCase();
     const hits = all.filter((x) => !q || q.split(/\s+/).every((w) => (x[0] + ' ' + x[1]).toLowerCase().includes(w)));
     // Wat met de getypte tekst begint, staat bovenaan
-    if (q) hits.sort((a, b) => Number(b[0].toLowerCase().startsWith(q)) - Number(a[0].toLowerCase().startsWith(q)));
+    if (q) hits.sort((a, b) => Number(String(b[0]).toLowerCase().startsWith(q)) - Number(String(a[0]).toLowerCase().startsWith(q)));
     shown = hits.slice(0, 12);
     sel = Math.min(sel, Math.max(0, shown.length - 1));
     ul.innerHTML = shown.map((x, i) => '<li role="option" data-i="' + i + '" aria-selected="' + (i === sel) + '"><span>' + esc(x[0]) + '</span><span class="muted small">' + esc(x[1]) + '</span></li>').join('') || '<li class="muted">Niets gevonden</li>';
