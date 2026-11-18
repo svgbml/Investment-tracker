@@ -221,6 +221,53 @@ function indexed(pts) {
   });
 }
 
+// Aan- en verkopen uit de waardelijn van één positie halen. Elke stap telt alleen de koersbeweging;
+// eerdere punten worden teruggerekend vanaf de waarde nu, alsof je de huidige positie al die tijd had.
+// Een order wordt afgetrokken van de stap waarin hij valt (of een van de twee daarna, de meting loopt
+// soms achter). Zonder ordergegevens telt een sprong groter dan normaal als aan- of verkoop.
+function withoutTrades(tk, raw) {
+  let pts = raw;
+  const z = pts.reduce((k, p, i) => (isNum(p.v) && p.v > 0 ? k : i), -1);
+  if (z >= 0) pts = pts.slice(z + 1); // geen positie (of geen meting): de lijn begint daarna
+  const n = pts.length;
+  if (n < 2) return { pts, adj: z >= 0 };
+  const flow = new Array(n).fill(0), has = new Array(n).fill(false);
+  // Gewone afstand tussen twee punten; dagpunten hebben het begin van de dag als tijd, dus daar mag de stap vóór de order ook
+  const gaps = pts.slice(1).map((p, i) => p.t - pts[i].t).sort((a, b) => a - b);
+  const gap = gaps[gaps.length >> 1];
+  const before = gap > 12 * HOUR ? DAY : 0, after = Math.max(2 * gap, 30 * 60000);
+  const tx = M.tx && M.tx.has ? (M.tx.byTk.get(tk) || []).filter((x) => (!x.kind || x.kind === 'TRADE') && isNum(x.net) && x.net > 0) : [];
+  tx.forEach((x) => {
+    const f = x.side === 'SELL' ? -x.net : x.net;
+    let best = -1, err = Infinity;
+    for (let k = 1; k < n; k++) {
+      if (pts[k].t < x.t - before || pts[k - 1].t > x.t + after) continue;
+      const e = Math.abs(pts[k].v - pts[k - 1].v - flow[k] - f);
+      if (e < err) { err = e; best = k; }
+    }
+    // Alleen als de order de sprong ook verklaart; anders (bijvoorbeeld een order op de eerste dag) niets doen
+    if (best < 0 || err >= Math.abs(pts[best].v - pts[best - 1].v - flow[best])) return;
+    flow[best] += f; has[best] = true;
+  });
+  const r = new Array(n).fill(0);
+  let adj = z >= 0;
+  for (let i = 1; i < n; i++) {
+    const a = pts[i - 1].v, b = pts[i].v;
+    const lim = pts[i].t - pts[i - 1].t > 12 * HOUR ? MAX_DAY_MOVE : MAX_STEP_MOVE;
+    let x = (b - flow[i]) / a - 1;
+    if (has[i]) adj = true;
+    if (!isFinite(x) || Math.abs(x) > lim) { x = 0; adj = true; }
+    r[i] = x;
+  }
+  if (!adj) return { pts, adj: false };
+  const out = new Array(n);
+  out[n - 1] = { t: pts[n - 1].t, v: pts[n - 1].v };
+  for (let i = n - 1; i > 0; i--) out[i - 1] = { t: pts[i - 1].t, v: out[i].v / (1 + r[i]) };
+  return { pts: out, adj: true };
+}
+// Koerslijn van een positie zonder de sprongen van aan- en verkopen
+const marketSeries = (tk, range) => withoutTrades(tk, seriesFor(tk, range)).pts;
+
 // ---------- Statistiek ----------
 function dailyReturns(tk) {
   const d = seriesOf(tk).daily;

@@ -40,7 +40,7 @@ function tcardHtml(key) {
   const mine = typeof myTargetOf === 'function' ? myTargetOf(sym) : null;
   const price = c && isNum(c.priceNative) ? c.priceNative : p && isNum(p.price) ? p.price : null;
   const ch = c ? c.changePct : p && isNum(p.change) ? p.change / 100 : null;
-  const pts = c ? seriesFor(sym, '1m') : p ? M.mk.prices(sym).slice(-30).map((x) => ({ t: x.t, v: x.v })) : [];
+  const pts = c ? marketSeries(sym, '1m') : p ? M.mk.prices(sym).slice(-30).map((x) => ({ t: x.t, v: x.v })) : [];
   const an = tcardAnalysts(sym, cur);
   const rows = [
     ['Koers', isNum(price) ? money(price, cur) : '–'],

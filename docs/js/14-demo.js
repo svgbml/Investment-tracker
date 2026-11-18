@@ -36,6 +36,8 @@ function makeDemoData() {
   const add = (map, key, o) => { const x = map.get(key); if (!x) map.set(key, Object.assign({}, o)); else Object.keys(o).forEach((k) => { x[k] += o[k]; }); };
   const agg = (a) => ({ open: a[0], close: a[a.length - 1], low: Math.min(...a), high: Math.max(...a), avg: sum(a) / a.length });
   const r2 = (x) => Math.round(x * 100) / 100;
+  /** @type {{ t: Date, net: number } | null} */
+  let aaplBuy = null;
 
   book.forEach(([tk, name, target, vol, ret, price]) => {
     const path = [];
@@ -54,7 +56,10 @@ function makeDemoData() {
     const ranges = [];
     path.forEach((pts, di) => {
       const day = dates[di];
-      const vals = pts.map((x, s) => r2(x * scale * (tk === 'KO' && (di < buyDay || (di === buyDay && s < 30)) ? 0.5 : 1)));
+      // AAPL: bijgekocht eergisteren rond 13:00, zodat de detailgrafiek laat zien dat de aankoop niet als sprong in de lijn staat
+      const aaplPre = (s) => tk === 'AAPL' && (di < nD - 2 || (di === nD - 2 && s < 30));
+      const vals = pts.map((x, s) => r2(x * scale * (tk === 'KO' && (di < buyDay || (di === buyDay && s < 30)) ? 0.5 : aaplPre(s) ? 0.85 : 1)));
+      if (tk === 'AAPL' && di === nD - 2) { const t = new Date(day); t.setHours(12, 55, 0, 0); aaplBuy = { t, net: r2(pts[30] * scale * 0.15) }; }
       vals.forEach((x) => { ath = Math.max(ath, x); atl = Math.min(atl, x); });
       if (di >= nD - 3) vals.forEach((x, s) => { const t = new Date(day); t.setHours(8, s * 10, 0, 0); const k = iso(t); intraday.push([k, tk, x]); add(tot.intra, k, { v: x }); });
       if (day >= cutoffH) {
@@ -214,6 +219,7 @@ function makeDemoData() {
   orders.push([iso(dSell), 'NVDA', 'NVIDIA', 'SELL', 0.4, 191.2, 'USD', 1.12, 68.29, 4.99, 0.1, 0, 'TRADE']);
   const dSell2 = new Date(dates[nD - 9]); dSell2.setHours(17, 40, 0, 0);
   orders.push([iso(dSell2), 'PLTR', 'Palantir', 'SELL', 0.05, 158.2, 'USD', 1.15, 6.88, 0.71, 0.01, 0, 'TRADE']);
+  if (aaplBuy && posExtra.AAPL) orders.push([iso(aaplBuy.t), 'AAPL', 'Apple', 'BUY', +(aaplBuy.net * 1.16 / posExtra.AAPL.price).toFixed(6), posExtra.AAPL.price, 'USD', 1.16, aaplBuy.net, 0, +(aaplBuy.net * 0.0015).toFixed(2), 0, 'TRADE']);
   orders.sort((a, b) => a[0].localeCompare(b[0]));
   const etfRows = (list) => list.map(([tk, nm, sec, w]) => [tk, nm, sec, w]);
   const etf = {

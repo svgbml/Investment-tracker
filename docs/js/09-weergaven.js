@@ -121,7 +121,7 @@ function renderList() {
   segButtons($('list-span'), SPANS, ui.listSpan, (k) => { ui.listSpan = k; renderList(); });
   const items = filteredCompanies();
   fill('list-grid', items.length ? items.map((c) => {
-    const pts = seriesFor(c.tk, ui.listSpan);
+    const pts = marketSeries(c.tk, ui.listSpan);
     const delta = ui.listSpan === 'today' ? c.change : pts.length > 1 ? pts[pts.length - 1].v - pts[0].v : c.change;
     return '<button type="button" class="tile" data-ticker="' + esc(c.tk) + '" aria-label="' + esc(c.name + ', ' + eur(c.value) + ', ' + spct(c.changePct) + ' ' + M.dayWord + '. Inzoomen') + '">' +
       '<span class="row"><span class="tk">' + esc(c.tk) + '</span><b class="' + tone(c.change) + '">' + esc(spct(c.changePct)) + '</b></span>' +
@@ -253,7 +253,7 @@ function renderMList() {
     return '<button type="button" data-sortcol="' + k + '"' + (left ? ' class="l"' : '') + ' aria-pressed="' + on + '">' + esc(l) + arrow + '</button>';
   };
   const row = (c) => {
-    const pts = seriesFor(c.tk, ui.listSpan);
+    const pts = marketSeries(c.tk, ui.listSpan);
     const sp = spanPct(c, pts);
     return '<button type="button" class="m-trow" data-ticker="' + esc(c.tk) + '" aria-label="' + esc(c.name + ', ' + eur(c.value) + ', ' + (isNum(sp) ? spct(sp) : '') + ', sinds aankoop ' + (isNum(c.resultPct) ? spct1(c.resultPct) : '–') + '. Openen') + '">' +
       '<span class="n"><span class="tk">' + esc(c.tk) + '</span><span class="nm">' + esc(c.name) + '</span></span>' +
@@ -1018,7 +1018,9 @@ function renderDetailChart(animate) {
   if (!c) return;
   const r = ui.detailRange;
   segButtons($('d-ranges'), RANGES, r, (k) => { ui.detailRange = k; renderDetailChart(true); });
-  const pts = seriesFor(c.tk, r);
+  // Aan- en verkopen uit de lijn: anders springt hij bij elke order met het gekochte bedrag
+  const W = withoutTrades(c.tk, seriesFor(c.tk, r));
+  const pts = W.pts;
   const legend = $('d-legend');
   if (ui.compare) {
     const mine = indexed(pts);
@@ -1032,11 +1034,11 @@ function renderDetailChart(animate) {
     legend.innerHTML = '<div class="legend chart-legend"><span><i style="background:' + C.accent + '"></i>' + esc(c.tk) + ' ' + esc(spct(a)) + '</span><span><i class="dash"></i>Portefeuille ' + esc(spct(b)) + '</span></div>';
   } else {
     lineChart($('d-chart'), [{ pts, color: C.accent, width: 2.5 }], {
-      animate, markers: heroMarkers(pts, 'detail').concat(tradeMarkers(c.tk, pts)).filter((mk, i, all) => all.findIndex((o) => o.i === mk.i) === i), xl: $('d-x'), xfmt: xFmt(r, pts), tfmt: tFmt(r, pts),
+      animate, markers: tradeMarkers(c.tk, pts).concat(heroMarkers(pts, 'detail')).reduce((acc, mk) => { const o = acc.find((x) => x.i === mk.i); if (o) o.label += ' · ' + mk.label; else acc.push(Object.assign({}, mk)); return acc; }, []), xl: $('d-x'), xfmt: xFmt(r, pts), tfmt: tFmt(r, pts),
     });
     legend.innerHTML = '';
   }
-  $('d-note').textContent = coverageNote(r, pts);
+  $('d-note').textContent = [coverageNote(r, pts), W.adj ? 'Aan- en verkopen zijn uit de lijn gehaald: eerdere punten zijn teruggerekend naar de omvang van je positie nu.' : ''].filter(Boolean).join(' ');
 }
 
 $('detail').addEventListener('click', (e) => {

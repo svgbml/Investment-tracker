@@ -90,8 +90,8 @@ function posGroupHeadM(grp) {
 // Pictogrammen uit de sprite in index.html (idee 108)
 const BELL_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true" stroke="currentColor"><use href="#i-meldingen"/></svg>';
 function posRow(c) {
-  const pts = seriesFor(c.tk, '1m');
-  const sp = ui.listSpan === 'today' ? c.changePct : spanPct(c, seriesFor(c.tk, ui.listSpan));
+  const pts = marketSeries(c.tk, '1m');
+  const sp = ui.listSpan === 'today' ? c.changePct : spanPct(c, marketSeries(c.tk, ui.listSpan));
   const delta = pts.length > 1 ? pts[pts.length - 1].v - pts[0].v : (c.change || 0);
   const alarms = alertsOf(c.tk).filter((a) => a.on).length;
   return '<div class="prow" role="button" tabindex="0" data-ticker="' + esc(c.tk) + '" aria-label="' + esc(c.name + ', ' + eur(c.value) + ', ' + (isNum(sp) ? spct(sp) : '') + ', sinds aankoop ' + (isNum(c.resultPct) ? spct1(c.resultPct) : '–') + '. Openen') + '">' +
