@@ -441,7 +441,7 @@ function periodCmpTile() {
     '<div><span class="muted small">Periode B</span>' + segX('anPB', PCHOICES, anState.pB, 'Periode B') + own('B') + '</div></div>' +
     '<div class="chart" data-chart="pcmp" style="height:170px;margin-top:10px"></div>' +
     '<div class="legend chart-legend" style="margin-top:6px"><span><i style="background:' + C.accent + '"></i>A: ' + esc(A.label) + '</span><span><i class="dash"></i>B: ' + esc(B.label) + '</span></div>' +
-    '<div class="tbl-wrap" style="margin-top:10px"><table class="tbl"><thead><tr><th></th><th class="num">A: ' + esc(A.label) + '</th><th class="num">B: ' + esc(B.label) + '</th></tr></thead><tbody>' +
+    '<div class="tbl-wrap" style="margin-top:10px"><table class="tbl"><thead><tr><th><span class="sr-only">Kenmerk</span></th><th class="num">A: ' + esc(A.label) + '</th><th class="num">B: ' + esc(B.label) + '</th></tr></thead><tbody>' +
     labels.map((l, i) => '<tr><td>' + esc(l) + '</td><td class="num">' + esc(ca[i]) + '</td><td class="num">' + esc(cb[i]) + '</td></tr>').join('') + '</tbody></table></div>' +
     '<p class="sub" style="margin-top:8px">De grafiek legt beide periodes op dag 1 naast elkaar. Kies een eigen periode met de twee datums.</p></section>';
 }

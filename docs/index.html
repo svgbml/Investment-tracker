@@ -31,11 +31,14 @@
 
   <!-- Meldingen en welkom: verhuizen naar de weergave die actief is -->
   <div id="notices">
+    <div id="banners" role="region" aria-label="Meldingen">
     <div id="demo-banner" class="banner" hidden>Je bekijkt de functies met voorbeeldgetallen. <a href="https://github.com/svgbml/Investment-tracker#zelf-installeren" target="_blank" rel="noopener">Eigen tracker opzetten</a> of <button id="btn-demo-exit" class="linklike" type="button">mijn eigen gegevens laden</button></div>
     <div id="error" class="banner error" role="alert" hidden></div>
     <div id="share-banner" class="banner" hidden>Je bekijkt een gedeelde portefeuille (alleen lezen). <a href="https://github.com/svgbml/Investment-tracker#zelf-installeren" target="_blank" rel="noopener">Zelf een tracker opzetten</a></div>
     <div id="offline-banner" class="banner offline" role="status" hidden></div>
     <div id="update-banner" class="banner update" role="status" hidden>Er is een nieuwe versie van de tracker. <button type="button" class="btn primary" data-upd="now">Nu bijwerken</button> <button type="button" class="linklike" data-upd="later">Later</button></div>
+    </div>
+    <section id="welcome" class="welcome" aria-labelledby="wl-h1" hidden>
     <section id="whatsnew" class="banner whatsnew" role="status" hidden>
       <b id="whatsnew-title">Wat is er nieuw</b>
       <ul id="whatsnew-list"></ul>
@@ -53,7 +56,7 @@
       </div>
       <div class="wl-hero">
         <div class="wl-copy">
-          <h1>Je beleggingen in één oogopslag</h1>
+          <h1 id="wl-h1">Je beleggingen in één oogopslag</h1>
           <p>Deze site toont je Trading 212-portefeuille, opgehaald door je eigen Cloudflare Worker. Geen sleutel? Kijk dan eerst rond met voorbeeldgetallen: alles werkt, alleen de bedragen zijn verzonnen.</p>
           <div class="welcome-actions">
             <button id="btn-demo" class="btn primary" type="button">Functies bekijken met voorbeeldgetallen</button>
@@ -122,6 +125,7 @@
 
     <main id="app" hidden>
       <div id="page-home" class="page">
+        <h1 id="home-title" class="sr-only">Overzicht</h1>
         <section class="band" aria-labelledby="hero-label">
           <div class="hero-head">
             <div>
@@ -171,7 +175,7 @@
 
       <div id="page-list" class="page" hidden>
         <div class="wrap">
-          <div class="list-head"><div><h1>Bedrijven</h1><p id="list-sub" class="muted"></p></div><button type="button" class="btn ghost" data-ticker="@compare">Twee aandelen vergelijken</button></div>
+          <div class="list-head"><div><h1 id="list-title">Bedrijven</h1><p id="list-sub" class="muted"></p></div><button type="button" class="btn ghost" data-ticker="@compare">Twee aandelen vergelijken</button></div>
           <div id="list-weights" class="wbar" aria-label="Verdeling van je posities"></div>
           <div class="controls">
             <label class="sr-only" for="list-search">Zoek een bedrijf</label>
@@ -193,21 +197,22 @@
 
       <div id="page-news" class="page" hidden>
         <div class="wrap">
-          <div class="list-head"><div><h1>Nieuws</h1><p class="muted">Nieuws over je beleggingen en de markt, analisten en insiderhandel</p></div></div>
+          <div class="list-head"><div><h1 id="news-title">Nieuws</h1><p class="muted">Nieuws over je beleggingen en de markt, analisten en insiderhandel</p></div></div>
+          <h2 class="sr-only">Nieuws en stemming</h2>
           <div id="news-body"></div>
         </div>
       </div>
 
       <div id="page-stats" class="page" hidden>
         <div class="wrap">
-          <div class="list-head"><div><h1>Analyse</h1><p class="muted">Je echte rendement, risico, de markt en onderzoek</p></div><button type="button" class="btn ghost" data-cmdk>Snel zoeken <kbd>Ctrl K</kbd></button></div>
+          <div class="list-head"><div><h1 id="stats-title">Analyse</h1><p class="muted">Je echte rendement, risico, de markt en onderzoek</p></div><button type="button" class="btn ghost" data-cmdk>Snel zoeken <kbd>Ctrl K</kbd></button></div>
           <div id="analyse-body"></div>
         </div>
       </div>
 
       <div id="page-plan" class="page" hidden>
         <div class="wrap">
-          <div class="list-head"><div><h1>Plannen</h1><p class="muted">Streefverdeling, vooruitblik, werkelijke spreiding en export</p></div></div>
+          <div class="list-head"><div><h1 id="plan-title">Plannen</h1><p class="muted">Streefverdeling, vooruitblik, werkelijke spreiding en export</p></div></div>
           <div id="plan-body"></div>
         </div>
       </div>
@@ -301,7 +306,7 @@
       </section>
 
       <section id="m-news" class="m-view" hidden>
-        <div class="m-body"><div id="m-news-body"></div></div>
+        <div class="m-body"><h2 class="sr-only">Nieuws en stemming</h2><div id="m-news-body"></div></div>
       </section>
 
       <section id="m-plan" class="m-view" hidden>
@@ -528,6 +533,9 @@
     </form>
   </dialog>
 
+  <div id="tip" class="tip" role="tooltip" hidden></div>
+  <!-- Korte meldingen voor schermlezers (gegevens bijgewerkt, order verstuurd, volglijst aangepast) -->
+  <div id="a11y-live" class="sr-only" role="status" aria-live="polite"></div>
   <div id="tip" class="tip" role="status" hidden></div>
   <!-- Meldingen (gelukt of mislukt): één live-gebied, zie js/15-ui.js -->
   <div id="toasts" class="toasts" role="status" aria-live="polite" aria-atomic="false"></div>
@@ -557,6 +565,7 @@
   <script src="js/17-markt.js?v=57"></script>
   <script src="js/18-gemak.js?v=57"></script>
   <script src="js/20-handel.js?v=57"></script>
+  <script src="js/21-toegankelijk.js?v=57"></script>
   <script src="js/21-pwa.js?v=57"></script>
   <script src="js/21-privacy.js?v=57"></script>
   <script src="js/21-markt-extra.js?v=57"></script>

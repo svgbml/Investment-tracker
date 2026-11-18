@@ -2183,3 +2183,111 @@ html[data-motion="off"] .calc-wait::before { animation: none; }
 .perf-kv dt, .perf-kv dd { margin: 0; }
 .perf-kv dt { color: var(--ink-2); }
 .perf-note { margin-top: 6px; color: var(--ink-2); }
+
+/* ===================== Toegankelijkheid (ideeën 83 en 86 t/m 99) =====================
+ * Toetsenbord, voorlezen, contrast, grote aanraakvlakken, hoog contrast van Windows,
+ * eenvoudige taal, dyslexievriendelijk en de leermodus. */
+
+/* 89 Contrast: wit op een gekleurd vlak haalde de 4,5:1 niet. Donkerder vlak (36% -> 30% helderheid) */
+.lvl { background: hsl(calc(150 - (var(--k) - 1) * 25), 60%, 30%); }
+.srri span.on { background: hsl(calc(150 - (var(--k) - 1) * 25), 60%, 30%); box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px hsl(calc(150 - (var(--k) - 1) * 25), 60%, 30%); }
+.lvl.na { color: var(--ink); }
+/* In het donkere thema is --accent licht: daar hoort donkere tekst op, geen witte */
+:root[data-theme="dark"] .btn.primary, :root[data-theme="dark"] .watch-tags button[aria-pressed="true"],
+:root[data-theme="dark"] .term:hover::after, :root[data-theme="dark"] .term[aria-expanded="true"]::after { color: #0F1217; }
+
+/* 87 Grafiek als tabel: knop in de hoek van de grafiek, de tabel komt erover te liggen (de bladspiegel blijft gelijk) */
+.chart-alt-btn {
+  position: absolute; right: 6px; bottom: 6px; z-index: 3; font: 600 12px/1 inherit; padding: 7px 11px;
+  border-radius: 999px; border: 1px solid var(--rule); background: var(--surface); color: var(--ink-2); cursor: pointer; opacity: .65;
+}
+.chart-alt-btn:hover, .chart-alt-btn:focus-visible { opacity: 1; color: var(--ink); }
+.chart-alt-tbl { position: absolute; inset: 0; z-index: 2; overflow: auto; background: var(--surface); border-radius: 12px; padding: 0 0 36px; }
+.chart-alt-tbl table { width: 100%; }
+.chart-alt-tbl caption { text-align: left; font-size: 13px; color: var(--ink-2); padding: 0 2px 6px; }
+.chart-alt-tbl .sub { padding: 6px 2px; }
+.alt-tbl th[scope="row"] { font-weight: 500; white-space: nowrap; color: var(--ink); }
+
+/* 88 Kleur is nooit het enige teken: aanbevelingen krijgen ook een patroon, de volglijst een vierkante stip */
+/* De kleur staat in de stijl van het blokje; de browser schrijft hem soms als rgb(...) terug (Preact), dus beide vormen */
+.rec-bar i[style*="#5FB58A"], .rec-bar i[style*="rgb(95, 181, 138)"] { background-image: repeating-linear-gradient(135deg, rgba(255, 255, 255, .55) 0 2px, transparent 2px 5px); }
+.rec-bar i[style*="#C9CED6"], .rec-bar i[style*="rgb(201, 206, 214)"] { background-image: repeating-linear-gradient(90deg, rgba(20, 24, 31, .3) 0 1px, transparent 1px 4px); }
+.rec-bar i[style*="#E3A79C"], .rec-bar i[style*="rgb(227, 167, 156)"] { background-image: repeating-linear-gradient(45deg, rgba(20, 24, 31, .25) 0 2px, transparent 2px 5px); }
+.mood-dot.w i, .mood-leg i.w { border-radius: 3px; }
+
+/* 86 en 92 Toetsenbord: rijen die open kunnen, zijn ook met Tab te bereiken */
+[role="button"][tabindex="0"] { cursor: pointer; }
+tr.rowlink:focus-visible, .tx.rowlink:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
+h1:focus, h2:focus, #m-title:focus { outline: none; }
+
+/* 93 Tekst op 200%: tegels mogen meegroeien, tekst wordt niet afgekapt */
+.tile, .m-stat, .m-card { overflow-wrap: break-word; }
+.corr .ch { height: auto; min-height: 46px; }
+.quiz-opt, .leer-card { height: auto; }
+
+/* 97 Aanraakvlakken van minstens 44 px in de telefoonweergave.
+ * Uitzonderingen: begrippen en links midden in een tekstregel (die mogen van WCAG kleiner zijn),
+ * de plus- en minknoppen in de doelentabel (30 px, boven de ondergrens van 24 px; groter past niet op 390 px)
+ * en de stippen op de stemmingskaart, waarvan de plaats de betekenis is. */
+@media (max-width: 700px) {
+  .seg button, .seg.light button, .m-seg button, .m-chips button, .watch-tags button, .m-ptabs button, .src-chips button { min-height: 44px; }
+  .m-chips button, .watch-tags button { padding: 0 16px; }
+  .legend-list button, .legend-list .legend-row, .hbars .r, .sug-list button, .alt-list button { min-height: 44px; }
+  .tbl tr.rowlink td, .tbl tr.rowlink th { padding-top: 12px; padding-bottom: 12px; }
+  input:not([type="checkbox"]):not([type="radio"]), select, .m-table [data-sortcol] { min-height: 44px; }
+  .stepper > button, .stepper.big > button, .plan-tbl .stepper > button { width: 44px; height: 44px; }
+  .chart-alt-btn { padding: 13px 14px; }
+  .linklike { display: inline-block; padding: 4px 0; }
+  .mood-dot { min-height: 40px; padding: 0 4px; }
+  .mood-dot i { width: 14px; height: 14px; }
+}
+
+/* 93 Tekst of pagina op 200%: op een telefoon blijft er dan ongeveer 195 px over. De bovenbalk,
+ * de periodekeuze en lange regels mogen dan afbreken in plaats van buiten beeld te lopen. */
+@media (max-width: 320px) {
+  .m-top { flex-wrap: wrap; row-gap: 4px; }
+  .m-top .updated { display: none; }
+  .m-seg { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .seg, .m-ptabs, .plan-head, .section-head, .m-head { flex-wrap: wrap; }
+  .m-row, .hbars .r, .tx { overflow-wrap: anywhere; }
+  .legend-list .nm, .legend-list .nm .muted { white-space: normal; overflow-wrap: anywhere; }
+}
+
+/* 98 Eenvoudige taal: tegels met veel vaktermen verbergen (de begrippen zelf krijgen eenvoudiger woorden, zie js/21-toegankelijk.js) */
+:root[data-eenvoudig="1"] [data-jargon="1"] { display: none !important; }
+
+/* 99 Dyslexievriendelijk: meer ruimte tussen regels, woorden en letters */
+:root[data-dys="1"] body { line-height: 1.85; letter-spacing: .035em; word-spacing: .14em; }
+:root[data-dys="1"] h1, :root[data-dys="1"] h2, :root[data-dys="1"] h3 { line-height: 1.4; letter-spacing: 0; }
+:root[data-dys="1"] p, :root[data-dys="1"] .sub, :root[data-dys="1"] .muted, :root[data-dys="1"] dd { text-align: left; }
+:root[data-dys="1"] .news-t, :root[data-dys="1"] .news-s { letter-spacing: .04em; }
+
+/* 83 Leermodus: uitleg bij een begrip de eerste keer, en een korte quiz */
+.leer-card { margin-top: 12px; padding: 10px 12px 12px; border-left: 3px solid var(--accent); border-radius: 10px; background: var(--empty); }
+.leer-card > b { display: block; font-size: 12px; font-weight: 700; color: var(--ink-2); text-transform: none; }
+.leer-card > p { margin-top: 4px; font-size: 14px; }
+.leer-card .exp { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.leer-card .btn { min-height: 36px; padding: 0 12px; font-size: 13px; }
+.quiz-dlg .dlg-card { width: min(460px, 100%); }
+.quiz-q { margin-top: 10px; font-size: 16px; }
+.quiz-opts { display: grid; gap: 8px; margin-top: 12px; }
+.quiz-opt { display: block; width: 100%; min-height: 44px; padding: 10px 14px; text-align: left; }
+.quiz-opt.good { border-color: var(--gain); color: var(--gain); font-weight: 700; }
+.quiz-opt.bad { border-color: var(--loss); color: var(--loss); }
+.quiz-opt[disabled] { opacity: 1; cursor: default; }
+
+/* 90 Hoog contrast (Windows): balken, meters en stippen houden hun eigen kleuren, maar krijgen een rand,
+ * en de gekozen knop of pagina is te zien aan de systeemkleur in plaats van aan een achtergrondje. */
+@media (forced-colors: active) {
+  .chart > svg, .spark, .donut, .bars, .rec-bar, .stack, .cal, .heat-key, .srri, .meter, .lvl, .wbar, .mood-dot i, .range, .eps-b, .hbars { forced-color-adjust: none; }
+  .bars, .rec-bar, .stack, .meter, .cal, .wbar, .range .rail { outline: 1px solid CanvasText; }
+  .lvl, .mood-dot i, .marker span, .tip, .tag, .chip-chg, .seg button, .m-seg button, .m-chips button, .watch-tags button, .btn, .icon-btn, .m-icon { border: 1px solid CanvasText; }
+  .seg button[aria-pressed="true"], .m-seg button[aria-pressed="true"], .m-ptabs button[aria-pressed="true"], .m-chips button[aria-pressed="true"],
+  .watch-tags button[aria-pressed="true"], .pillnav a[aria-current="page"], .m-tabs a[aria-current="page"], .quiz-opt.good {
+    background: Highlight; color: HighlightText; forced-color-adjust: none;
+  }
+  .pill, .m-tab-ind { display: none; }
+  .term { text-decoration: underline; }
+  .leer-card { border: 1px solid CanvasText; }
+  :focus-visible { outline: 3px solid CanvasText; outline-offset: 2px; }
+}
