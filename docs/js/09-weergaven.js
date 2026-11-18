@@ -384,7 +384,8 @@ const ACC = '@account';
 const RISK = '@risk', RES = '@result', DEP = '@deposits';
 const CMP = '@compare';
 const STATUS = '@status';
-const PSEUDO = { '@account': 'accountwaarde', '@risk': 'risico', '@result': 'resultaat', '@deposits': 'stortingen', '@compare': 'vergelijken', '@status': 'status' };
+const MISSED = '@missed';
+const PSEUDO = { '@account': 'accountwaarde', '@risk': 'risico', '@result': 'resultaat', '@deposits': 'stortingen', '@compare': 'vergelijken', '@status': 'status', '@missed': 'gemist' };
 const isPseudo = (k) => Object.prototype.hasOwnProperty.call(PSEUDO, k);
 const hasView = (k) => isPseudo(k) || (M && M.byTk.has(k)) || (isWatchKey(k) && M && watchSyms().includes(k.slice(1)));
 const viewHash = (k) => (isPseudo(k) ? '#' + PSEUDO[k] : isWatchKey(k) ? '#volg/' + encodeURIComponent(k.slice(1)) : '#bedrijf/' + encodeURIComponent(k));
@@ -961,6 +962,7 @@ function renderDetail(animate, swapDir) {
   if (ui.detail === RES) { const inner = $('detail-inner'); inner.innerHTML = renderResultView(); drawMacro(inner); return; }
   if (ui.detail === DEP) { $('detail-inner').innerHTML = renderDepositView(); return; }
   if (ui.detail === STATUS) { $('detail-inner').innerHTML = renderStatusView(); return; }
+  if (ui.detail === MISSED) { $('detail-inner').innerHTML = renderMissedView(); return; }
   if (ui.detail === CMP) { const inner = $('detail-inner'); inner.innerHTML = renderCompareView(); drawCompare(inner); return; }
   if (isWatchKey(ui.detail)) { const inner = $('detail-inner'); inner.innerHTML = renderWatchDetail(ui.detail.slice(1)); drawWatchChart(inner); drawSectorChart(inner); return; }
   const c = M.byTk.get(ui.detail);

@@ -58,6 +58,14 @@ Zet ze aan op de website onder *Instellingen → Koppelingen en functies*. Sleut
 | Risicopagina: bedrijven van je volglijst die je spreiding verbreden (andere sector of anders bewegend) en waar analisten en nieuws positief over zijn | Finnhub, FMP | gratis sleutels (`FINNHUB_KEY`, `FMP_KEY`) |
 | Nieuwsarchief: ouder nieuws per aandeel, elke ronde een maand verder terug tot een jaar (knop *Ouder nieuws laden*) | Finnhub | gratis sleutel (`FINNHUB_KEY`) |
 | Analisten per sector en door de tijd: alle analisten per sector samen, en wat er in een dag, week, maand of drie maanden veranderde (de Worker bewaart de stand elke dag als die verandert) | Finnhub of Alpha Vantage | gratis sleutel (`FINNHUB_KEY`) |
+| Nieuws van meer bronnen over hetzelfde bericht gebundeld ("4 bronnen", uitklapbaar); toon (positief, negatief, neutraal) uit een woordenlijst met gewichten in het Engels en Nederlands, met ontkenningen, en in de tooltip de woorden die de toon bepaalden | Finnhub | gratis sleutel (`FINNHUB_KEY`) |
+| Nieuws dempen per bron, per aandeel of op een woord in de kop | je eigen Worker | niets extra |
+| Analisten door de tijd op de bedrijfspagina: deel kopen en koersdoel per dag, met de laatste wijzigingen | Finnhub | gratis sleutel (`FINNHUB_KEY`) |
+| Stemming van analisten per sector als kleurstrook op het overzicht | Finnhub | gratis sleutel (`FINNHUB_KEY`) |
+| Scorebord: hoe vaak eerdere koersdoelen (minstens drie maanden oud) de goede kant op wezen, per sector | Finnhub | gratis sleutel (`FINNHUB_KEY`) |
+| Cijferseizoen: posities en volglijst die de komende vier weken met kwartaalcijfers komen, met verwachting, de gewone koerssprong en de verrassingen erna | FMP (agenda), Finnhub (verwachting en verrassing) | gratis sleutels (`FMP_KEY`, `FINNHUB_KEY`) |
+| "Wat heb ik gemist": sinds je vorige bezoek op dit apparaat de koersbewegingen, het nieuws, de analistenwijzigingen en het ontvangen dividend (`#gemist`) | je eigen Worker | niets extra |
+| Meldingen als analisten binnen een week van mening veranderen over een aandeel dat je hebt, en als een grote belegger (13F) in zo'n aandeel stapt of afbouwt | Finnhub, SEC EDGAR | `FINNHUB_KEY`, `SEC_CONTACT` en meldingen aan |
 | Suggesties om te volgen | FMP (vergelijkbare bedrijven) en de samenstelling van je indexfondsen | gratis sleutel (`FMP_KEY`) of een fondsbestand |
 | Agenda (kwartaalcijfers, dividenden), sector en branche, vergelijkbare bedrijven | [Financial Modeling Prep](https://site.financialmodelingprep.com/register) | gratis sleutel (`FMP_KEY`) |
 | Volglijst (aandelen die je niet hebt), agenda in Google Agenda | Financial Modeling Prep | gratis sleutel (`FMP_KEY`) |
@@ -77,7 +85,7 @@ Zet ze aan op de website onder *Instellingen → Koppelingen en functies*. Sleut
   - **Bedrijven**: alle posities als tegels met grafiek, zoeken, filteren en sorteren.
   - **Bedrijfspagina** (`#bedrijf/TICKER`): grafiek, positie, valuta-effect, transacties, historie, agenda, nieuws, analisten, insiderhandel, bedrijfscijfers, sector en vergelijkbare bedrijven, patronen.
   - **Bedrijven** heeft ook een knop om twee aandelen te vergelijken, een waarderingstabel en suggesties om te volgen.
-  - **Nieuws**: nieuws over je posities, volglijst en de markt, analisten per bedrijf met betrouwbaarheid, suggesties volgens analisten en insiderhandel.
+  - **Nieuws**: nieuws over je posities, volglijst en de markt (berichten over hetzelfde onderwerp gebundeld), analisten per bedrijf met betrouwbaarheid, meningen per sector, het cijferseizoen, het scorebord van koersdoelen, suggesties volgens analisten en insiderhandel. Met een knop naar *Wat heb ik gemist* (`#gemist`).
   - **Analyse** (`#analyse`; op de telefoon het tabblad Analyse): rendement en risico, marktoverzicht, economische agenda, screener, ETF-zoeker, SEC-deponeringen, 13F, alle transacties en begrippen.
   - **Plannen**: streefverdeling, inleg-assistent, vooruitblik, scenario's, dividendkalender, belastinghulp box 3, kostenoverzicht, aankoopdagboek, overlap met fondsen, werkelijke spreiding, andere rekeningen, weekoverzicht delen, export naar CSV.
   - **Instellingen**: thema, animaties (automatisch, aan of uit; "automatisch" volgt "minder beweging" van je apparaat), taal (Nederlands, Engels, Duits of Frans), leesbaarheid (compact, grotere tekst, kleurenblindvriendelijk), rondleiding en sneltoetsen, installeren als app en controleren op updates.

@@ -144,6 +144,17 @@ Object.assign(EN, {
 Object.assign(EN, {
   'Stemmingskaart': 'Sentiment map', 'klik op een stip': 'click a dot', 'beide positief': 'both positive', 'beide negatief': 'both negative', 'analisten wel, nieuws niet': 'analysts yes, news no',
   'nieuws wel, analisten niet': 'news yes, analysts no', '← minder analisten zeggen kopen': '← fewer analysts say buy', 'meer →': 'more →', 'in bezit': 'held', 'volglijst': 'watchlist',
+  // Nieuws en analisten, tweede deel (bundelen, tijdlijn, cijferseizoen, scorebord, gemist)
+  'Analisten door de tijd': 'Analysts over time', 'Laatste wijzigingen': 'Latest changes', 'Kopen nu': 'Saying buy now', 'Analisten erbij of eraf': 'Analysts added or gone',
+  'Gemiddeld koersdoel': 'Average price target', 'Kwartaalcijfers komen eraan': 'Earnings coming up', 'Verwachte winst per aandeel': 'Expected earnings per share',
+  'Laatste vier keer boven verwachting': 'Above expectations in the last four', 'Koers beweegt rond cijfers meestal': 'Price usually moves around earnings',
+  'Vorige cijfers': 'Previous earnings', 'Verrassingen per kwartaal': 'Surprises per quarter', 'Cijferseizoen': 'Earnings season', 'Net gerapporteerd': 'Just reported',
+  'Cijfers op': 'Reporting on', 'Verwachte wpa': 'Expected EPS', 'Gewone sprong': 'Usual move', 'Vorige verrassing': 'Previous surprise',
+  'Analisten tegenover de uitkomst': 'Analysts versus the outcome', 'Koersdoelen': 'Price targets', 'Goede richting': 'Right direction', 'Deel goed': 'Share correct',
+  'Beste en zwakste': 'Best and weakest', 'Stemming van analisten per sector': 'Analyst mood by sector', 'minder positief': 'less positive', 'positiever': 'more positive',
+  'Wat heb ik gemist?': 'What did I miss?', 'Alles bekijken': 'See everything', 'Nieuws en analisten': 'News and analysts', 'Je beleggingen samen': 'Your investments together',
+  'Grootste bewegingen': 'Biggest moves', 'Koersen': 'Prices', 'Dividend en alarmen': 'Dividends and alerts', 'Koersalarmen afgegaan': 'Price alerts triggered',
+  'Nieuws instellen': 'News settings', 'Bronnen': 'Sources', 'Aandelen': 'Stocks', 'Woorden': 'Words', 'Dempen': 'Mute',
   'hoger = positiever nieuws': 'higher = more positive news', 'Ouder nieuws laden': 'Load older news', 'Meningen per sector en door de tijd': 'Opinions by sector and over time', 'Koersdoel verschil': 'Target change', 'Meest en minst positief': 'Most and least positive', 'één bedrijf': 'one company', '1 dag': '1 day', '1 maand': '1 month', '3 maanden': '3 months', 'Verschil': 'Change', 'Bedrijven die je spreiding verbreden': 'Companies that broaden your diversification', 'Sectoren die je weinig of niet hebt: volg er een': 'Sectors you hold little or none of: follow one', 'Koersdoel analisten': 'Analyst price target', 'volgt na de volgende meting': 'follows after the next measurement', 'Geen ouder nieuws meer.': 'No older news.', 'namen die niet passen: tik op de stip': 'names that do not fit: tap the dot', 'Pictogram op je beginscherm': 'Home screen icon', 'Glas': 'Glass', 'Doorzichtig, witte lijn': 'Transparent, white line', 'Donker': 'Dark', 'Blauw': 'Blue', 'Licht': 'Light', 'Installeren': 'Install', 'Toegang en Worker': 'Access and Worker', 'Koppelingen': 'Connections', 'Als app installeren': 'Install as app', 'Status en reservekopie': 'Status and backup', 'Geschiedenis uit Google Sheet': 'History from Google Sheet', 'Delen (alleen lezen)': 'Sharing (read only)', 'Meldingen': 'Notifications', 'Opslaan en laden': 'Save and load', 'Code vergeten': 'Forget code', 'Toegangscode': 'Access code', 'je bronnen en extra functies': 'your sources and extra features', 'gekoppeld · code in deze browser': 'connected · code in this browser', 'nog niet gekoppeld': 'not connected yet', 'koersbewegingen, cijfers en insiders': 'price moves, earnings and insiders', 'een link om mee te kijken': 'a read-only link to share', 'op je beginscherm, met meldingen': 'on your home screen, with notifications', 'meetstatus en reservekopie': 'measurement status and backup', 'optioneel, eenmalig': 'optional, one time', 'alles aan met voorbeeldgegevens': 'everything on with sample data', 'Inleg': 'Contributions', 'Wat als': 'What if', 'Spreiding': 'Diversification', 'Delen': 'Sharing', 'Vooruit': 'Ahead', 'Belasting': 'Tax', 'Rendement': 'Return', 'Transacties': 'Transactions', 'Toon alles': 'Show all', 'Per sector': 'By sector', 'Eén lijst': 'One list', 'Toon': 'Show', 'Periode': 'Period', 'Indeling': 'Layout', 'Totaal': 'Total', 'Waarde': 'Value',
 });
 EN_RE.push([/^Alleen (.+)$/, 'Only $1'], [/^Posities (\d+)$/, 'Positions $1'], [/^Volglijst (\d+)$/, 'Watchlist $1']);
@@ -310,7 +321,8 @@ async function renderPush(msg) {
       '<label class="small">Koersbeweging vanaf<span class="eur-in"><input type="number" min="0" max="50" step="0.5" data-rule="move" value="' + esc(R.move != null ? R.move : 5) + '">%</span></label>' +
       '<label class="small">Afwijking van je doel vanaf<span class="eur-in"><input type="number" min="0" max="50" step="0.5" data-rule="drift" value="' + esc(R.drift != null ? R.drift : 5) + '">pp</span></label>' +
       '<label class="check small"><input type="checkbox" data-rule="earnings"' + (R.earnings !== false ? ' checked' : '') + '> Kwartaalcijfers van morgen</label>' +
-      '<label class="check small"><input type="checkbox" data-rule="insider"' + (R.insider !== false ? ' checked' : '') + '> Bestuurders die aandelen kopen</label>' +
+      '<label class="check small"><input type="checkbox" data-rule="insider"' + (R.insider !== false ? ' checked' : '') + '> Bestuurders en grote beleggers die kopen of verkopen</label>' +
+      '<label class="check small"><input type="checkbox" data-rule="ratings"' + (R.ratings !== false ? ' checked' : '') + '> Analisten die van mening veranderen</label>' +
     '</div>' +
     '<div class="dlg-actions" style="justify-content:flex-start;margin-top:8px">' +
       (sub ? '<button type="button" class="btn ghost" data-push="off">Uitzetten op dit apparaat</button><button type="button" class="btn ghost" data-push="test">Testmelding</button>'
@@ -340,8 +352,8 @@ document.addEventListener('click', async (e) => {
       const r = await workerCall('/api/push/test', { method: 'POST' });
       await renderPush(r.sent ? 'Testmelding verstuurd naar ' + r.sent + (r.sent === 1 ? ' apparaat.' : ' apparaten.') : 'Er ging geen melding uit; zet meldingen opnieuw aan.');
     } else if (act === 'rules') {
-      const v = (k) => document.querySelector('#push-body [data-rule="' + k + '"]');
-      await saveSettings({ alerts: { move: Number(v('move').value) || 0, drift: Number(v('drift').value) || 0, earnings: v('earnings').checked, insider: v('insider').checked } });
+      const v = (k) => /** @type {HTMLInputElement} */ (document.querySelector('#push-body [data-rule="' + k + '"]'));
+      await saveSettings({ alerts: { move: Number(v('move').value) || 0, drift: Number(v('drift').value) || 0, earnings: v('earnings').checked, insider: v('insider').checked, ratings: v('ratings').checked } });
       await renderPush('Regels opgeslagen.');
     }
   } catch (err) { await renderPush('Mislukt: ' + err.message + '.'); }

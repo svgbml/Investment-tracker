@@ -1399,3 +1399,55 @@ body.welcoming #mshell { padding-bottom: 0; }
 /* Het streepje onder het menu schuift via placeIndicators (Web Animations), niet via een CSS-overgang */
 .pill, :root[data-theme="dark"] .pill { transition: none; }
 .watch-add .ws-wrap .search { flex: 1 1 auto; max-width: none; }
+
+
+/* ===== Nieuws en analisten, tweede deel: bundels, tijdlijn van analisten, stemmingsstrook, cijferseizoen ===== */
+
+/* Berichten over hetzelfde onderwerp: de andere bronnen uitklapbaar onder de kop */
+.news-g { border-top: 1px solid var(--rule); }
+.news-g:first-child { border-top: 0; }
+.news-g .news-i { border-top: 0; padding-bottom: 2px; }
+.news-src { margin: 0 0 8px; }
+.news-src > summary { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--accent); cursor: pointer; list-style: none; padding: 2px 8px; border-radius: 999px; background: var(--empty); }
+.news-src > summary::-webkit-details-marker { display: none; }
+.news-src > summary::after { content: "▾"; font-size: 10px; }
+.news-src[open] > summary::after { content: "▴"; }
+.news-src > summary:hover { text-decoration: underline; }
+.news-sub { display: grid; gap: 4px; margin: 6px 0 2px; padding-left: 10px; border-left: 2px solid var(--rule); }
+.news-sub a { display: flex; gap: 8px; font-size: 13px; color: var(--ink); text-decoration: none; }
+.news-sub a:hover .t { text-decoration: underline; }
+.news-sub .s { flex: 0 0 auto; font-size: 12px; font-weight: 600; color: var(--ink-2); min-width: 72px; }
+.news-sub .t { color: var(--ink-2); }
+
+/* Aanbevelingen door de tijd: per meetdag een staafje dat van boven naar onder van kopen naar verkopen loopt */
+.rev-strip { display: flex; gap: 2px; height: 76px; margin-top: 6px; }
+.rev-c { flex: 1 1 0; min-width: 3px; display: flex; flex-direction: column; border-radius: 3px; overflow: hidden; background: var(--empty); }
+.rev-c i { display: block; width: 100%; }
+.rev-tile .rec-leg { flex-wrap: wrap; }
+
+/* Stemming van analisten per sector: één strook, breedte naar het aantal analisten */
+.op-heat { display: flex; gap: 4px; align-items: stretch; margin-top: 4px; }
+.op-heat .cell { display: flex; flex-direction: column; justify-content: center; gap: 2px; min-width: 0; padding: 10px 8px; border-radius: 8px; background: var(--empty); color: var(--ink); text-decoration: none; }
+.op-heat .cell .s { font-size: 12px; font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; }
+.op-heat .cell .d { font-size: 13px; font-weight: 700; }
+.op-heat .cell.heat-g3, .op-heat .cell.heat-l3 { color: #FFFFFF; }
+.op-heat .cell:hover { outline: 2px solid var(--accent); outline-offset: 1px; }
+:root[data-theme="dark"] .op-heat .cell { color: var(--ink); }
+:root[data-theme="dark"] .op-heat .cell.heat-g1, :root[data-theme="dark"] .op-heat .cell.heat-l1,
+:root[data-theme="dark"] .op-heat .cell.heat-g2, :root[data-theme="dark"] .op-heat .cell.heat-l2 { color: #14181F; }
+@media (max-width: 700px) {
+  .op-heat { flex-wrap: wrap; }
+  .op-heat .cell { flex: 1 1 42%; min-width: 120px; }
+}
+
+/* Woord dempen: invoerveld en knop naast elkaar */
+.mute-form { display: flex; gap: 8px; align-items: center; margin-top: 4px; }
+.mute-form .search { flex: 1 1 auto; max-width: 260px; }
+
+/* Tegels die via een component-omhulsel (display:contents) in een raster staan, moeten ook de hele breedte kunnen pakken */
+.grid > .legacy > .full, .plan-grid > .legacy > .full { grid-column: 1 / -1; }
+.grid > .legacy > .span-2 { grid-column: span 2; }
+
+/* Cijferseizoen en scorebord: de tweede regel in een cel wat stiller */
+.earn-season .tbl td .sub, .an-score .tbl td .sub { display: block; }
+.earn-prev .eps { margin-top: 6px; }

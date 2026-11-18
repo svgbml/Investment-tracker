@@ -227,10 +227,15 @@ function makeDemoData() {
   const research = {}, fin = {};
   book.filter((x) => !['VUAG', 'SXRV'].includes(x[0])).forEach(([tk, name], i) => {
     const day = (n) => { const d = new Date(now); d.setDate(d.getDate() - n); return d.getTime(); };
+    const topic = ['stijgt na sterke cijfers', 'daalt na verlaagde verwachting', 'kondigt nieuw product aan', 'krijgt opwaardering van analist'];
+    // Vier gewone berichten, en over het eerste onderwerp schrijven meteen drie bronnen (zo is het bundelen te zien)
+    const sameEvent = ['Reuters', 'Bloomberg', 'CNBC'].map((src, k) => ({ t: day(1) - (k + 1) * 2.5 * HOUR,
+      headline: 'Voorbeeld: ' + name + ' ' + topic[i % 4] + ' (geen echt nieuws)', source: src, url: '#bundel-' + tk + '-' + k,
+      summary: 'Voorbeeldtekst van ' + src + ' over hetzelfde bericht.' }));
     research[tk] = {
-      news: [1, 2, 4, 7].map((n, k) => ({ t: day(n), headline: 'Voorbeeld: ' + name + ' ' + ['stijgt na sterke cijfers', 'daalt na verlaagde verwachting', 'kondigt nieuw product aan', 'krijgt opwaardering van analist'][(k + i) % 4] + ' (geen echt nieuws)', source: 'Voorbeeldbron', url: '#' })),
+      news: [1, 2, 4, 7].map((n, k) => ({ t: day(n), headline: 'Voorbeeld: ' + name + ' ' + topic[(k + i) % 4] + ' (geen echt nieuws)', source: 'Voorbeeldbron', url: '#' })).concat(sameEvent),
       rec: [0, 1, 2, 3].map((k) => ({ period: dIn(-30 * k).slice(0, 8) + '01', sb: 6 + ((i + k) % 5), b: 12 + ((i * 3 + k) % 7), h: 6 + (i % 6), s: (i + k) % 3, ss: (i % 4 === 0) ? 1 : 0 })),
-      eps: [0, 1, 2, 3].map((k) => { const est = +(1 + rnd() * 3).toFixed(2); const pct = +((rnd() - 0.35) * 14).toFixed(1); return { period: dIn(-91 * k - 40), actual: +(est * (1 + pct / 100)).toFixed(2), estimate: est, pct }; }),
+      eps: [0, 1, 2, 3].map((k) => { const est = +(1 + rnd() * 3).toFixed(2); const pct = +((rnd() - 0.35) * 14).toFixed(1); return { period: dIn(-91 * k - 4 - (i % 25)), actual: +(est * (1 + pct / 100)).toFixed(2), estimate: est, pct }; }),
       insider: [3, 11, 25, 48, 77].map((n, k) => ({ name: ['Voorbeeld, A.', 'Voorbeeld, B.', 'Voorbeeld, C.'][k % 3], date: dIn(-n), code: ['S', 'M', 'S', 'P', 'F'][(k + i) % 5], change: (k + i) % 5 === 3 ? 800 : -1200 - k * 300, price: +(50 + rnd() * 300).toFixed(2), shares: 10000 })),
     };
     const base = (5 + rnd() * 300) * 1e9, margin = 0.05 + rnd() * 0.3;
@@ -254,9 +259,24 @@ function makeDemoData() {
     // LMT (volglijst, defensie) positief, zodat de risicopagina een bedrijf toont dat de spreiding verbreedt
     const bull = tk === 'LMT' ? 0.68 : +(0.3 + rnd() * 0.5).toFixed(2);
     research[tk].sent = { bull, bear: +(1 - bull).toFixed(2), score: +(0.4 + rnd() * 0.5).toFixed(2), sector: 0.55, articles: Math.round(10 + rnd() * 80), buzz: 1 };
-    // Koersdoel-geschiedenis per week, voor de betrouwbaarheid van analisten
+    // Koersen een jaar terug aanvullen (de voorbeeldmarkt heeft maar een paar weken), zodat de tijdlijn van
+    // analisten en het scorebord van koersdoelen iets te tonen hebben
     const ph = prices[tk] || [];
-    research[tk].targetHist = ph.length > 5 ? ph.filter((p, k) => k % 5 === 0).map(([d, v]) => ({ d, mean: +(v * (0.9 + rnd() * 0.3)).toFixed(2) })) : [];
+    if (ph.length > 5) {
+      const older = [];
+      const d = new Date(ph[0][0]);
+      let v = ph[0][1];
+      for (let k = 0; k < 300; k++) {
+        d.setDate(d.getDate() - 1);
+        if (!(d.getDay() % 6)) continue;
+        v /= 1 + gauss() * 0.013 + 0.0006;
+        older.push([iso(d).slice(0, 10), +v.toFixed(2)]);
+      }
+      prices[tk] = older.reverse().concat(ph);
+    }
+    // Koersdoel-geschiedenis per week, voor de betrouwbaarheid en het scorebord van analisten
+    const pl = prices[tk] || [];
+    research[tk].targetHist = pl.length > 5 ? pl.filter((p, k) => k % 5 === 0).map(([d, v]) => ({ d, mean: +(v * (0.92 + rnd() * 0.26)).toFixed(2) })) : [];
     // Mening per dag (alleen dagen met een verandering), terug vanaf nu: [dag, sb, b, h, s, ss, koersdoel]
     const R0 = research[tk].rec[0], cur = [R0.sb, R0.b, R0.h, R0.s, R0.ss, research[tk].target.mean], rh = [];
     for (let n = tk.length % 3; n <= 110; n += 2 + Math.floor(rnd() * 8)) {
@@ -278,7 +298,12 @@ function makeDemoData() {
     headline: ['Voorbeeld: centrale bank houdt rente gelijk', 'Voorbeeld: techaandelen stijgen na sterke cijfers', 'Voorbeeld: olieprijs daalt', 'Voorbeeld: euro sterker tegenover dollar',
       'Voorbeeld: chipmakers onder druk', 'Voorbeeld: inflatie in de VS lager dan verwacht', 'Voorbeeld: beurzen in Azië gemengd', 'Voorbeeld: overname in de zorgsector'][k] + ' (geen echt nieuws)',
     summary: 'Voorbeeldtekst; met een Finnhub-sleutel staat hier echt marktnieuws.', source: 'Voorbeeldbron', url: '#', related: '' })) };
-  events.earnings.push({ ticker: 'NVDA', symbol: 'NVDA', date: dIn(9), epsEst: 1.31 });
+  // Hetzelfde marktbericht bij meer bronnen, zodat het bundelen ook bij marktnieuws te zien is
+  ['Reuters', 'Bloomberg', 'CNBC', 'FD', 'AP'].forEach((src, k) => marketNews.items.push({ t: now.getTime() - (1 + k) * 2 * HOUR,
+    headline: 'Voorbeeld: centrale bank houdt rente gelijk (geen echt nieuws)', summary: 'Voorbeeldtekst van ' + src + ' over hetzelfde bericht.', source: src, url: '#bundel-markt-' + k, related: '' }));
+  marketNews.items.sort((a, b) => b.t - a.t);
+  events.earnings.push({ ticker: 'NVDA', symbol: 'NVDA', date: dIn(9), epsEst: 1.31 }, { ticker: 'LMT', symbol: 'LMT', date: dIn(17), epsEst: 6.8 });
+  events.lastEarnings.push({ ticker: 'TSM', date: dIn(-6), eps: 2.91, epsEst: 2.72 }, { ticker: 'PLTR', date: dIn(-13), eps: 0.19, epsEst: 0.21 });
   // Indexen (koersindex in dollars), 400 dagen
   const idxSer = (start, drift, vol) => { const out = []; let v = start; for (let k = 400; k >= 0; k--) { const d = new Date(now); d.setDate(d.getDate() - k); if (!(d.getDay() % 6)) continue; v *= 1 + drift + gauss() * vol; out.push([iso(d).slice(0, 10), +v.toFixed(2)]); } return out; };
   const fxRates = { USD: [], GBP: [] };

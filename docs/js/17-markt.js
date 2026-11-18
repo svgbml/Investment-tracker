@@ -283,29 +283,67 @@ document.addEventListener('click', async (e) => {
 });
 
 // ---------- Nieuws: bronnen dempen en ochtendmelding ----------
+// Dempen kan op drie manieren: een bron, een aandeel of een woord in de kop. Alles staat in settings.prefs.
 const mutedSources = () => (userPrefs().newsMute || []).map((x) => String(x).toLowerCase());
-const newsMuted = (n) => !!n.source && mutedSources().includes(String(n.source).toLowerCase());
-const muteKey = () => mutedSources().join('|');
+const mutedTickers = () => (userPrefs().newsMuteTk || []).map((x) => String(x).toUpperCase());
+const mutedWords = () => (userPrefs().newsMuteWord || []).map((x) => String(x).toLowerCase().trim()).filter(Boolean);
+function newsMuted(n) {
+  if (n.source && mutedSources().includes(String(n.source).toLowerCase())) return true;
+  if (n.tk && mutedTickers().includes(String(n.tk).toUpperCase())) return true;
+  const w = mutedWords();
+  if (!w.length) return false;
+  const txt = ((n.headline || '') + ' ' + (n.summary || '')).toLowerCase();
+  return w.some((x) => txt.includes(x));
+}
+const muteKey = () => mutedSources().join('|') + '#' + mutedTickers().join('|') + '#' + mutedWords().join('|');
 function newsToolsTile() {
-  const srcs = new Map();
-  Object.values(data.research || {}).forEach((r) => (r.news || []).forEach((n) => { if (n.source) srcs.set(n.source, (srcs.get(n.source) || 0) + 1); }));
+  const srcs = new Map(), tks = new Map();
+  Object.entries(data.research || {}).forEach(([tk, r]) => (r.news || []).forEach((n) => {
+    if (n.source) srcs.set(n.source, (srcs.get(n.source) || 0) + 1);
+    tks.set(tk, (tks.get(tk) || 0) + 1);
+  }));
   ((data.marketNews && data.marketNews.items) || []).forEach((n) => { if (n.source) srcs.set(n.source, (srcs.get(n.source) || 0) + 1); });
-  const muted = mutedSources();
+  const muted = mutedSources(), mtk = mutedTickers(), words = mutedWords();
+  const known = new Set(M.companies.map((c) => c.tk).concat(watchSyms()));
   const P = userPrefs();
   return '<section class="tile pad news-tools"><h3>Nieuws instellen</h3>' +
     '<label class="check"><input type="checkbox" data-morning' + (P.morningPush ? ' checked' : '') + '> Elke werkdag om 08:00 een melding met het nieuws over je aandelen</label>' +
     '<p class="small muted" style="margin:4px 0 10px">Vraagt meldingen op dit apparaat (Instellingen, Meldingen).</p>' +
     '<h3>Bronnen</h3><div class="src-chips">' + [...srcs.entries()].sort((a, b) => b[1] - a[1]).slice(0, 20).map(([s, k]) => { const on = muted.includes(s.toLowerCase()); return '<button type="button" class="chip' + (on ? ' off' : '') + '" data-mute="' + esc(s) + '" aria-pressed="' + on + '">' + esc(s) + ' <span class="muted">' + k + '</span></button>'; }).join('') + '</div>' +
-    '<p class="sub" style="margin-top:8px">Tik op een bron om die te dempen; gedempte bronnen verdwijnen uit de lijst en uit de ochtendmelding.</p></section>';
+    '<h3 style="margin-top:14px">Aandelen</h3><div class="src-chips">' + [...tks.entries()].filter(([tk]) => known.has(tk)).sort((a, b) => b[1] - a[1]).slice(0, 24).map(([tk, k]) => { const on = mtk.includes(tk); return '<button type="button" class="chip' + (on ? ' off' : '') + '" data-mute-tk="' + esc(tk) + '" aria-pressed="' + on + '">' + esc(tk) + ' <span class="muted">' + k + '</span></button>'; }).join('') + '</div>' +
+    '<h3 style="margin-top:14px">Woorden</h3>' +
+    '<form class="mute-form" data-mute-form autocomplete="off"><label class="sr-only" for="mute-word">Woord om te dempen</label>' +
+    '<input id="mute-word" class="search" type="text" maxlength="30" placeholder="bijv. kort geding"><button type="submit" class="btn ghost">Dempen</button></form>' +
+    (words.length ? '<div class="src-chips" style="margin-top:8px">' + words.map((w) => '<button type="button" class="chip off" data-mute-word="' + esc(w) + '" aria-label="' + esc(w + ' niet meer dempen') + '">' + esc(w) + ' \u00d7</button>').join('') + '</div>' : '') +
+    '<p class="sub" style="margin-top:8px">Tik op een bron of aandeel om die te dempen, of demp een woord dat in de kop of samenvatting staat. Gedempt nieuws verdwijnt uit de lijst, uit de teller op het app-icoon en uit de ochtendmelding. Dit geldt op al je apparaten.</p></section>';
 }
-document.addEventListener('click', async (e) => {
-  const b = e.target.closest && e.target.closest('[data-mute]');
-  if (!b) return;
-  const s = b.dataset.mute;
-  const list = (userPrefs().newsMute || []).slice();
-  const i = list.findIndex((x) => String(x).toLowerCase() === s.toLowerCase());
-  if (i >= 0) list.splice(i, 1); else list.push(s);
-  try { await savePrefs({ newsMute: list.slice(0, 40) }); refresh('news'); } catch (err) { /* blijft */ }
+// Dempen bewaren: bron, aandeel of woord erbij of eraf
+async function saveMute(key, value, max) {
+  const list = (userPrefs()[key] || []).slice();
+  const i = list.findIndex((x) => String(x).toLowerCase() === String(value).toLowerCase());
+  if (i >= 0) list.splice(i, 1); else list.push(value);
+  try { await savePrefs({ [key]: list.slice(0, max || 40) }); refresh('news', 'badge'); } catch (err) { /* blijft staan */ }
+}
+document.addEventListener('click', (e) => {
+  const el = /** @type {HTMLElement} */ (e.target);
+  if (!el.closest) return;
+  const b = /** @type {HTMLElement} */ (el.closest('[data-mute]'));
+  if (b) { saveMute('newsMute', b.dataset.mute); return; }
+  const t = /** @type {HTMLElement} */ (el.closest('[data-mute-tk]'));
+  if (t) { saveMute('newsMuteTk', t.dataset.muteTk, 30); return; }
+  const w = /** @type {HTMLElement} */ (el.closest('[data-mute-word]'));
+  if (w) saveMute('newsMuteWord', w.dataset.muteWord, 20);
+});
+document.addEventListener('submit', (e) => {
+  const el = /** @type {HTMLElement} */ (e.target);
+  const f = el.closest && el.closest('[data-mute-form]');
+  if (!f) return;
+  e.preventDefault();
+  const inp = /** @type {HTMLInputElement} */ (f.querySelector('input'));
+  const v = (inp.value || '').trim().slice(0, 30);
+  if (v.length < 3) { inp.focus(); return; }
+  inp.value = '';
+  saveMute('newsMuteWord', v, 20);
 });
 document.addEventListener('change', async (e) => {
   const el = e.target.closest && e.target.closest('[data-morning]');

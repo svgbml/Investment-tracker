@@ -27,7 +27,7 @@ function NewsItem({ n }) {
   return html`<a class="news-i" href=${n.url} target="_blank" rel="noopener">
     <span class="news-m">
       ${n.tk ? html`<span class=${'tag' + (n.kind === 'watch' ? '' : ' gain')}>${n.tk}</span>` : html`<span class="tag">Markt</span>`}${' '}
-      <span class=${'ntone ' + t} title="Geschat uit de woorden in de kop">${TONE_LABEL[t]}</span>
+      <span class=${'ntone ' + t} title=${toneTitle(n)}>${TONE_LABEL[t]}</span>
       ${fDT.format(n.t) + (n.source ? ', ' + n.source : '')}
     </span>
     <span class="news-t">${n.headline}</span>
@@ -49,6 +49,19 @@ function demoOlderNews(before, tk) {
   return { items, more: true };
 }
 
+// Berichten over hetzelfde onderwerp: de nieuwste kop, met de andere bronnen eronder (uitklapbaar)
+function NewsCluster({ c }) {
+  if (c.items.length < 2) return html`<${NewsItem} n=${c.lead} />`;
+  return html`<div class="news-g">
+    <${NewsItem} n=${c.lead} />
+    <details class="news-src"><summary>${clusterLabel(c)} over hetzelfde bericht</summary>
+      <div class="news-sub">
+        ${c.items.slice(1).map((n) => html`<a key=${n.url + '|' + n.headline} href=${n.url} target="_blank" rel="noopener"><span class="s">${n.source || 'bron'}</span><span class="t">${n.headline}</span></a>`)}
+      </div>
+    </details>
+  </div>`;
+}
+
 function NewsList({ items, tk, onClear }) {
   const [filter, setFilter] = useState(xs.newsF || 'all');
   const [older, setOlder] = useState([]);
@@ -58,8 +71,11 @@ function NewsList({ items, tk, onClear }) {
   const keep = (n) => (filter === 'all' || n.kind === filter) && (!tk || n.tk === tk);
   const shown = useMemo(() => {
     const seen = new Set();
-    return items.filter(keep).slice(0, 40).concat(older.filter(keep)).filter((n) => { const k = n.url + '|' + n.tk; if (seen.has(k)) return false; seen.add(k); return true; });
+    return items.filter(keep).concat(older.filter(keep)).filter((n) => { const k = n.url + '|' + n.tk; if (seen.has(k)) return false; seen.add(k); return true; });
   }, [items, older, filter, tk]);
+  // Eerst bundelen (berichten van meer bronnen over hetzelfde), dan hoogstens 40 bundels tonen
+  const groups = useMemo(() => newsClusters(shown).slice(0, 40), [shown]);
+  const listed = useMemo(() => groups.flatMap((c) => c.items), [groups]);
   const canOlder = filter !== 'market' && (demo || (typeof isWorker === 'function' && isWorker()));
   const loadOlder = async () => {
     setBusy(true); setNote('');
@@ -74,18 +90,18 @@ function NewsList({ items, tk, onClear }) {
     } catch (err) { setNote('Ouder nieuws laden lukte niet: ' + err.message + '.'); }
     setBusy(false);
   };
-  const count = useMemo(() => { const c = { pos: 0, neg: 0, neu: 0 }; shown.forEach((n) => { c[newsTone(n)]++; }); return c; }, [shown]);
+  const count = useMemo(() => { const c = { pos: 0, neg: 0, neu: 0 }; listed.forEach((n) => { c[newsTone(n)]++; }); return c; }, [listed]);
   const pick = (k) => { xs.newsF = k; setFilter(k); };
   return html`<section class="tile pad span-2 news-tile">
     <div class="plan-head"><h3>Nieuws</h3><${Seg} value=${filter} options=${FILTERS} onPick=${pick} label="Nieuws filteren" /></div>
     ${tk ? html`<p class="small news-only">Alleen ${tk} <button type="button" class="linklike" onClick=${onClear}>Toon alles</button></p>` : null}
     ${shown.length
-      ? html`<p class="small muted" style="margin:2px 0 6px">${count.pos} positief, ${count.neg} negatief, ${count.neu} neutraal</p>
-        <div class="news">${shown.map((n) => html`<${NewsItem} key=${n.url + '|' + n.tk + '|' + n.headline} n=${n} />`)}</div>
+      ? html`<p class="small muted" style="margin:2px 0 6px">${count.pos} positief, ${count.neg} negatief, ${count.neu} neutraal${listed.length > groups.length ? ', ' + (listed.length - groups.length) + ' gebundeld' : ''}</p>
+        <div class="news">${groups.map((c) => html`<${NewsCluster} key=${c.lead.url + '|' + c.lead.tk + '|' + c.lead.headline} c=${c} />`)}</div>
         ${canOlder && !end ? html`<div class="news-more"><button type="button" class="btn ghost" disabled=${busy} onClick=${loadOlder}>${busy ? 'Bezig met laden…' : 'Ouder nieuws laden'}</button></div>` : null}
         ${note ? html`<p class="small muted" role="status" style="margin-top:6px">${note}</p>` : null}`
       : html`<p class="muted">${filter === 'market' && !data.marketNews ? 'Marktnieuws komt van Finnhub en wordt buiten de meettijden opgehaald.' : 'Geen nieuws in deze selectie.'}</p>`}
-    <p class="sub" style="margin-top:8px">Koppen en links van Finnhub (of Alpha Vantage als reserve): per aandeel de laatste tien dagen, en algemeen marktnieuws. Het artikel opent bij de bron. Positief of negatief is een schatting uit woorden in de kop en samenvatting, geen oordeel van de bron; lees bij twijfel het artikel.</p>
+    <p class="sub" style="margin-top:8px">Koppen en links van Finnhub (of Alpha Vantage als reserve): per aandeel de laatste tien dagen, en algemeen marktnieuws. Het artikel opent bij de bron. Berichten met bijna dezelfde kop staan samen onder "x bronnen". Positief of negatief is een schatting uit woorden in de kop en samenvatting, geen oordeel van de bron; lees bij twijfel het artikel.</p>
   </section>`;
 }
 
@@ -236,15 +252,15 @@ function NewsPage({ stamp }) {
   const list = html`<${NewsList} items=${items} tk=${sel} onClear=${() => setSel(null)} />`;
   if (mode === 'm') {
     return html`<div class="m-ptabs news-tabs" role="group" aria-label="Onderdeel">${NEWS_SEGS.map(([k, l]) => html`<button type="button" key=${k} aria-pressed=${String(seg === k)} onClick=${() => pickSeg(k)}>${l}</button>`)}</div>
-      ${seg === 'news' ? html`<div class="grid wide">${map}${list}<${Legacy} markup=${newsToolsTile()} /></div>` : null}
-      ${seg === 'an' ? html`<div class="grid wide"><${Legacy} markup=${suggestTile()} /><${AnalystTable} rows=${rows} /><${OpinionTile} stamp=${stamp} /><${Legacy} markup=${reliabilityTile()} /></div>` : null}
+      ${seg === 'news' ? html`<div class="grid wide">${map}${list}<${Legacy} markup=${missedTile()} /><${Legacy} markup=${newsToolsTile()} /></div>` : null}
+      ${seg === 'an' ? html`<div class="grid wide"><${Legacy} markup=${suggestTile()} /><${AnalystTable} rows=${rows} /><${OpinionTile} stamp=${stamp} /><${Legacy} markup=${earnSeasonTile()} /><${Legacy} markup=${analystScoreTile()} /><${Legacy} markup=${reliabilityTile()} /></div>` : null}
       ${seg === 'ins' ? html`<div class="grid wide"><${Legacy} markup=${insiderTile()} /></div>` : null}`;
   }
   return html`
     <div class="grid wide">${list}${map}</div>
-    <div class="grid wide" style="margin-top:16px"><${Legacy} markup=${suggestTile()} /><${Legacy} markup=${newsToolsTile()} /></div>
+    <div class="grid wide" style="margin-top:16px"><${Legacy} markup=${missedTile()} /><${Legacy} markup=${suggestTile()} /><${Legacy} markup=${newsToolsTile()} /></div>
     <div class="section-head"><h2>Analisten</h2><p class="muted small">Aanbevelingen, koersdoelen en hoe betrouwbaar ze zijn</p></div>
-    <div class="grid wide"><${AnalystTable} rows=${rows} /><${Legacy} markup=${reliabilityTile()} /><${OpinionTile} stamp=${stamp} /></div>
+    <div class="grid wide"><${AnalystTable} rows=${rows} /><${Legacy} markup=${reliabilityTile()} /><${OpinionTile} stamp=${stamp} /><${Legacy} markup=${earnSeasonTile()} /><${Legacy} markup=${analystScoreTile()} /></div>
     <div class="section-head"><h2>Insiders</h2><p class="muted small">Kopen en verkopen bestuurders zelf?</p></div>
     <div class="grid wide"><${Legacy} markup=${insiderTile()} /></div>`;
 }

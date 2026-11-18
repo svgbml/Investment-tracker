@@ -60,6 +60,9 @@ function companyResearch(c) {
         '<b class="' + tone(x.pct) + '">' + esc(isNum(x.pct) ? spct1(x.pct / 100) : '–') + '</b><span class="muted small">' + esc(isNum(x.actual) ? N2.format(x.actual) + ' / ' + N2.format(x.estimate) : '') + '</span></div>').join('') + '</div>' +
         '<p class="sub" style="margin-top:6px">Winst per aandeel: werkelijk / verwacht, en het verschil.</p>' : '') + '</section>');
   }
+  // Analisten door de tijd en kwartaalcijfers die eraan komen (js/21-nieuwsplus.js)
+  if (R && typeof revisionTile === 'function') tiles.push(revisionTile(c));
+  if (typeof earnPreviewTile === 'function') { const ep = earnPreviewTile(c); if (ep) tiles.push(ep); }
   // Insiders
   if (finnhubOff) tiles.push(offTile('Insiderhandel', 'Zet Finnhub aan (gratis sleutel) om te zien of bestuurders zelf aandelen kopen of verkopen.'));
   else if (R) {
