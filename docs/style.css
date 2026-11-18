@@ -1878,6 +1878,7 @@ html[data-motion="off"] .privacy-blur #app, html[data-motion="off"] .privacy-blu
 @media (max-width: 760px) {
   .set-search { padding: 12px 16px 0; }
   .set-search input, .set-hits { max-width: none; }
+}
 
 /* ===================== UI-groep 117–130: kruimelpad, getalweergave, donkere grafieken, skeletons,
    meldingen, startchecklist, afdrukken en brede schermen ===================== */
@@ -2044,15 +2045,19 @@ body.skeleton footer.foot-page { visibility: hidden; }
 /* 130 Brede schermen (vanaf 1800px): drie kolommen in plaats van tegels die meerekken.
    De site blijft de volle breedte gebruiken; alleen de rasters krijgen een vaste indeling. */
 @media (min-width: 1800px) {
-  .grid.wide, .plan-grid, .ins-grid, #patterns { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  /* Rasters met kleine tegels: lege kolommen open laten in plaats van twee tegels uitrekken */
-  .grid, .grid.movers, .grid.stats { grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr)); }
+  /* Tot drie tegels naast elkaar; staat een tegel alleen of met z'n tweeën op een rij, dan vullen ze samen de hele breedte
+     (met een raster van drie vaste kolommen bleef daar een lege kolom over) */
+  .grid.wide, .plan-grid, .ins-grid, #patterns { display: flex; flex-wrap: wrap; align-items: stretch; }
+  /* :where houdt deze regels licht, zodat specifiekere regels voor brede tegels winnen.
+     Tegels kunnen ook in een tussenlaag staan (.legacy met display: contents, uit de Preact-pagina's) */
+  :where(.grid.wide, .plan-grid, .ins-grid, #patterns) > :not(.legacy), :where(.grid.wide, .plan-grid, .ins-grid, #patterns) > .legacy > * { flex: 1 1 30%; min-width: 0; }
+  :where(.grid.wide, .plan-grid, .ins-grid, #patterns) > .span-2, :where(.grid.wide, .plan-grid, .ins-grid, #patterns) > .legacy > .span-2 { flex: 2 1 62%; }
+  :where(.grid.wide, .plan-grid, .ins-grid, #patterns) > :is(.full, .span-3, .empty), :where(.grid.wide, .plan-grid, .ins-grid, #patterns) > .legacy > :is(.full, .span-3, .empty),
+  .plan-grid > :is(.plan-target, .plan-fc, .exposure):not(.whatif) { flex: 1 1 100%; }
+  /* Rijen met kleine tegels (cijfers, stijgers en dalers) blijven de volle breedte vullen */
   .chart.hero-chart, #hero-chart, #d-chart { height: 340px; }
   .foot, .sug-list li p, .tbl .co .nm { max-width: 96ch; }
   .hero-value { font-size: 76px; }
-}
-@media (min-width: 2400px) {
-  .grid, .grid.movers, .grid.stats { grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); }
 }
 
 /* ===== App en apparaat (ideeën 116, 120, 123–125, 170–176): vandaag, widget, offline-melding,
@@ -2190,10 +2195,15 @@ html[data-motion="off"] .calc-wait::before { animation: none; }
 
 /* 87 Grafiek als tabel: knop in de hoek van de grafiek, de tabel komt erover te liggen (de bladspiegel blijft gelijk) */
 .chart-alt-btn {
-  position: absolute; right: 6px; bottom: 6px; z-index: 3; font: 600 12px/1 inherit; padding: 7px 11px;
-  border-radius: 999px; border: 1px solid var(--rule); background: var(--surface); color: var(--ink-2); cursor: pointer; opacity: .65;
+  /* Linksboven: rechtsonder lag hij op het nieuwste punt van de lijn */
+  position: absolute; left: 6px; top: 6px; z-index: 3; font: 600 11.5px/1 inherit; padding: 6px 10px;
+  border-radius: 999px; border: 1px solid var(--rule); background: var(--surface); color: var(--ink-2); cursor: pointer; opacity: .6;
 }
 .chart-alt-btn:hover, .chart-alt-btn:focus-visible { opacity: 1; color: var(--ink); }
+/* Telefoon: bij de grote grafieken rechts boven de grafiek, in de lege ruimte naast "sinds het slot van …", niet op de lijn */
+@media (max-width: 760px) {
+  #m-hero-chart > .chart-alt-btn, .md #d-chart > .chart-alt-btn { top: -40px; left: auto; right: 12px; }
+}
 .chart-alt-tbl { position: absolute; inset: 0; z-index: 2; overflow: auto; background: var(--surface); border-radius: 12px; padding: 0 0 36px; }
 .chart-alt-tbl table { width: 100%; }
 .chart-alt-tbl caption { text-align: left; font-size: 13px; color: var(--ink-2); padding: 0 2px 6px; }
@@ -2228,7 +2238,8 @@ h1:focus, h2:focus, #m-title:focus { outline: none; }
   .tbl tr.rowlink td, .tbl tr.rowlink th { padding-top: 12px; padding-bottom: 12px; }
   input:not([type="checkbox"]):not([type="radio"]), select, .m-table [data-sortcol] { min-height: 44px; }
   .stepper > button, .stepper.big > button, .plan-tbl .stepper > button { width: 44px; height: 44px; }
-  .chart-alt-btn { padding: 13px 14px; }
+  .chart-alt-btn { padding: 7px 11px; }
+  .chart-alt-btn::after { content: ''; position: absolute; inset: -8px; }
   .linklike { display: inline-block; padding: 4px 0; }
   .mood-dot { min-height: 40px; padding: 0 4px; }
   .mood-dot i { width: 14px; height: 14px; }
@@ -2303,3 +2314,7 @@ body.gal-on > #notices, body.gal-on > #shell, body.gal-on > #mshell, body.gal-on
 .gal-box > .tile, .gal-box > section.tile { box-shadow: none; }
 .gal-err { color: var(--loss); font-size: 13px; margin: 0; }
 @media (max-width: 700px) { .gal-grid { grid-template-columns: 1fr; } }
+
+/* De pagina nooit breder dan het scherm: achter een open detailpagina is de beginpagina iets vergroot (zoomeffect);
+   zonder dit rekt een telefoon de hele pagina daardoor op en valt de detailpagina deels buiten beeld */
+html, body { overflow-x: clip; }

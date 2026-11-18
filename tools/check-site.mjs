@@ -51,5 +51,17 @@ if (vers.size !== 1 || !cache || !vers.has(cache[1]) || !ver || ver[1] !== cache
 for (const m of index.matchAll(/src="(js\/[^"?]+)/g)) if (!files.includes(m[1].slice(3))) fail('index.html laadt ' + m[1] + ', dat bestand bestaat niet');
 files.forEach((f) => { if (!sw.includes('./js/' + f)) fail('js/' + f + ' staat niet in de cachelijst van sw.js'); });
 
+// 4. CSS: elke { heeft een }. Eén ontbrekende accolade (bijvoorbeeld na samenvoegen) zet alles daarna stil in een @media-blok.
+{
+  const css = readFileSync(join(root, 'style.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g, '""');
+  let depth = 0, line = 1, openAt = [];
+  for (const ch of css) {
+    if (ch === '\n') line++;
+    else if (ch === '{') { depth++; openAt.push(line); }
+    else if (ch === '}') { depth--; openAt.pop(); if (depth < 0) { fail('style.css: losse } op regel ' + line); depth = 0; } }
+  }
+  if (depth > 0) fail('style.css: ' + depth + ' blok(ken) niet afgesloten, geopend rond regel ' + openAt.join(', ') + ' (regelnummers zonder commentaar)');
+}
+
 console.log(errors ? errors + ' fouten' : 'Site in orde: ' + classic.length + ' scripts, ' + modules.length + ' modules, ' + seen.size + ' namen.');
 process.exit(errors ? 1 : 0);

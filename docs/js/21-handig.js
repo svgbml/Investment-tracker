@@ -8,7 +8,12 @@
 // (gemaakt met node tools/changelog.mjs); hieronder staat alleen wat de gebruiker merkt.
 // Bij een nieuwe versie: zet de regels van die versie bovenaan, met VERSION uit js/01-basis.js als sleutel.
 const WHATS_NEW = {
-  v59: ['Overzicht: de samenvatting van vandaag staat nu in vier blokken over de hele breedte (verandering, grootste stijger en daler, nieuws), en de kleine strook met stijgers en dalers is weg.'],
+  v59: [
+    'Overzicht: de samenvatting van vandaag staat in vier blokken over de hele breedte (verandering, grootste stijger en daler, nieuws); de kleine strook met stijgers en dalers is weg.',
+    'Telefoon: een bedrijfspagina valt niet meer deels buiten beeld.',
+    'De knop Tabel bij grafieken is weer een klein knopje en ligt niet meer op de lijn.',
+    'Brede schermen: rijen met één of twee tegels vullen de hele breedte.',
+  ],
   v58: [
     'Overzicht: kies de periode van de grote grafiek, vergelijk met een maatstaf, zie de stijgers en dalers van vandaag, mijlpalen en een rustige modus.',
     'Bedrijven en volglijst: indelen per sector, land of munt, elke aankoop apart, een dagboek en eigen koersdoel per aandeel, labels en een lijst importeren.',
