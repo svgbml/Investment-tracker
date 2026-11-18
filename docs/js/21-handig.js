@@ -8,7 +8,7 @@
 // (gemaakt met node tools/changelog.mjs); hieronder staat alleen wat de gebruiker merkt.
 // Bij een nieuwe versie: zet de regels van die versie bovenaan, met VERSION uit js/01-basis.js als sleutel.
 const WHATS_NEW = {
-  v61: [
+  v63: [
     'De Worker leest veel minder uit zijn database, zodat de gratis daglimiet van Cloudflare niet meer opraakt.',
     'Instellingen > Koppelingen: bij elke bron zie je hoe dicht hij bij zijn limiet zit, en voor je Worker en database hoeveel van de gratis daglimiet er gebruikt is.',
     'Raakt de database toch zijn daglimiet, dan zegt de melding dat duidelijk en hoe laat het weer werkt.',
