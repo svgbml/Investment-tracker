@@ -241,26 +241,43 @@ function earningsMoveTile() {
 // ---------- Volglijst: labels, notitie en koopzone ----------
 const watchMeta = (sym) => ((userPrefs().watchMeta || {})[sym]) || {};
 function watchTagList() { const s = new Set(); Object.values(userPrefs().watchMeta || {}).forEach((m) => (m.tags || []).forEach((t) => s.add(t))); return [...s].sort(); }
-function watchTagFilter(sym) { return !mkState.watchTag || (watchMeta(sym).tags || []).includes(mkState.watchTag); }
+function watchTagFilter(sym) {
+  const t = mkState.watchTag;
+  if (!t) return true;
+  const tags = watchMeta(sym).tags || [];
+  return t === '*none' ? !tags.length : tags.includes(t);
+}
 function watchTagChips() {
   const tags = watchTagList();
   if (!tags.length) return '';
-  return '<div class="watch-tags" role="group" aria-label="Volglijst filteren op label"><button type="button" data-watch-tag="" aria-pressed="' + !mkState.watchTag + '">Alle</button>' +
-    tags.map((t) => '<button type="button" data-watch-tag="' + esc(t) + '" aria-pressed="' + (t === mkState.watchTag) + '">' + esc(t) + '</button>').join('') + '</div>';
+  const nOf = (t) => watchSyms().filter((s) => (watchMeta(s).tags || []).includes(t)).length;
+  const zonder = watchSyms().filter((s) => !(watchMeta(s).tags || []).length).length;
+  const chip = (k, label, n) => '<button type="button" data-watch-tag="' + esc(k) + '" aria-pressed="' + ((k || null) === (mkState.watchTag || null)) + '">' +
+    esc(label) + (isNum(n) ? ' <span class="wt-n">' + n + '</span>' : '') + '</button>';
+  return '<div class="watch-tags" role="group" aria-label="Volglijst filteren op label">' + chip('', 'Alle', watchSyms().length) +
+    tags.map((t) => chip(t, t, nOf(t))).join('') + (zonder ? chip('*none', 'Zonder label', zonder) : '') + '</div>';
 }
 function inZone(sym, price) { const m = watchMeta(sym); return isNum(price) && (isNum(m.lo) || isNum(m.hi)) && (!isNum(m.lo) || price >= m.lo) && (!isNum(m.hi) || price <= m.hi); }
 function watchBadges(sym, p) {
   const m = watchMeta(sym);
+  const cur = (p && p.currency) || 'USD';
   const out = (m.tags || []).slice(0, 3).map((t) => '<span class="tag">' + esc(t) + '</span>');
   if (p && inZone(sym, p.price)) out.unshift('<span class="tag gain">in koopzone</span>');
-  return out.length ? '<span class="wbadges">' + out.join('') + '</span>' : '';
+  // Eigen koersdoel (26-posities.js) en de reden waarom je dit volgt, met de datum van de notitie
+  const tg = typeof myTargetOf === 'function' ? myTargetOf(sym) : null;
+  if (isNum(tg)) out.push('<span class="tag">doel ' + esc(money(tg, cur)) + (p && isNum(p.price) && p.price > 0 ? ' · ' + esc(spct1(tg / p.price - 1)) : '') + '</span>');
+  const note = m.note ? '<span class="wnote">' + esc(m.note.length > 72 ? m.note.slice(0, 70) + '…' : m.note) +
+    (m.d ? ' <i>' + esc(ymd(m.d) ? fDM.format(ymd(m.d)) : String(m.d)) + '</i>' : '') + '</span>' : '';
+  if (!out.length && !note) return '';
+  return (out.length ? '<span class="wbadges">' + out.join('') + '</span>' : '') + note;
 }
 function watchMetaTile(sym, p) {
   const m = watchMeta(sym);
   const cur = (p && p.currency) || 'USD';
   return '<section class="tile pad watch-meta" data-wm="' + esc(sym) + '"><h3>Labels, notitie en koopzone</h3>' +
     '<label class="wm-l">Labels (komma ertussen)<input data-wm-f="tags" maxlength="80" value="' + esc((m.tags || []).join(', ')) + '" placeholder="bijv. chips, dividend"></label>' +
-    '<label class="wm-l">Notitie<textarea data-wm-f="note" maxlength="300" rows="2" placeholder="Waarom volg je dit aandeel?">' + esc(m.note || '') + '</textarea></label>' +
+    '<label class="wm-l">Waarom volg je dit?<textarea data-wm-f="note" maxlength="300" rows="2" placeholder="Bijvoorbeeld: wachten op een lagere koers na de cijfers">' + esc(m.note || '') + '</textarea></label>' +
+    (m.note && m.d ? '<p class="small muted">Notitie van ' + esc(ymd(m.d) ? fD.format(ymd(m.d)) + ' ' + String(m.d).slice(0, 4) : String(m.d)) + '; bij een nieuwe tekst komt de datum van vandaag erbij.</p>' : '') +
     '<div class="plan-inputs"><label>Koopzone vanaf<span class="eur-in">' + esc(CUR_SYM[cur] || cur) + '<input type="number" min="0" step="0.01" data-wm-f="lo" value="' + esc(isNum(m.lo) ? m.lo : '') + '"></span></label>' +
     '<label>tot<span class="eur-in">' + esc(CUR_SYM[cur] || cur) + '<input type="number" min="0" step="0.01" data-wm-f="hi" value="' + esc(isNum(m.hi) ? m.hi : '') + '"></span></label></div>' +
     (p && isNum(p.price) && (isNum(m.lo) || isNum(m.hi)) ? '<p class="small ' + (inZone(sym, p.price) ? 'gain' : 'muted') + '">' + esc(inZone(sym, p.price) ? 'De koers (' + money(p.price, cur) + ') ligt in je koopzone.' : 'De koers (' + money(p.price, cur) + ') ligt buiten je koopzone.') + '</p>' : '') +
@@ -276,7 +293,10 @@ document.addEventListener('click', async (e) => {
   const v = (k) => box.querySelector('[data-wm-f="' + k + '"]').value.trim();
   const n = (x) => (x === '' ? null : Number(x));
   const meta = Object.assign({}, userPrefs().watchMeta || {});
+  const prev = watchMeta(sym);
   const o = { tags: v('tags').split(',').map((x) => x.trim()).filter(Boolean).slice(0, 6).map((x) => x.slice(0, 20)), note: v('note').slice(0, 300), lo: n(v('lo')), hi: n(v('hi')) };
+  // Datum bij de notitie: blijft staan zolang de tekst niet verandert
+  if (o.note) o.d = o.note === prev.note && prev.d ? prev.d : today10();
   if (!o.tags.length && !o.note && o.lo == null && o.hi == null) delete meta[sym]; else meta[sym] = o;
   try { await savePrefs({ watchMeta: meta }); if (st) { st.textContent = 'Bewaard.'; st.className = 'small plan-status gain'; } renderWatch(); }
   catch (err) { if (st) { st.textContent = 'Opslaan is mislukt: ' + err.message + '.'; st.className = 'small plan-status loss'; } }

@@ -57,6 +57,16 @@ Object.assign(EN, {
   'Gemeten dagen': 'Days measured', 'Huidige reeks': 'Current streak', 'Beste dag': 'Best day', 'Slechtste dag': 'Worst day', 'Beste week': 'Best week', 'Slechtste week': 'Worst week',
   'Grootste veranderingen': 'Biggest changes', 'Alle bedrijven bekijken': 'View all companies', 'Zoek op naam of ticker': 'Search by name or ticker', 'Nog geen metingen van vandaag': 'No measurements today yet',
 });
+// Bedrijven en volglijst: indeling, aankopen per keer, dagboek, eigen koersdoel en de tickerkaart
+Object.assign(EN, {
+  'Indeling': 'Grouping', 'Tegels': 'Tiles', 'Lijst': 'List', 'Eén lijst': 'One list', 'Munt': 'Currency', 'Pie': 'Pie', 'Deel': 'Share',
+  'Koersalarm': 'Price alert', 'Aankopen per keer': 'Purchases one by one', 'Kostprijsmethode': 'Cost basis method', 'FIFO': 'FIFO',
+  'Aantal nu': 'Quantity now', 'Kostprijs per stuk': 'Cost per share', 'Ingelegd in wat je nog hebt': 'Invested in what you still hold',
+  'Ongerealiseerd resultaat': 'Unrealised result', 'Verschil met de andere methode': 'Difference with the other method',
+  'Mijn koersdoel': 'My price target', 'Alarm bij dit koersdoel': 'Alert at this target', 'Mijn koersdoel en dagboek': 'My price target and journal',
+  'Dagboek': 'Journal', 'Toevoegen': 'Add', 'Openen': 'Open', 'Bekijken': 'Preview', 'Sluiten': 'Close',
+  'Lijst met symbolen invoeren': 'Import a list of tickers', 'Zonder label': 'Without a label', 'Waarom volg je dit?': 'Why are you watching this?',
+});
 // Duits en Frans: dezelfde sleutels als EN; wat hier ontbreekt, valt terug op het Engels
 const DE = {
   'Overzicht': 'Übersicht', 'Bedrijven': 'Firmen', 'Plannen': 'Planen', 'Nieuws': 'News', 'Statistieken': 'Statistiken', 'Instellingen': 'Einstellungen', 'Analyse': 'Analyse',

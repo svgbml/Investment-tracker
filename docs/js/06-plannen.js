@@ -5,7 +5,7 @@
 // ---------- Plannen: streefverdeling, vooruitblik, peildatum, werkelijke spreiding, export ----------
 const LS_DEMO_SET = 'tracker.demoSettings';
 const demoSettings = () => {
-  let o = {}; try { o = JSON.parse(localStorage.getItem(LS_DEMO_SET) || '{}'); } catch (e) { o = {}; }
+  let o = /** @type {any} */ ({}); try { o = JSON.parse(localStorage.getItem(LS_DEMO_SET) || '{}'); } catch (e) { o = {}; }
   if (!o.watchlist) o.watchlist = ['NVDA', 'LMT'];
   if (!o.notes) o.notes = (data && data.demoNotes) || {};
   if (!o.accounts) o.accounts = (data && data.demoAccounts) || [];
@@ -13,7 +13,30 @@ const demoSettings = () => {
   if (!o.goals) o.goals = [{ id: 'huis', name: 'Huis', target: 20000, share: 60, date: (new Date().getFullYear() + 6) + '-06' }, { id: 'buffer', name: 'Buffer', target: 1500, share: 40, date: null }];
   if (!o.priceAlerts) o.priceAlerts = [{ id: 'demo1', sym: 'ASML', op: 'below', price: 600, on: true }];
   if (!isNum(o.monthly)) o.monthly = 100;
-  if (!o.prefs) o.prefs = { watchMeta: { NVDA: { tags: ['chips'], note: 'Voorbeeld: kopen als de koers terugvalt.', lo: 90, hi: 115 }, LMT: { tags: ['defensie'] } }, fireCosts: 1800 };
+  if (!o.prefs) {
+    // Voorbeelden voor de demo: labels met een reden en datum, eigen koersdoelen en een dagboek per aandeel
+    const dAgo = (n) => new Date(Date.now() - n * DAY).toISOString().slice(0, 10);
+    const pxPos = (tk) => { const x = (data && data.posExtra && data.posExtra[tk]) || null; return x && isNum(x.price) ? x.price : null; };
+    const pxSym = (s2) => { const p = (data && data.market && data.market.profiles && data.market.profiles[s2]) || null; return p && isNum(p.price) ? p.price : null; };
+    const myTarget = {};
+    const tgPos = { ASML: 1.18, MSFT: 1.12, KO: 1.06 };
+    Object.keys(tgPos).forEach((tk) => { const v = pxPos(tk); if (isNum(v)) myTarget[tk] = +(v * tgPos[tk]).toFixed(2); });
+    const tgSym = { NVDA: 1.1, LMT: 0.94 };
+    Object.keys(tgSym).forEach((s2) => { const v = pxSym(s2); if (isNum(v)) myTarget[s2] = +(v * tgSym[s2]).toFixed(2); });
+    o.prefs = {
+      watchMeta: {
+        NVDA: { tags: ['chips', 'te duur'], note: 'Wacht op een terugval na de cijfers; nu te duur voor mijn gevoel.', d: dAgo(9), lo: 90, hi: 115 },
+        LMT: { tags: ['defensie', 'dividend'], note: 'Defensiebudgetten in Europa lopen op en het dividend is stabiel.', d: dAgo(26) },
+      },
+      myTarget,
+      posDiary: {
+        ASML: [[dAgo(120), 'Gekocht na de daling: marktleider in chipmachines en ik wil meer Europa in mijn portefeuille.'], [dAgo(28), 'Orderboek viel mee, ik houd vast.']],
+        MSFT: [[dAgo(84), 'Cloud blijft groeien; gekocht voor de lange termijn, niet voor deze cijfers.']],
+        KO: [[dAgo(57), 'Rustig dividendaandeel als tegenwicht voor techniek; boven mijn koersdoel niet bijkopen.']],
+      },
+      fireCosts: 1800,
+    };
+  }
   return o;
 };
 const plan = { mode: null, draft: null, amount: 100, years: 10, monthly: null, goal: null, status: '', year: null };
