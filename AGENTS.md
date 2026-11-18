@@ -35,6 +35,7 @@ The user-facing language is **Dutch**: all UI text, code comments, commit messag
 
 ## Worker conventions
 
+- Free plan D1 limit: **5 million rows read and 100,000 rows written per UTC day**. D1 counts every row a query scans, not the rows it returns. Never add a query that scans a whole growing table on every tick or request: filter on an indexed column (`intraday.ts`, `hours.hour`, `days.day`, `ext_prices.day` have indexes; new ones go in `LATE_INDEXES` so existing databases get them too), compute aggregates in JS from rows you already read, and cache what changes rarely (see `marketDataCached`, `dbWatch`). `countingDb` adds the real `rows_read`/`rows_written` to `cf_usage`; the settings page shows them next to the limits.
 - Free plan: at most **50 subrequests per invocation**. `marketStep` does one queued task batch per call (max 30 external calls). Queue new work in `planMarket`; do not fetch in loops inside a request.
 - Keys: `withKeys(env)` merges Cloudflare secrets with keys saved through the site (`kv` key `keys`). Cloudflare secrets win. New key names go in `KEY_NAMES`.
 - A new Cloudflare secret only becomes active after the next Git build; keys saved through the site work immediately.

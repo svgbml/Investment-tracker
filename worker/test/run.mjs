@@ -1206,5 +1206,66 @@ await test('agenda, orders en peildatum zitten in het extra-deel, niet in core',
   assert.ok(whole.events && whole.orders && whole.positions, 'alles samen zonder part');
 });
 
+await test('database: indexen op de tijdkolommen en de marktgegevens niet bij elke opbouw opnieuw lezen', async () => {
+  const T = WM._test;
+  await T.ensureMarketTables(env);
+  setKv('index_v', '');
+  await T.ensureIndexes(env);   // bij elk nieuw Worker-proces via ensureSchema, ook in een bestaande database
+  const idx = DB.db.prepare("SELECT name FROM sqlite_master WHERE type = 'index'").all().map((r) => r.name);
+  ['idx_intraday_ts', 'idx_hours_hour', 'idx_days_day', 'idx_ext_prices_day'].forEach((n) => assert.ok(idx.includes(n), 'index ' + n));
+  assert.equal(kv('index_v'), '2');
+  // MAX(ts) en tijdvensters gebruiken de index in plaats van de hele tabel te lezen
+  const plan = DB.db.prepare('EXPLAIN QUERY PLAN SELECT MAX(ts) AS ts FROM intraday').all().map((r) => r.detail).join(' ');
+  assert.match(plan, /idx_intraday_ts|COVERING INDEX/i, plan);
+  const plan2 = DB.db.prepare('EXPLAIN QUERY PLAN SELECT hour FROM hours WHERE hour >= ?').all(0).map((r) => r.detail).join(' ');
+  assert.match(plan2, /idx_hours_hour/, plan2);
+  // Opbouw met een teller op de SQL: de tweede keer wordt ext_prices niet gelezen, na nieuwe koersen wel
+  const seen = [];
+  const e = Object.create(env);
+  e.DB = { prepare: (sql) => { seen.push(sql); return DB.prepare(sql); }, batch: (l) => DB.batch(l), exec: (x) => DB.exec(x) };
+  setKv('market_cache', '');
+  const reads = () => seen.filter((q) => /FROM ext_prices/.test(q)).length;
+  await T.buildData(e);
+  assert.ok(reads() >= 1, 'eerste opbouw leest de koersen');
+  seen.length = 0;
+  await T.buildData(e);
+  assert.equal(reads(), 0, 'tweede opbouw gebruikt de bewaarde marktgegevens');
+  assert.equal(seen.filter((q) => /FROM days GROUP BY/.test(q)).length, 0, 'geen GROUP BY over de hele dagtabel');
+  assert.ok(seen.filter((q) => /FROM days/.test(q)).length <= 1, 'dagtabel hooguit één keer');
+  await T.bumpMarket(env);
+  seen.length = 0;
+  await T.buildData(e);
+  assert.ok(reads() >= 1, 'na nieuwe koersen opnieuw opbouwen');
+  // Status: de tellingen per tabel komen uit de bewaarde telling, niet uit COUNT(*) per bezoek
+  await T.dbWatch(env, false, true);
+  seen.length = 0;
+  await T.dbWatch(e, false);
+  assert.equal(seen.filter((q) => /COUNT\(\*\)/.test(q)).length, 0, 'statuspagina telt niet opnieuw');
+});
+
+await test('Cloudflare-limieten: gelezen en geschreven D1-rijen tellen mee in het budget', async () => {
+  const T = WM._test;
+  setKv('cf_usage', '');
+  const stmt = { bind() { return stmt; }, all: async () => ({ results: [{ n: 4 }], meta: { rows_read: 7, rows_written: 0 } }), run: async () => ({ meta: { rows_read: 1, rows_written: 2 } }) };
+  const fake = { prepare: () => stmt, batch: async (l) => l.map(() => ({ meta: { rows_read: 3, rows_written: 1 } })) };
+  const c = T.countingDb(fake);
+  assert.equal(await c.prepare('SELECT n').first('n'), 4, 'first() geeft dezelfde waarde terug');
+  assert.deepEqual(await c.prepare('SELECT n').first(), { n: 4 });
+  await c.prepare('INSERT').bind(1).run();
+  await c.batch([c.prepare('a'), c.prepare('b')]);
+  await T.flushCalls(env);
+  const u = JSON.parse(kv('cf_usage'));
+  assert.equal(u.d1_read, 7 + 7 + 1 + 6);
+  assert.equal(u.d1_write, 2 + 2);
+  const b = await T.budgetInfo(env);
+  const r = b.cloudflare.find((x) => x.src === 'd1_read');
+  assert.equal(r.used, 21);
+  assert.equal(r.limit, 5e6);
+  assert.ok(r.pct > 0 && r.pct < 0.001);
+  // De instellingen krijgen het budget mee
+  const f = await jsonOf(await req('/api/features', { method: 'GET' }));
+  assert.ok(f.features.budgets && Array.isArray(f.features.budgets.cloudflare), 'budget in /api/features');
+});
+
 console.log((failed ? failed + ' fout, ' : '') + passed + ' geslaagd');
 process.exit(failed ? 1 : 0);

@@ -43,7 +43,11 @@ function demoHealth() {
       twelvedata: { days: mk([22, 27]), lastErr: { at: new Date(now - 26 * HOUR).toISOString(), msg: 'Twelve Data-limiet' } },
       frankfurter: { days: mk([]), lastOk: new Date(now - 2 * HOUR).toISOString() } },
     errors: {},
-    budgets: { day: nlDay(), sources: [
+    budgets: { day: nlDay(), cloudflare: [
+      { src: 'd1_read', name: 'Database (D1): gelezen rijen', used: 1840000, limit: 5e6, per: 'dag', utc: true, pct: 0.368, note: '' },
+      { src: 'd1_write', name: 'Database (D1): geschreven rijen', used: 6200, limit: 1e5, per: 'dag', utc: true, pct: 0.062, note: '' },
+      { src: 'worker_req', name: 'Worker: verzoeken van de site', used: 410, limit: 1e5, per: 'dag', utc: true, pct: 0.0041, note: '' },
+    ], sources: [
       { src: 'fmp', name: 'Financial Modeling Prep', used: 96, limit: 250, per: 'dag', own: 230, pct: 96 / 230 },
       { src: 'alphavantage', name: 'Alpha Vantage', used: 6, limit: 25, per: 'dag', own: 24, pct: 6 / 24 },
       { src: 'twelvedata', name: 'Twelve Data', used: 120, limit: 800, per: 'dag', own: null, pct: 0.15 },
@@ -126,7 +130,7 @@ function bronnenTile(H) {
 
 // ---------- Budget per bron (idee 152) ----------
 function budgetTile(H) {
-  const B = (H.budgets && H.budgets.sources) || [];
+  const B = ((H.budgets && H.budgets.cloudflare) || []).concat((H.budgets && H.budgets.sources) || []);
   if (!B.length) return '<section class="tile pad"><h3>Budget per bron</h3><p class="muted">Nog geen tellingen van vandaag.</p></section>';
   const meter = (pct, cls) => '<span class="bron-meter"><i class="' + cls + '" style="width:' + Math.round(Math.min(1, Math.max(0, pct)) * 100) + '%"></i></span>';
   const rows = B.map((b) => {

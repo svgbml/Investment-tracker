@@ -87,6 +87,7 @@ Zet ze aan op de website onder *Instellingen → Koppelingen en functies*. Sleut
 | Risicopagina: bedrijven van je volglijst die je spreiding verbreden (andere sector of anders bewegend) en waar analisten en nieuws positief over zijn | Finnhub, FMP | gratis sleutels (`FINNHUB_KEY`, `FMP_KEY`) |
 | Nieuwsarchief: ouder nieuws per aandeel, elke ronde een maand verder terug tot een jaar (knop *Ouder nieuws laden*) | Finnhub | gratis sleutel (`FINNHUB_KEY`) |
 | Analisten per sector en door de tijd: alle analisten per sector samen, en wat er in een dag, week, maand of drie maanden veranderde (de Worker bewaart de stand elke dag als die verandert) | Finnhub of Alpha Vantage | gratis sleutel (`FINNHUB_KEY`) |
+| Limieten bij elke koppeling (Instellingen): hoe dicht elke bron bij zijn limiet zit, en hoeveel van de gratis daglimiet van je Worker en database (D1: gelezen en geschreven rijen) vandaag gebruikt is | je eigen Worker | niets extra |
 | Nieuws van meer bronnen over hetzelfde bericht gebundeld ("4 bronnen", uitklapbaar); toon (positief, negatief, neutraal) uit een woordenlijst met gewichten in het Engels en Nederlands, met ontkenningen, en in de tooltip de woorden die de toon bepaalden | Finnhub | gratis sleutel (`FINNHUB_KEY`) |
 | Nieuws dempen per bron, per aandeel of op een woord in de kop | je eigen Worker | niets extra |
 | Analisten door de tijd op de bedrijfspagina: deel kopen en koersdoel per dag, met de laatste wijzigingen | Finnhub | gratis sleutel (`FINNHUB_KEY`) |

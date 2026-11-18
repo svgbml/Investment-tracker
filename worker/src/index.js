@@ -43,11 +43,63 @@ function fetch(input, init) {
   } catch (e) { /* tellen is bijzaak */ }
   return globalThis.fetch(input, init);
 }
+// D1 telt voor de daglimiet (gratis: 5 miljoen gelezen en 100.000 geschreven rijen per UTC-dag) elke rij die een
+// query doorloopt. Elk antwoord van D1 noemt die aantallen in meta; deze laag telt ze op, zodat de site kan
+// laten zien hoe dicht je bij de limiet zit. first() loopt via all(), want alleen all() en run() geven meta terug.
+function countingDb(db) {
+  if (!db || db.__counted) return db;
+  const add = (meta) => {
+    if (!meta) return;
+    const r = Number(meta.rows_read) || 0, w = Number(meta.rows_written) || 0;
+    if (r) CALL_COUNTS.set('d1_read', (CALL_COUNTS.get('d1_read') || 0) + r);
+    if (w) CALL_COUNTS.set('d1_write', (CALL_COUNTS.get('d1_write') || 0) + w);
+  };
+  const wrap = (st) => ({
+    __inner: st,
+    bind: (...a) => wrap(st.bind(...a)),
+    async first(col) {
+      const r = await st.all();
+      add(r && r.meta);
+      const row = r && r.results && r.results[0];
+      return row === undefined ? null : col ? (row[col] === undefined ? null : row[col]) : row;
+    },
+    async all() { const r = await st.all(); add(r && r.meta); return r; },
+    async run() { const r = await st.run(); add(r && r.meta); return r; },
+  });
+  return {
+    __counted: true,
+    prepare: (sql) => wrap(db.prepare(sql)),
+    async batch(list) { const r = await db.batch(list.map((x) => (x && x.__inner) || x)); (r || []).forEach((x) => add(x && x.meta)); return r; },
+    exec: (q) => db.exec(q),
+  };
+}
+function countedEnv(env) {
+  if (!env || !env.DB || env.DB.__counted) return env;
+  const e = Object.create(env);
+  e.DB = countingDb(env.DB);
+  return e;
+}
+// Cloudflare-tellingen per UTC-dag (daar rekent Cloudflare de gratis limieten mee)
+const CF_KEYS = ['d1_read', 'd1_write', 'worker_req'];
+
 // Schrijf de tellingen van deze aanroep weg (één schrijfactie), per dag, 14 dagen bewaard
 async function flushCalls(env) {
   if (!CALL_COUNTS.size) return;
-  const add = Object.fromEntries(CALL_COUNTS);
+  const all = Object.fromEntries(CALL_COUNTS);
   CALL_COUNTS.clear();
+  const cf = {}, add = {};
+  Object.entries(all).forEach(([k, n]) => { if (CF_KEYS.includes(k)) cf[k] = n; else add[k] = n; });
+  if (Object.keys(cf).length) {
+    try {
+      const day = new Date().toISOString().slice(0, 10);
+      let c = {};
+      try { c = JSON.parse((await getKv(env, 'cf_usage')) || '{}'); } catch (e) { c = {}; }
+      if (c.day !== day) c = { day };
+      CF_KEYS.forEach((k) => { if (cf[k]) c[k] = (c[k] || 0) + cf[k]; });
+      await setKv(env, 'cf_usage', JSON.stringify(c));
+    } catch (e) { /* niet erg */ }
+  }
+  if (!Object.keys(add).length) return;
   try {
     const day = parts(new Date()).day;
     let u = {};
@@ -64,8 +116,9 @@ const ETF_RE = /\b(ETF|UCITS|iShares|Vanguard|SPDR|Xtrackers|Amundi|Invesco|Wisd
 // Trading 212-ticker -> beurssymbool bij FMP, waar die afwijken
 const SYMBOL_MAP = { FB: 'META' };
 
-export default {
+const WORKER = {
   async scheduled(event, envIn, ctx) {
+    envIn = countedEnv(envIn);
     await ensureSchema(envIn);
     const env = await withKeys(envIn);
     if (event.cron === EVENTS_CRON) {
@@ -103,7 +156,16 @@ export default {
       .finally(() => flushCalls(env)));
   },
 
-  async fetch(request, envIn) {
+  async fetch(request, envIn, ctx) {
+    const env0 = countedEnv(envIn);
+    CALL_COUNTS.set('worker_req', (CALL_COUNTS.get('worker_req') || 0) + 1);
+    const res = await WORKER.handleFetch(request, env0);
+    // Tellingen van dit verzoek (bronnen, D1-rijen) wegschrijven nadat het antwoord weg is
+    if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(flushCalls(env0).catch(() => {}));
+    return res;
+  },
+
+  async handleFetch(request, envIn) {
     const url = new URL(request.url);
     const cors = corsHeaders(request, envIn);
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
@@ -404,6 +466,7 @@ export default {
     }
   },
 };
+export default WORKER;
 
 
 // ---------- Opzet: tabellen, sleutels en functies ----------
@@ -461,15 +524,38 @@ CREATE TABLE IF NOT EXISTS kv (
 CREATE INDEX IF NOT EXISTS idx_intraday_ticker ON intraday (ticker, ts);
 CREATE INDEX IF NOT EXISTS idx_hours_ticker ON hours (ticker, hour);
 CREATE INDEX IF NOT EXISTS idx_days_ticker ON days (ticker, day);
+CREATE INDEX IF NOT EXISTS idx_intraday_ts ON intraday (ts);
+CREATE INDEX IF NOT EXISTS idx_hours_hour ON hours (hour);
+CREATE INDEX IF NOT EXISTS idx_days_day ON days (day);
 `;
+// Indexen die later zijn bijgekomen: ook in een bestaande database aanmaken (één keer, onthouden in kv)
+const INDEX_VERSION = '2';
+const LATE_INDEXES = [
+  'CREATE INDEX IF NOT EXISTS idx_intraday_ts ON intraday (ts)',
+  'CREATE INDEX IF NOT EXISTS idx_hours_hour ON hours (hour)',
+  'CREATE INDEX IF NOT EXISTS idx_days_day ON days (day)',
+];
 let schemaOk = false;
 
 async function ensureSchema(env) {
   if (schemaOk) return;
-  try { await env.DB.prepare('SELECT 1 FROM kv LIMIT 1').first(); schemaOk = true; return; } catch (e) { /* nog geen tabellen */ }
-  const stmts = SCHEMA_SQL.split(';').map((x) => x.replace(/--[^\n]*/g, '').trim()).filter(Boolean);
-  await env.DB.batch(stmts.map((x) => env.DB.prepare(x)));
+  let exists = false;
+  try { await env.DB.prepare('SELECT 1 FROM kv LIMIT 1').first(); exists = true; } catch (e) { /* nog geen tabellen */ }
+  if (!exists) {
+    const stmts = SCHEMA_SQL.split(';').map((x) => x.replace(/--[^\n]*/g, '').trim()).filter(Boolean);
+    await env.DB.batch(stmts.map((x) => env.DB.prepare(x)));
+  }
+  await ensureIndexes(env);
   schemaOk = true;
+}
+async function ensureIndexes(env) {
+  try {
+    if ((await getKv(env, 'index_v')) === INDEX_VERSION) return;
+    const stmts = LATE_INDEXES.slice();
+    if ((await getKv(env, 'market_schema')) === '1') stmts.push('CREATE INDEX IF NOT EXISTS idx_ext_prices_day ON ext_prices (day)');
+    await env.DB.batch(stmts.map((x) => env.DB.prepare(x)));
+    await setKv(env, 'index_v', INDEX_VERSION);
+  } catch (e) { console.error('indexen', e); /* volgende keer opnieuw (bijvoorbeeld als de daglimiet bereikt is) */ }
 }
 
 // Sleutels die via de website zijn ingevuld; een geheim bij Cloudflare gaat altijd voor
@@ -519,6 +605,7 @@ async function featureStatus(env, raw) {
     lastError: await getKv(env, 'last_error'),
     errors: errs,
     health: await srcState(env),
+    budgets: await budgetInfo(env).catch(() => null),
   };
 }
 
@@ -1015,6 +1102,7 @@ async function applySplit(env, ticker, ratio) {
     env.DB.prepare('UPDATE days SET close_price = close_price / ? WHERE ticker = ? AND close_price IS NOT NULL').bind(ratio, ticker),
     env.DB.prepare('UPDATE positions SET qty = qty * ? WHERE ticker = ?').bind(ratio, ticker),
   ]);
+  await bumpMarket(env);
   try { await env.DB.prepare('UPDATE ext_prices SET price = price / ? WHERE symbol = ?').bind(ratio, SYMBOL_MAP[ticker] || ticker).run(); } catch (e) { /* tabel bestaat nog niet */ }
 }
 // Naamswijziging: hetzelfde ISIN onder een nieuwe ticker, terwijl de oude ticker weg is
@@ -1209,6 +1297,7 @@ async function cleanupOld(env, now) {
   const run = async (sql, arg, what) => { try { const r = await env.DB.prepare(sql).bind(arg).run(); const n = r.meta && r.meta.changes; if (n) out.push(n + ' ' + what); } catch (e) { /* tabel bestaat (nog) niet */ } };
   await run('DELETE FROM hours WHERE hour < ?', now.getTime() - KEEP_HOURS_DAYS * 864e5, 'uurregels');
   await run('DELETE FROM ext_prices WHERE day < ?', day(KEEP_EXT_DAYS), 'koersen');
+  await bumpMarket(env);
   await run('DELETE FROM ext_perf WHERE day < ?', day(KEEP_EXT_DAYS), 'sectordagen');
   await setKv(env, 'cleanup_month', month);
   return out.length ? 'Opgeruimd: ' + out.join(', ') + '.' : '';
@@ -1305,6 +1394,12 @@ async function setKv(env, key, value) {
 
 async function buildData(env) {
   const now = Date.now();
+  // De dagtabel één keer per opbouw lezen (werd drie keer gelezen)
+  let daysCache = null;
+  const allDays = async () => {
+    if (!daysCache) daysCache = (await env.DB.prepare('SELECT day, ticker, open, close, low, high, avg, range, range_pct FROM days ORDER BY day').all()).results;
+    return daysCache;
+  };
 
   const { results: wk } = await env.DB.prepare('SELECT * FROM weeks ORDER BY date').all();
   const weeks = [];
@@ -1360,9 +1455,22 @@ async function buildData(env) {
     // Hoogste/laagste ooit: uit de dagtabel, plus uren die nog niet in een dag zijn samengevat
     const lastDayDone = (await getKv(env, 'last_day')) || '';
     const sinceHour = lastDayDone ? Date.parse(lastDayDone + 'T00:00:00Z') + 22 * HOUR_MS : 0;
-    const { results: histD } = await env.DB.prepare(
-      'SELECT ticker, MAX(high) AS hi, MIN(low) AS lo FROM days GROUP BY ticker'
-    ).all();
+    // Uit de dagregels die hieronder toch al gelezen worden (scheelt twee keer de hele dagtabel)
+    const histD = [], ranges = [];
+    const agg = new Map();
+    (await allDays()).forEach((d) => {
+      let a = agg.get(d.ticker);
+      if (!a) { a = { hi: -Infinity, lo: Infinity, r: 0, rp: 0, nr: 0, nrp: 0, n: 0 }; agg.set(d.ticker, a); }
+      if (d.high != null) a.hi = Math.max(a.hi, d.high);
+      if (d.low != null) a.lo = Math.min(a.lo, d.low);
+      if (d.range != null) { a.r += d.range; a.nr++; }
+      if (d.range_pct != null) { a.rp += d.range_pct; a.nrp++; }
+      a.n++;
+    });
+    agg.forEach((a, ticker) => {
+      if (isFinite(a.hi) && isFinite(a.lo)) histD.push({ ticker, hi: a.hi, lo: a.lo });
+      ranges.push({ ticker, ar: a.nr ? a.r / a.nr : null, arp: a.nrp ? a.rp / a.nrp : null, n: a.n });
+    });
     const { results: histH } = await env.DB.prepare(
       'SELECT ticker, MAX(high) AS hi, MIN(low) AS lo FROM hours WHERE hour >= ? GROUP BY ticker'
     ).bind(sinceHour).all();
@@ -1371,9 +1479,6 @@ async function buildData(env) {
       const o = histMap.get(h.ticker);
       histMap.set(h.ticker, o ? { hi: Math.max(o.hi, h.hi), lo: Math.min(o.lo, h.lo) } : { hi: h.hi, lo: h.lo });
     });
-    const { results: ranges } = await env.DB.prepare(
-      'SELECT ticker, AVG(range) AS ar, AVG(range_pct) AS arp, COUNT(*) AS n FROM days GROUP BY ticker'
-    ).all();
     const rangeMap = new Map(ranges.map((h) => [h.ticker, h]));
     for (const [t, list] of byT) {
       const v = list.map((x) => x.value);
@@ -1394,15 +1499,13 @@ async function buildData(env) {
   const { results: hrs } = await env.DB.prepare(
     'SELECT hour, ticker, open, close, low, high, avg FROM hours WHERE hour >= ? ORDER BY hour'
   ).bind(now - 31 * 864e5).all();
-  const { results: dys } = await env.DB.prepare(
-    'SELECT day, ticker, open, close, low, high, avg, range, range_pct FROM days ORDER BY day'
-  ).all();
+  const dys = await allDays();
 
   let events = null;
   try { events = JSON.parse((await getKv(env, 'events')) || 'null'); } catch (e) { events = null; }
 
   let market = null;
-  try { market = await marketData(env); } catch (e) { console.error('market', e); }
+  try { market = await marketDataCached(env); } catch (e) { console.error('market', e); }
   let extra = {};
   try { extra = await extraData(env); } catch (e) { console.error('extra', e); }
 
@@ -2379,6 +2482,7 @@ async function ensureMarketTables(env) {
     env.DB.prepare('CREATE TABLE IF NOT EXISTS ext_peers (symbol TEXT PRIMARY KEY, peers TEXT, updated TEXT)'),
     env.DB.prepare('CREATE TABLE IF NOT EXISTS ext_prices (symbol TEXT NOT NULL, day TEXT NOT NULL, price REAL, PRIMARY KEY (symbol, day))'),
     env.DB.prepare('CREATE TABLE IF NOT EXISTS ext_perf (day TEXT NOT NULL, kind TEXT NOT NULL, name TEXT NOT NULL, exchange TEXT NOT NULL, change REAL, PRIMARY KEY (day, kind, name, exchange))'),
+    env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_ext_prices_day ON ext_prices (day)'),
   ]);
   await setKv(env, 'market_schema', '1');
 }
@@ -2461,6 +2565,12 @@ const uniqTasks = (list) => [...new Set(list)];
 
 // Zet de taken voor vandaag klaar (1x per dag na de agenda, of handmatig)
 async function planMarket(env) {
+  // Telt de hele koerstabel: hooguit één keer per planning
+  let pcCache = null;
+  const priceCounts = async () => {
+    if (!pcCache) pcCache = await env.DB.prepare('SELECT symbol, COUNT(*) AS n FROM ext_prices GROUP BY symbol').all();
+    return pcCache;
+  };
   await ensureMarketTables(env);
   const now = new Date();
   const usDay = lastUsDay(now);
@@ -2523,7 +2633,7 @@ async function planMarket(env) {
     // Symbolen waarvoor FMP geen koershistorie geeft (gratis abonnement): via Twelve Data of Alpha Vantage
     await ensureMarketTables(env);
     const nh = JSON.parse((await getKv(env, 'eod_unavailable')) || '[]');
-    const { results: hn2 } = await env.DB.prepare('SELECT symbol, COUNT(*) AS n FROM ext_prices GROUP BY symbol').all();
+    const { results: hn2 } = await priceCounts();
     const n2 = new Map(hn2.map((r) => [r.symbol, r.n]));
     const wl = new Set(watch.map((w) => w.symbol));
     nh.filter((sym) => (n2.get(sym) || 0) < 20).sort((a, b) => (wl.has(b) ? 1 : 0) - (wl.has(a) ? 1 : 0)).forEach((sym) => tasks.push('eod2:' + sym));
@@ -2540,7 +2650,7 @@ async function planMarket(env) {
       await ensureMarketTables(env);
       const { results: fr } = await env.DB.prepare('SELECT symbol FROM ext_profile WHERE updated = ?').bind(usDay).all();
       const freshP = new Set(fr.map((r) => r.symbol));
-      const { results: hn } = await env.DB.prepare('SELECT symbol, COUNT(*) AS n FROM ext_prices GROUP BY symbol').all();
+      const { results: hn } = await priceCounts();
       const nMap = new Map(hn.map((r) => [r.symbol, r.n]));
       all.forEach((h) => {
         if (env.FINNHUB_KEY && !freshP.has(h.symbol)) tasks.push('profile:' + h.symbol);
@@ -2550,6 +2660,7 @@ async function planMarket(env) {
     const q1 = uniqTasks(tasks);
     await setKv(env, 'mkt_queue', JSON.stringify(q1));
     await setKv(env, 'mkt_planned', usDay);
+    await bumpMarket(env);
     return `Extern: ${q1.length} taken klaargezet (zonder FMP).`;
   }
   const { results: peerRows } = await env.DB.prepare('SELECT symbol, peers, updated FROM ext_peers').all();
@@ -2564,7 +2675,7 @@ async function planMarket(env) {
     if (!pr || pr.updated < weekAgo) tasks.push('peers:' + h.symbol);
     else JSON.parse(pr.peers || '[]').forEach((x) => symbols.add(x));
   }
-  const { results: hist } = await env.DB.prepare('SELECT symbol, COUNT(*) AS n FROM ext_prices GROUP BY symbol').all();
+  const { results: hist } = await priceCounts();
   const histN = new Map(hist.map((r) => [r.symbol, r.n]));
   const noHist = JSON.parse((await getKv(env, 'eod_unavailable')) || '[]');
   const { results: fresh } = await env.DB.prepare('SELECT symbol FROM ext_profile WHERE updated = ?').bind(usDay).all();
@@ -2786,8 +2897,28 @@ async function marketStep(env) {
   await setKv(env, 'eod_unavailable', JSON.stringify(noHist));
   await setKv(env, 'mkt_unknown', JSON.stringify(unknown));
   if (errors.length) await setKv(env, 'mkt_errors', JSON.stringify(errors.slice(-20)));
+  if (done || writes.length) await bumpMarket(env);
   if (done) await saveDataCache(env, await buildData(env));
   return `Markt: ${done} taken gedaan, ${queue.length} over${errors.length ? ', ' + errors.length + ' fouten' : ''}.`;
+}
+
+// De koershistorie van alle gevolgde aandelen is verreweg de grootste lezer: duizenden rijen per opbouw, en de
+// opbouw gebeurt elke 10 minuten. Die gegevens veranderen alleen als marketStep of planMarket iets schrijft
+// (dan wordt mkt_ver opgehoogd) of als posities, volglijst of maatstaf anders zijn (dan verandert de vingerafdruk).
+const MARKET_CACHE_MS = 12 * 3600e3;
+async function bumpMarket(env) { try { await setKv(env, 'mkt_ver', String(Date.now())); } catch (e) { /* niet erg */ } }
+async function marketDataCached(env) {
+  if ((await getKv(env, 'market_schema')) !== '1') return null;
+  const held = await heldStocks(env);
+  const watch = await extraStocks(env);
+  const sig = JSON.stringify([(await getKv(env, 'mkt_ver')) || '', held.map((h) => h.ticker + '=' + h.symbol).sort(), watch.map((w) => w.symbol).sort()]);
+  try {
+    const c = JSON.parse((await getKv(env, 'market_cache')) || 'null');
+    if (c && c.sig === sig && Date.now() - c.at < MARKET_CACHE_MS) return c.data;
+  } catch (e) { /* opnieuw opbouwen */ }
+  const data = await marketData(env);
+  try { await setKv(env, 'market_cache', JSON.stringify({ sig, at: Date.now(), data })); } catch (e) { console.error('marktcache', e); }
+  return data;
 }
 
 async function marketData(env) {
@@ -2887,7 +3018,7 @@ function isDst(localIso) {
 
 export const _test = { parts, isLive, shortTicker, isoLocal, isDst, hourStart, dayOf, newsHistTask, storeNews, noteOpinionDay,
   tradingDay, usTradingDay, shiftDay, weekdayOf, srcPause, srcFail, srcOk, srcState, srcHistState, checkPositions, splitRatio,
-  planResearch, uniqTasks, dbWatch, testKey, r2Backup, r2Info, r2Preview, healthInfo, budgetInfo };
+  planResearch, uniqTasks, dbWatch, testKey, r2Backup, r2Info, r2Preview, healthInfo, budgetInfo, buildData, bumpMarket, ensureMarketTables, ensureIndexes, countingDb, flushCalls };
 
 
 // =====================================================================
@@ -3551,8 +3682,8 @@ async function statusInfo(env, raw) {
     lastCron: await getKv(env, 'last_cron'), lastError: await getKv(env, 'last_error'), tickFails: Number((await getKv(env, 'tick_fail')) || 0),
     lastWeek: await getKv(env, 'last_week_snapshot'), ordersSynced: await getKv(env, 'orders_synced'), marketPlanned: await getKv(env, 'mkt_planned'),
     queue: q.length, fmpCalls, avCalls, errors: JSON.parse((await getKv(env, 'ext_errors')) || '{}'), health: await srcState(env),
-    rows: { intraday: await one('SELECT COUNT(*) AS n FROM intraday'), hours: await one('SELECT COUNT(*) AS n FROM hours'), days: await one('SELECT COUNT(*) AS n FROM days'),
-      weeks: await one('SELECT COUNT(*) AS n FROM weeks'), orders: await one('SELECT COUNT(*) AS n FROM orders') },
+    rows: await (async () => { const d = await dbWatch(env, false); const t = (d && d.tables) || {}; const n = (k) => (t[k] ? t[k].rows : null);
+      return { intraday: n('intraday'), hours: n('hours'), days: n('days'), weeks: n('weeks'), orders: n('orders') }; })(),
     sizes, devices: (await pushSubs(env)).length, companies: ((await getKv(env, 'companies_meta')) || '').slice(0, 200) || null,
     usage: JSON.parse((await getKv(env, 'api_calls')) || '{}'), siteErrors: JSON.parse((await getKv(env, 'site_errors')) || '[]'),
     tickHist: JSON.parse((await getKv(env, 'tick_hist')) || '{}'), r2: !!env.BACKUP, r2Last: await getKv(env, 'r2_last'),
@@ -3844,6 +3975,12 @@ async function r2Preview(env, key) {
 
 // ---------- Budget per bron (idee 152) ----------
 // 'own' is wat de Worker zelf per dag aanhoudt (lager dan de grens van de bron, als buffer).
+// Gratis limieten van Cloudflare zelf (per UTC-dag); de Worker telt mee via countingDb en fetch
+const CF_BUDGETS = {
+  d1_read: { name: 'Database (D1): gelezen rijen', limit: 5e6, note: 'Daarboven weigert de database tot middernacht UTC; de site toont dan de laatst bewaarde stand.' },
+  d1_write: { name: 'Database (D1): geschreven rijen', limit: 1e5, note: 'Daarboven worden metingen pas na middernacht UTC weer bewaard.' },
+  worker_req: { name: 'Worker: verzoeken van de site', limit: 1e5, note: 'Verzoeken van je apparaten; de metingen om de 10 minuten tellen hier niet mee.' },
+};
 const SRC_BUDGETS = {
   fmp: { name: 'Financial Modeling Prep', limit: 250, per: 'dag', own: FMP_DAY_BUDGET },
   alphavantage: { name: 'Alpha Vantage', limit: 25, per: 'dag', own: AV_DAY_BUDGET },
@@ -3859,7 +3996,15 @@ async function budgetInfo(env) {
   try { fmpC = JSON.parse((await getKv(env, 'fmp_calls')) || 'null'); } catch (e) { fmpC = null; }
   try { avC = JSON.parse((await getKv(env, 'av_calls')) || 'null'); } catch (e) { avC = null; }
   const today = usage[day] || {};
-  return { day, sources: Object.entries(SRC_BUDGETS).map(([src, b]) => {
+  let cf = {};
+  try { cf = JSON.parse((await getKv(env, 'cf_usage')) || '{}'); } catch (e) { cf = {}; }
+  const cfDay = new Date().toISOString().slice(0, 10);
+  const cfToday = cf.day === cfDay ? cf : {};
+  const cloud = Object.entries(CF_BUDGETS).map(([src, b]) => {
+    const used = Number(cfToday[src] || 0);
+    return { src, name: b.name, used, limit: b.limit, per: 'dag', utc: true, cloudflare: true, pct: Math.min(1, used / b.limit), note: b.note };
+  });
+  return { day, cfDay, cloudflare: cloud, sources: Object.entries(SRC_BUDGETS).map(([src, b]) => {
     let used = Number(today[src] || 0);
     // De eigen teller is de waarheid voor de dagbudgetten: die telt ook verzoeken van vóór vandaag mee als de dag gelijk is
     if (src === 'fmp' && fmpC && fmpC.day === day) used = Math.max(used, Number(fmpC.n) || 0);
@@ -3877,7 +4022,13 @@ const DB_LIMIT_BYTES = 500e6;
 const DB_CLEAN_AT = 0.7, DB_WARN_AT = 0.85;
 const NEWS_MAX_ROWS = 40000;
 const ROW_BYTES = { intraday: 70, hours: 110, days: 130, weeks: 70, positions: 70, orders: 150 };
-async function dbWatch(env, clean) {
+async function dbWatch(env, clean, fresh) {
+  if (!clean && !fresh) {
+    try {
+      const c = JSON.parse((await getKv(env, 'db_watch')) || 'null');
+      if (c && c.tables && Date.now() - Date.parse(c.checkedAt || 0) < 26 * 3600e3) return c;
+    } catch (e) { /* opnieuw tellen */ }
+  }
   const one = async (sql) => { try { const r = await env.DB.prepare(sql).first(); return r ? Number(r.n) || 0 : 0; } catch (e) { return 0; } };
   const tables = {};
   let bytes = 0;
@@ -3906,14 +4057,15 @@ async function dbWatch(env, clean) {
   }
   out.cleaned = removed.join(', ') || null;
   if (removed.length) {
-    const after = await dbWatch(env, false);
+    const after = await dbWatch(env, false, true);
     out.bytes = after.bytes; out.pct = after.pct; out.tables = after.tables;
   }
   if (out.pct > DB_WARN_AT && (await pushSubs(env)).length) {
     await alertOnce(env, 'db|' + parts(new Date()).day.slice(0, 7), { title: 'Database raakt vol',
       body: 'De database van je tracker is naar schatting ' + Math.round(out.pct * 100) + '% van 500 MB. Op de bronnenpagina staat waar de ruimte zit.', url: '#status', tag: 'db' });
   }
-  await setKv(env, 'db_watch', JSON.stringify({ at: out.checked, bytes: out.bytes, pct: out.pct, cleaned: out.cleaned }));
+  out.checkedAt = new Date().toISOString();
+  await setKv(env, 'db_watch', JSON.stringify(Object.assign({ at: out.checked }, out)));
   return out;
 }
 

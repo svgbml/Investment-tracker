@@ -194,7 +194,12 @@ await test('FMP: dagkoersen (historical-price-eod/light)', async () => {
   await req('/api/market', { method: 'POST', env: e2 });
   const rows = DB.db.prepare('SELECT day, price FROM ext_prices WHERE symbol = ? ORDER BY day').all('AAPL');
   assert.ok(rows.length >= 3, 'drie dagen bewaard');
-  assert.deepEqual({ day: rows[rows.length - 1].day, price: rows[rows.length - 1].price }, { day: '2026-11-14', price: 232.4 });
+  // De nieuwste dag uit het antwoord staat erin met zijn slotkoers. (De Worker kan de laatste koers ook nog op de
+  // laatste Amerikaanse handelsdag zetten; die hangt van de datum van vandaag af, dus daar toetsen we niet op.)
+  const d14 = rows.find((r) => r.day === '2026-11-14');
+  assert.ok(d14, 'dag 2026-11-14 bewaard');
+  assert.equal(d14.price, 232.4);
+  assert.ok(rows.every((r) => r.day >= '2026-11-12'), 'geen dagen van vóór het antwoord');
 });
 
 await test('FMP: kwartaalcijfers en dividenden die eraan komen', async () => {

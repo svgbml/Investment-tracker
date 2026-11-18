@@ -2318,3 +2318,8 @@ body.gal-on > #notices, body.gal-on > #shell, body.gal-on > #mshell, body.gal-on
 /* De pagina nooit breder dan het scherm: achter een open detailpagina is de beginpagina iets vergroot (zoomeffect);
    zonder dit rekt een telefoon de hele pagina daardoor op en valt de detailpagina deels buiten beeld */
 html, body { overflow-x: clip; }
+
+
+/* Limiet per koppeling in de instellingen: dezelfde meter als op de bronnenpagina */
+.link-row .lim-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 6px 0 2px; }
+.link-row .lim-row .bron-meter { flex: 0 0 140px; }

@@ -193,6 +193,37 @@ function healthLine(id, H) {
     return parts.length ? '<p class="small src-health">' + esc(parts.join('; ')) + '.</p>' : '';
   }).join('');
 }
+// ---------- Hoe dicht een bron bij zijn limiet zit (uit budgets van /api/features) ----------
+const LINK_BUDGET = { fmp: 'fmp', finnhub: 'finnhub', av: 'alphavantage', twelvedata: 'twelvedata', indices: 'fred', sec: 'sec' };
+function budgetMeter(b) {
+  if (!b) return '';
+  const dag = b.per === 'dag';
+  const cap = b.own || b.limit;
+  const pct = dag ? Math.min(1, Math.max(0, isNum(b.pct) ? b.pct : cap ? b.used / cap : 0)) : null;
+  const cls = dag && pct >= 0.9 ? 'loss' : dag && pct >= 0.7 ? 'warn' : 'ok';
+  const day = b.utc ? 'vandaag (UTC)' : 'vandaag';
+  return '<div class="lim-row' + (cls === 'loss' ? ' is-loss' : '') + '">' +
+    (dag ? '<span class="bron-meter" role="img" aria-label="' + esc(PCT0.format(pct) + ' van de limiet') + '"><i class="' + cls + '" style="width:' + Math.round(pct * 100) + '%"></i></span>' : '') +
+    '<span class="small ' + (cls === 'loss' ? 'loss' : 'muted') + '">' + esc(dag
+      ? NI.format(b.used) + ' van ' + NI.format(cap) + ' ' + day + ' (' + PCT0.format(pct) + ')' + (b.own && b.own !== b.limit ? '; de Worker houdt ' + NI.format(b.own) + ' aan van de ' + NI.format(b.limit) : '')
+      : NI.format(b.used) + ' verzoeken vandaag; grens ' + b.limit + ' per ' + b.per + ', daarom verdeelt de Worker ze over de dag') + '</span></div>';
+}
+function budgetLine(id, B) {
+  const src = LINK_BUDGET[id];
+  const b = src && B && (B.sources || []).find((x) => x.src === src);
+  return b ? budgetMeter(b) : '';
+}
+function cloudflareRow(B) {
+  const list = (B && B.cloudflare) || [];
+  if (!list.length) return '';
+  const worst = Math.max(...list.map((b) => b.pct || 0));
+  const st = worst >= 0.9 ? '<span class="tag loss">Bijna op</span>' : worst >= 0.7 ? '<span class="tag">Let op</span>' : '<span class="tag gain">Ruim</span>';
+  return '<div class="link-row" data-link="cloudflare"><div class="link-h"><b>Cloudflare (je Worker en database)</b><span class="muted small">gratis abonnement</span>' + st + '</div>' +
+    '<p class="small muted">De Worker en zijn database hebben eigen daglimieten, los van de bronnen hieronder. Ze tellen per dag in UTC: om 01:00 (in de zomer 02:00) begint een nieuwe dag.</p>' +
+    list.map((b) => '<p class="small" style="margin:8px 0 2px"><b>' + esc(b.name) + '</b></p>' + budgetMeter(b) + (b.note && (b.pct || 0) >= 0.7 ? '<p class="small muted">' + esc(b.note) + '</p>' : '')).join('') +
+    '</div>';
+}
+
 // Sleutels die de Worker kan testen met één proefvraag, zonder op te slaan (idee 62); zie js/15-bronnen.js
 const KEY_TEST_OK = ['T212_KEY', 'T212_SECRET', 'FMP_KEY', 'FINNHUB_KEY', 'ALPHAVANTAGE_KEY', 'TWELVEDATA_KEY', 'FRED_KEY', 'SEC_CONTACT', 'RESEND_KEY'];
 let linkState = null;
@@ -213,14 +244,14 @@ function renderLinks(msg) {
   const F = linkState;
   const errFor = (id) => F.errors && F.errors[id === 'inflation' ? 'inflation' : id];
   box.innerHTML = '<p class="muted small">De basis heeft alleen Trading 212 nodig. Extra functies zet je aan met een gratis sleutel of een schakelaar. Sleutels gaan naar je eigen Worker en worden nooit teruggestuurd naar de browser.</p>' +
-    LINKS.map((L) => {
+    cloudflareRow(F.budgets) + LINKS.map((L) => {
       const keysSet = (L.keys || []).filter((k) => !k[2]).map(([k]) => F.keys[k]);
       const on = L.flag ? F.flags[L.flag] !== false && (!L.keys || L.optKeys || keysSet.every(Boolean)) : keysSet.every(Boolean);
       const err = errFor(L.id);
       const st = err ? '<span class="tag loss">Fout</span>' : on ? '<span class="tag gain">Aan</span>' : '<span class="tag">Uit</span>';
       return '<div class="link-row" data-link="' + L.id + '"><div class="link-h"><b>' + esc(L.title) + '</b><span class="muted small">' + esc(L.need) + '</span>' + st + '</div>' +
         '<p class="small muted">' + esc(L.what) + (L.href ? ' <a href="' + esc(L.href) + '" target="_blank" rel="noopener">Meer</a>' : '') + '</p>' +
-        (err ? '<p class="small loss">' + esc(err.msg) + '</p>' : '') + healthLine(L.id, F.health) +
+        (err ? '<p class="small loss">' + esc(err.msg) + '</p>' : '') + healthLine(L.id, F.health) + budgetLine(L.id, F.budgets) +
         (L.keys || []).map(([k, lbl]) => {
           const where = F.keys[k];
           return '<div class="key-row"><label class="small" for="key-' + k + '">' + esc(lbl) + '</label>' +

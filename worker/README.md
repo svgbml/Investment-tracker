@@ -8,7 +8,7 @@ Deze Worker doet hetzelfde als het Apps Script, maar zonder Google Sheet:
 - elke zaterdag rond 09:00 een weeksnapshot: accountwaarde, netto stortingen, cash en kostprijs;
 - de gegevens via `/api/data` aan de website leveren, alleen met je toegangscode.
 
-De gegevens staan in een eigen Cloudflare D1-database. Je Trading 212-sleutel en je toegangscode staan als geheimen bij Cloudflare, niet in deze repository.
+De gegevens staan in een eigen Cloudflare D1-database. Het gratis abonnement staat 5 miljoen gelezen en 100.000 geschreven rijen per dag (UTC) toe; D1 telt elke rij die een query doorloopt. De Worker leest daarom via indexen en bewaart wat zelden verandert (marktgegevens, databasegrootte), en telt het werkelijke gebruik mee (`cf_usage` in `kv`), zichtbaar bij Instellingen > Koppelingen. Je Trading 212-sleutel en je toegangscode staan als geheimen bij Cloudflare, niet in deze repository.
 
 ## Installeren
 

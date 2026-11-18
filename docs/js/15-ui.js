@@ -139,6 +139,12 @@ function foutUitleg(msg) {
 // "Wat lukte niet (waarom). Wat je kunt doen." — zo leest elke foutmelding hetzelfde.
 function foutTekst(wat, err, advies) {
   const msg = (err && err.message ? err.message : String(err == null ? '' : err)).replace(/\.$/, '');
+  // Daglimiet van de database (Cloudflare D1, gratis abonnement): geen fout in je instellingen, morgen werkt het weer
+  if (/D1/.test(msg) && /(limit|exceeded)/i.test(msg)) {
+    const t = new Date(); t.setUTCHours(24, 0, 0, 0);
+    return 'De database van je Worker heeft vandaag zijn gratis leeslimiet bereikt (Cloudflare D1). Je instellingen zijn in orde; vanaf ' +
+      new Intl.DateTimeFormat(LOCALE, { hour: '2-digit', minute: '2-digit' }).format(t) + ' (middernacht UTC) werkt het weer. Tot dan zie je de laatst bewaarde stand.';
+  }
   const hint = foutUitleg(msg) || advies || 'Probeer het opnieuw; blijft het misgaan, kijk dan bij Instellingen onder Status en reservekopie.';
   return wat + (msg ? ' (' + msg + ')' : '') + '. ' + hint;
 }
