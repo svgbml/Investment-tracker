@@ -122,7 +122,8 @@ function ForecastTile() {
         ${P.goal ? html`<span class="sub">${x.reached ? 'doel in ' + fY(x.reached) : 'doel niet binnen 60 jaar'}</span>` : null}</div>`)}
       <div><span class="k"><i class="dash"></i>Alleen inleg</span><b>${eur(P.dep[P.dep.length - 1].v)}</b></div></div>
     <div dangerouslySetInnerHTML=${{ __html: snowballLine(P) }}></div>
-    <p class="sub" style="margin-top:10px">Start: je accountwaarde nu (${eur(P.start)}). ${isNum(M.settings.monthly) || isNum(plan.monthly) ? '' : 'De maandinleg is geschat uit je stortingen van de laatste drie maanden. '}De drie rendementen zijn voorbeelden, geen verwachting: werkelijke rendementen schommelen sterk per jaar en kunnen ook negatief zijn. Kosten, belasting en inflatie zijn niet meegenomen.</p>
+    <div dangerouslySetInnerHTML=${{ __html: plxRealToggle() }}></div>
+    <p class="sub" style="margin-top:10px">Start: je accountwaarde nu (${eur(P.start)}). ${isNum(M.settings.monthly) || isNum(plan.monthly) ? '' : 'De maandinleg is geschat uit je stortingen van de laatste drie maanden. '}De drie rendementen zijn voorbeelden, geen verwachting: werkelijke rendementen schommelen sterk per jaar en kunnen ook negatief zijn. ${plxRealNote(P)}</p>
   </section>`;
 }
 
@@ -136,7 +137,7 @@ function PlanPage({ stamp }) {
   const [version, setVersion] = useState(0);
   const host = useRef(null);
   // Grafieken in de HTML-tegels opnieuw tekenen na elke weergave
-  useEffect(() => { const root = host.current && host.current.parentElement; if (root) { drawWhatIf(root); drawWeekShare(root); drawPlanExtra(root); } });
+  useEffect(() => { const root = host.current && host.current.parentElement; if (root) { drawWhatIf(root); drawWeekShare(root); drawPlanExtra(root); drawPlanExtra2(root); } });
   return html`<div style="display:contents" ref=${host} data-preact="plan">
     <${Section} title="Inleg en doelen" sub="Streefverdeling, wat je met nieuwe inleg koopt en waar je naartoe groeit">
       <${TargetTile} bump=${() => setVersion((n) => n + 1)} /><${InlegTile} version=${version + ':' + stamp} /><${ForecastTile} />${leg(goalsTile())}${leg(depositTile())}${leg(milestoneTile())}
@@ -146,7 +147,7 @@ function PlanPage({ stamp }) {
     <${Section} title="Kosten en aankopen" sub="Wisselkosten, fondskosten en je aankoopdagboek">${leg(costTile())}${leg(terTile())}${leg(journalTile())}<//>
     <${Section} title="Spreiding en rekeningen" sub="Overlap met je fondsen en je andere rekeningen">${leg(overlapTile())}${leg(exposureTile())}${leg(accountsTile())}<//>
     <${Section} title="Delen en exporteren">${leg(weekShareTile())}${leg(exportTile())}<//>
-    ${planExtraSections().map((x) => html`<${Section} key=${x.title} title=${x.title} sub=${x.sub}>${x.tiles.map(leg)}<//>`)}
+    ${planExtraSections().concat(planExtraSections2()).map((x) => html`<${Section} key=${x.title} title=${x.title} sub=${x.sub}>${x.tiles.map(leg)}<//>`)}
   </div>`;
 }
 

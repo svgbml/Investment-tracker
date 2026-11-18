@@ -326,10 +326,30 @@ function makeDemoData() {
     holdings: [{ name: 'iShares Core MSCI World', tk: 'IWDA', isin: 'IE00B4L5Y983', qty: 9, value: 912.4, cost: 801 },
       { name: 'Vanguard FTSE All-World', tk: 'VWRL', isin: 'IE00B3RBWM25', qty: 4, value: 488.1, cost: 452 },
       { name: 'ASML Holding', tk: 'ASML', isin: 'NL0010273215', qty: 0.5, value: 318, cost: 290 }] }];
+  // Voorbeeldvoorkeuren voor de extra onderdelen op Plannen (gebeurtenissen, spaargeld, potjes per doel)
+  const yNow0 = new Date().getFullYear();
+  const demoPrefs = {
+    lifeEvents: [
+      { id: 'dev1', name: 'Eigen bijdrage huis', date: (yNow0 + 6) + '-06', amount: 8000, pause: 0 },
+      { id: 'dev2', name: 'Studie: even geen inleg', date: (yNow0 + 2) + '-09', amount: 0, pause: 12 },
+      { id: 'dev3', name: 'Tweedehands auto', date: (yNow0 + 3) + '-04', amount: 2500, pause: 0 },
+    ],
+    banks: [
+      { id: 'dbk1', name: 'Spaarrekening', kind: 'spaar', amount: 4200, rate: 1.7, updated: dIn(-70) },
+      { id: 'dbk2', name: 'Betaalrekening', kind: 'betaal', amount: 680, rate: 0, updated: dIn(-2) },
+      { id: 'dbk3', name: 'Contant (voorbeeld)', kind: 'contant', amount: 120, rate: null, updated: dIn(-95) },
+    ],
+    goalPos: { VUAG: 'huis', SXRV: 'huis', ASML: 'huis', KO: 'buffer', MSFT: 'buffer' },
+    rebDone: {},
+    realProj: false,
+  };
+  // Hoe vaak een bedrijfspagina is geopend (normaal per apparaat bijgehouden; hier een voorbeeld)
+  const demoViews = {};
+  demoViews[String(yNow0)] = { ASML: 23, NVDA: 17, MSFT: 12, PLTR: 9, KO: 5, TSM: 4 };
   const yNow = new Date().getFullYear();
   const peilDemo = [{ date: yNow + '-01-01', total: 1180.55, investments: 1131.2, cash: 49.35, positions: [] }, { date: (yNow - 1) + '-01-01', total: 742.1, investments: 700.4, cash: 41.7, positions: [] }];
   return Object.assign({
-    ok: true, generated: iso(now), currency: 'EUR', weeks, positionsDate: iso(now), positions, today, events, market, marketNews, demoNotes, demoAccounts,
+    ok: true, generated: iso(now), currency: 'EUR', weeks, positionsDate: iso(now), positions, today, events, market, marketNews, demoNotes, demoAccounts, demoPrefs, demoViews,
     orders: { columns: ['time', 'ticker', 'name', 'side', 'qty', 'price', 'currency', 'fxRate', 'net', 'realised', 'feeFx', 'feeOther', 'kind'], rows: orders },
     posExtra, etf, peil: peilDemo, settings: {},
     intraday: { columns: ['time', 'ticker', 'value'], rows: intraday },
