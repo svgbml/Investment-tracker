@@ -158,8 +158,10 @@ function riskTiles(plain) {
     heat = '<section class="tile pad corr-tile"><h3>Wat beweegt samen</h3><div class="corr" style="--n:' + R.mat.length + '">' +
       '<span></span>' + R.mat.map((x) => '<span class="ch">' + esc(x.c.tk) + '</span>').join('') +
       R.mat.map((a, i) => '<span class="rh">' + esc(a.c.tk) + '</span>' + R.mat.map((b2, j) =>
-        '<span class="cell ' + (i === j ? 'self' : cellCls(R.C2[i][j])) + '" data-tip="' + esc(i === j ? a.c.tk : a.c.tk + ' en ' + b2.c.tk + ': ' + (isNum(R.C2[i][j]) ? N2.format(R.C2[i][j]) : 'te weinig gegevens')) + '"></span>').join('')).join('') + '</div>' +
+        (() => { const tip = i === j ? a.c.tk : a.c.tk + ' en ' + b2.c.tk + ': ' + (isNum(R.C2[i][j]) ? N2.format(R.C2[i][j]) : 'te weinig gegevens');
+          return '<button type="button" class="cell ' + (i === j ? 'self' : cellCls(R.C2[i][j])) + '" data-pair="' + i + '-' + j + '" data-tip="' + esc(tip) + '" aria-label="' + esc(tip) + '"></button>'; })()).join('')).join('') + '</div>' +
       '<div class="heat-key" style="margin-top:10px">los van elkaar <i class="c0"></i><i class="c1"></i><i class="c2"></i><i class="c3"></i><i class="c4"></i> sterk samen</div>' +
+      '<p class="small muted" style="margin-top:8px">Klik op een vakje voor de details van dat paar.</p><div class="corr-detail" data-pair-detail></div>' +
       '<div style="margin-top:10px">' + kvList([
         ['Bewegen het meest samen', pairs[0] ? pairs[0][0] + ' en ' + pairs[0][1] + ' (' + N2.format(pairs[0][2]) + ')' : '–'],
         ['Beste spreider', avgC[0] ? avgC[0].tk + ' (gemiddeld ' + N2.format(avgC[0].v) + ')' : '–', 'gain'],

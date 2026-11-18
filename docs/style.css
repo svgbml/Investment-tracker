@@ -1701,3 +1701,59 @@ html[data-motion="off"] .mile-dots { display: none; }
 /* Cijferseizoen en scorebord: de tweede regel in een cel wat stiller */
 .earn-season .tbl td .sub, .an-score .tbl td .sub { display: block; }
 .earn-prev .eps { margin-top: 6px; }
+
+/* ---------- Risico en Analyse (ideeën 33–43, 79 en 80) ---------- */
+/* Keuzeknopjes in een tegel (periode, grens, indeling) */
+.raseg { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.raseg button { min-height: 36px; padding: 6px 12px; border: 1px solid var(--rule); border-radius: 999px; background: var(--surface); color: inherit; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; transition: background-color .2s, color .2s; }
+.raseg button:hover { background: var(--bg); }
+.raseg button[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--surface); }
+
+/* 33. Wat als je anders verdeelt */
+.wi-in select { max-width: 240px; padding: 8px 10px; border: 1px solid #C9CED6; border-radius: 10px; background: var(--surface); color: inherit; font: inherit; font-size: 15px; }
+.wi-slide { display: inline-flex; align-items: center; gap: 10px; }
+.wi-slide input[type="range"] { width: min(200px, 48vw); accent-color: var(--accent); }
+.wi-out { min-width: 54px; font-weight: 700; color: var(--ink); }
+.wi-res { margin-top: 12px; }
+.wi-rows { display: flex; flex-direction: column; }
+.wi-row { display: grid; grid-template-columns: minmax(0, 1fr) auto 14px auto; gap: 10px; align-items: center; padding: 8px 2px; border-top: 1px solid var(--rule); font-size: 14px; }
+.wi-row .k { color: var(--ink-2); }
+.wi-row .a, .wi-row .arr { color: var(--ink-2); }
+.wi-row .b { font-weight: 700; text-align: right; }
+
+/* 36. Vakje in de warmtekaart aanklikbaar, met de details eronder */
+.corr .cell { padding: 0; border: 0; appearance: none; -webkit-appearance: none; cursor: pointer; }
+.corr .cell:hover, .corr .cell:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.corr .cell.picked { outline: 2px solid var(--ink); outline-offset: 1px; }
+.corr-detail:not(:empty) { margin-top: 10px; padding: 10px 12px; border: 1px solid var(--rule); border-radius: 12px; background: var(--bg); }
+
+/* 35. Munten als één balk */
+.cur-bar { display: flex; height: 22px; margin: 10px 0 8px; border-radius: 8px; overflow: hidden; background: var(--track); }
+.cur-bar i { display: block; min-width: 3px; }
+.cur-key { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--ink-2); }
+.cur-key i { display: inline-block; width: 10px; height: 10px; margin-right: 5px; border-radius: 3px; }
+
+/* 37. Waarom een bedrijf van de volglijst niet is voorgesteld */
+.whynot { margin-top: 12px; }
+.whynot summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.whynot-list { display: flex; flex-direction: column; gap: 8px; margin: 10px 0 0; padding-left: 18px; }
+.whynot-list ul { margin: 2px 0 0; padding-left: 16px; color: var(--ink-2); }
+
+/* 43. Analyse als rapport afdrukken (pdf via de browser) */
+.report-head { display: none; }
+@media print {
+  @page { margin: 14mm 12mm; }
+  :root, :root[data-theme="dark"] { --bg: #FFFFFF; --surface: #FFFFFF; --band: #FFFFFF; --ink: #14181F; --ink-2: #4A5260; --rule: #D5DAE2; --track: #E8EDF4; }
+  html, body { background: #FFFFFF; }
+  .topbar, .tabbar, .m-top, .m-tabbar, .notice-slot, .dash-foot, .m-ptabs, .sec-tabs, .raseg, .m-seg, .btn, .icon-sm, .search, .plan-inputs, .etf-up, .ledger-tools, .fab, .toast { display: none !important; }
+  .report-head { display: block; margin: 0 0 16px; }
+  .report-head h1 { font-size: 22px; }
+  .report-head p { font-size: 12px; color: var(--ink-2); }
+  .report-head .report-note { margin-top: 6px; font-size: 11px; }
+  .dash-sec[hidden] { display: block !important; }
+  .plan-grid { display: block !important; }
+  .tile, .m-stat { break-inside: avoid; margin-bottom: 10px; border: 1px solid #D5DAE2; box-shadow: none; }
+  .tbl-wrap { overflow: visible !important; }
+  .term { padding: 0; border: 0; background: none; color: inherit; font: inherit; }
+  .corr-detail:empty, .wi-res { break-inside: avoid; }
+}
