@@ -13,7 +13,7 @@ const demoSettings = () => {
   if (!o.goals) o.goals = [{ id: 'huis', name: 'Huis', target: 20000, share: 60, date: (new Date().getFullYear() + 6) + '-06' }, { id: 'buffer', name: 'Buffer', target: 1500, share: 40, date: null }];
   if (!o.priceAlerts) o.priceAlerts = [{ id: 'demo1', sym: 'ASML', op: 'below', price: 600, on: true }];
   if (!isNum(o.monthly)) o.monthly = 100;
-  if (!o.prefs) o.prefs = { watchMeta: { NVDA: { tags: ['chips'], note: 'Voorbeeld: kopen als de koers terugvalt.', lo: 90, hi: 115 }, LMT: { tags: ['defensie'] } }, fireCosts: 1800 };
+  if (!o.prefs) o.prefs = Object.assign({ watchMeta: { NVDA: { tags: ['chips'], note: 'Voorbeeld: kopen als de koers terugvalt.', lo: 90, hi: 115 }, LMT: { tags: ['defensie'] } }, fireCosts: 1800 }, (data && data.demoTrade) || {});
   return o;
 };
 const plan = { mode: null, draft: null, amount: 100, years: 10, monthly: null, goal: null, status: '', year: null };

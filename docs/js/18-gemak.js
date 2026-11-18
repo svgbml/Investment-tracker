@@ -122,7 +122,8 @@ function renderAnalyse() {
   const sec = (id, title, sub, tiles) => '<div class="dash-sec" data-sec="' + id + '"><div class="section-head"><h2>' + esc(title) + '</h2>' + (sub ? '<p class="muted small">' + esc(sub) + '</p>' : '') + '</div><div class="plan-grid">' + tiles.filter(Boolean).join('') + '</div></div>';
   host.innerHTML =
     sec('an-ret', 'Rendement', 'Wat je echt verdiende, tegenover een maatstaf, en met welk risico', [returnsTile(), benchTile(), ratiosTile(), drawdownTile(), contribTile(), concTile(), periodCmpTile(), yearHeatTile(), realUnrealTile(), fxFeeTile(), piesTile(), wrappedTile()]) +
-    sec('an-mkt', 'Markt en onderzoek', 'Indexen, rentes, agenda, en wat insiders en grote beleggers doen', [mkOverviewTile(), econTile(), insiderClusterTile(), earningsMoveTile(), filingsTile(), screenerTile(), etfFinderTile(), f13Tile()]) +
+    sec('an-mkt', 'Markt en onderzoek', 'Indexen, rentes, agenda, en wat insiders en grote beleggers doen', [mkOverviewTile(), econTile(), heatmapTile(), sectorRotTile(), insiderClusterTile(), earningsMoveTile(), filingsTile(), screenerTile(), etfFinderTile(), f13Tile()]) +
+    sec('an-trade', 'Kopen, verkopen en dagboek', 'Oefenen, beveiliging, vragen voor je verkoopt en wat je besloot', [paperTile(), orderSafetyTile(), sellCheckTile(), orderHistoryTile(), decJournalTile(), decYearTile()]) +
     sec('an-tx', 'Transacties en begrippen', 'Alles wat er op je rekening gebeurde, en uitleg van de termen', [openOrdersTile(), ledgerTile(), glossaryTile()]) +
     '<div class="dash-foot"><button type="button" class="btn ghost" data-dash-edit="analyse">Pagina aanpassen</button></div>';
   dashApply(host, 'analyse');
@@ -132,7 +133,8 @@ function renderAnalyse() {
 
 // ---------- Telefoon: lange pagina's (Analyse, Plannen) als tabbladen per onderdeel ----------
 const SEC_SHORT = { 'Inleg en doelen': 'Inleg', 'Wat als': 'Wat als', 'Dividend en belasting': 'Dividend', 'Kosten en aankopen': 'Kosten', 'Spreiding en rekeningen': 'Spreiding', 'Delen en exporteren': 'Delen',
-  'Vooruit rekenen': 'Vooruit', 'Belasting, herbalanceren en rente': 'Belasting', 'Rendement': 'Rendement', 'Markt en onderzoek': 'Markt', 'Transacties en begrippen': 'Transacties' };
+  'Vooruit rekenen': 'Vooruit', 'Belasting, herbalanceren en rente': 'Belasting', 'Rendement': 'Rendement', 'Markt en onderzoek': 'Markt', 'Transacties en begrippen': 'Transacties',
+  'Kopen, verkopen en dagboek': 'Handel' };
 const secPick = {};
 function secTabs(key) {
   const host = $(key === 'plan' ? 'm-plan-body' : 'm-analyse-body'), bar = $(key === 'plan' ? 'm-plan-tabs' : 'm-analyse-tabs');
