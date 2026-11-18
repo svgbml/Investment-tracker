@@ -109,7 +109,7 @@ await test('inloggen met de Trading 212-sleutel, met limiet per verbinding', asy
 
 await test('instellingen: meldingsregels, notities en rekeningen', async () => {
   const r = await jsonOf(await req('/api/settings', { method: 'POST', body: { alerts: { move: 4, earnings: true, insider: false, drift: 6 }, mailAmounts: false, notes: { 'AAPL|1767348000000': 'Waarom' }, accounts: [{ name: 'Broker', cash: 10, holdings: [{ name: 'X', value: 5 }] }] } }));
-  assert.deepEqual(r.settings.alerts, { move: 4, earnings: true, insider: false, drift: 6 });
+  assert.deepEqual(r.settings.alerts, { move: 4, earnings: true, insider: false, drift: 6, quietFrom: 0, quietTo: 0, digest: false, digestHour: 18 });
   assert.equal(r.settings.mailAmounts, false);
   assert.equal(r.settings.accounts[0].holdings[0].value, 5);
 });
@@ -580,6 +580,186 @@ await test('mening van analisten: alleen een regel bij een verandering', async (
   // Geen gegevens meer: geschiedenis blijft staan
   prev = out; out = {}; f(prev, out, '2026-11-13');
   assert.equal(out.recHist.length, 2);
+});
+
+await test('stille uren: melding in de wachtrij, daarna gebundeld verstuurd', async () => {
+  ['alerts_sent', 'alert_queue', 'alert_log', 'digest_day'].forEach((k) => setKv(k, k === 'alert_queue' || k === 'alert_log' ? '[]' : '{}'));
+  await req('/api/settings', { method: 'POST', body: { priceAlerts: [] } });
+  await req('/api/push/subscribe', { method: 'POST', body: { sub: { endpoint: 'https://push.test/abc', keys: { p256dh: b64u(pubRaw), auth: b64u(sub.auth) } } } });
+  // Stil van 14 tot 17 uur (Amsterdamse tijd); 14:00 UTC is 15:00 plaatselijk
+  await req('/api/settings', { method: 'POST', body: { alerts: { move: 5, earnings: true, insider: true, drift: 5, quietFrom: 14, quietTo: 17 } } });
+  const y = '2026-11-16';
+  DB.db.prepare("INSERT OR REPLACE INTO days (day, ticker, name, open, close, low, high, avg, range, range_pct, n, close_price) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)").run(y, 'AAPL', 'Apple', 360, 360, 355, 362, 359, 7, 0.02, 80, 200);
+  const pushes = [];
+  routes = t212Routes().concat([[/push\.test/, async (u, init) => { pushes.push(await decryptPush(init.body)); return reply('', 201); }]]);
+  await W.scheduled({ cron: '*/10 * * * *', scheduledTime: Date.parse('2026-11-17T14:00:00Z') }, env, { waitUntil: async (p) => p });
+  await new Promise((r) => setTimeout(r, 50));
+  assert.equal(pushes.length, 0, 'tijdens de stille uren gaat er niets uit: ' + JSON.stringify(pushes));
+  const a1 = await jsonOf(await req('/api/alerts'));
+  assert.equal(a1.queue.length, 1, 'melding staat in de wachtrij');
+  assert.equal(a1.log[0].mode, 'stille uren');
+  assert.match(a1.log[0].title, /AAPL/);
+  // Na de stille uren (17:30 UTC = 18:30 plaatselijk) gaat de wachtrij in één melding
+  await W.scheduled({ cron: '*/10 * * * *', scheduledTime: Date.parse('2026-11-17T17:30:00Z') }, env, { waitUntil: async (p) => p });
+  await new Promise((r) => setTimeout(r, 50));
+  assert.equal(pushes.length, 1, 'één gebundelde melding: ' + JSON.stringify(pushes));
+  assert.match(pushes[0].title, /AAPL/);
+  assert.equal((await jsonOf(await req('/api/alerts'))).queue.length, 0, 'wachtrij is leeg');
+  await req('/api/settings', { method: 'POST', body: { alerts: { move: 5, earnings: true, insider: true, drift: 5 } } });
+  setKv('alerts_sent', '{}');
+  setKv('alert_log', '[]');
+});
+
+await test('dagbundel: alles samen, één keer per dag vanaf het gekozen uur', async () => {
+  ['alerts_sent', 'alert_queue', 'alert_log', 'digest_day'].forEach((k) => setKv(k, k === 'alert_queue' || k === 'alert_log' ? '[]' : '{}'));
+  await req('/api/settings', { method: 'POST', body: { priceAlerts: [] } });
+  await req('/api/push/subscribe', { method: 'POST', body: { sub: { endpoint: 'https://push.test/abc', keys: { p256dh: b64u(pubRaw), auth: b64u(sub.auth) } } } });
+  await req('/api/settings', { method: 'POST', body: { alerts: { move: 5, earnings: true, insider: true, drift: 5, digest: true, digestHour: 20 } } });
+  const y = '2026-11-18';
+  DB.db.prepare("INSERT OR REPLACE INTO days (day, ticker, name, open, close, low, high, avg, range, range_pct, n, close_price) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)").run(y, 'AAPL', 'Apple', 360, 360, 355, 362, 359, 7, 0.02, 80, 200);
+  const pushes = [];
+  routes = t212Routes().concat([[/push\.test/, async (u, init) => { pushes.push(await decryptPush(init.body)); return reply('', 201); }]]);
+  // 14:00 UTC = 15:00 plaatselijk: nog voor het bundeluur
+  await W.scheduled({ cron: '*/10 * * * *', scheduledTime: Date.parse('2026-11-19T14:00:00Z') }, env, { waitUntil: async (p) => p });
+  await new Promise((r) => setTimeout(r, 50));
+  assert.equal(pushes.length, 0, 'voor het bundeluur gaat er niets uit: ' + JSON.stringify(pushes));
+  assert.equal((await jsonOf(await req('/api/alerts'))).queue.length, 1);
+  // 19:10 UTC = 20:10 plaatselijk
+  await W.scheduled({ cron: '*/10 * * * *', scheduledTime: Date.parse('2026-11-19T19:10:00Z') }, env, { waitUntil: async (p) => p });
+  await new Promise((r) => setTimeout(r, 50));
+  assert.equal(pushes.length, 1, 'de dagbundel gaat één keer uit');
+  // Nog een melding op dezelfde dag wacht tot morgen
+  setKv('alerts_sent', '{}');
+  await W.scheduled({ cron: '*/10 * * * *', scheduledTime: Date.parse('2026-11-19T19:40:00Z') }, env, { waitUntil: async (p) => p });
+  await new Promise((r) => setTimeout(r, 50));
+  assert.equal(pushes.length, 1, 'niet twee bundels op één dag');
+  assert.equal((await jsonOf(await req('/api/alerts'))).queue.length, 1, 'de nieuwe melding wacht');
+  await req('/api/settings', { method: 'POST', body: { alerts: { move: 5, earnings: true, insider: true, drift: 5 } } });
+  setKv('alert_queue', '[]');
+  setKv('alerts_sent', '{}');
+});
+
+await test('apparaatcodes: eigen code per apparaat, en uitloggen op alle apparaten', async () => {
+  setKv('sessions', '[]');
+  const made = await jsonOf(await req('/api/sessions', { method: 'POST', body: { label: 'Testtelefoon' } }));
+  assert.ok(made.session && made.session.length > 20, 'er komt een code terug');
+  assert.notEqual(made.session, TOKEN, 'niet dezelfde code als de toegangscode');
+  // De code zelf staat niet in de Worker, alleen de SHA-256
+  assert.ok(!String(kv('sessions')).includes(made.session), 'alleen de versleutelde vorm wordt bewaard');
+  const asDevice = (path, opts = {}) => req(path, Object.assign({}, opts, { headers: { Authorization: 'Bearer ' + made.session } }));
+  assert.equal((await asDevice('/api/status')).status, 200, 'de apparaatcode geeft toegang');
+  const list = await jsonOf(await asDevice('/api/sessions'));
+  assert.equal(list.devices.length, 1);
+  assert.equal(list.devices[0].label, 'Testtelefoon');
+  assert.equal(list.current, list.devices[0].id, 'dit apparaat is te herkennen');
+  assert.equal(list.master, false);
+  assert.equal((await jsonOf(await req('/api/sessions'))).master, true, 'met de toegangscode zelf');
+  // Uitloggen op alle apparaten: de apparaatcode werkt niet meer, de toegangscode wel
+  const rev = await jsonOf(await req('/api/revoke', { method: 'POST', body: { devices: true } }));
+  assert.equal(rev.devices, 1);
+  assert.equal((await asDevice('/api/status')).status, 401, 'ingetrokken code geeft geen toegang');
+  assert.equal((await req('/api/status')).status, 200);
+  // Een verlopen code werkt niet
+  const kort = await jsonOf(await req('/api/sessions', { method: 'POST', body: { label: 'Kort', days: 1 } }));
+  const ses = JSON.parse(kv('sessions'));
+  ses[0].until = '2020-01-01T00:00:00';
+  setKv('sessions', ses);
+  assert.equal((await req('/api/status', { headers: { Authorization: 'Bearer ' + kort.session } })).status, 401, 'verlopen');
+  setKv('sessions', '[]');
+});
+
+await test('deel-link met einddatum, en alle links intrekken', async () => {
+  const on = await jsonOf(await req('/api/share', { method: 'POST', body: { action: 'on', amounts: false, days: 7 } }));
+  assert.ok(on.until && on.until > '2026-', 'einddatum ingesteld: ' + on.until);
+  assert.equal((await W.fetch(new Request('https://worker.test/share/' + on.token), env)).status, 200);
+  // Verlopen: de link geeft 410 met uitleg
+  const c = JSON.parse(kv('share'));
+  c.until = '2020-01-01T00:00:00';
+  setKv('share', c);
+  const gone = await W.fetch(new Request('https://worker.test/share/' + on.token), env);
+  assert.equal(gone.status, 410);
+  assert.match((await jsonOf(gone)).error, /verlopen/);
+  // Einddatum weghalen en daarna alles intrekken (deel-link én agenda-link)
+  await req('/api/share', { method: 'POST', body: { action: 'update', days: 0 } });
+  assert.equal(JSON.parse(kv('share')).until, null);
+  await req('/api/calendar', { method: 'POST', body: {} });
+  assert.ok(kv('cal_token'), 'agenda-link bestaat');
+  const rev = await jsonOf(await req('/api/revoke', { method: 'POST', body: { links: true } }));
+  assert.deepEqual(rev.links, ['deel-link', 'agenda-link']);
+  assert.equal((await W.fetch(new Request('https://worker.test/share/' + on.token), env)).status, 404);
+  assert.equal((await W.fetch(new Request('https://worker.test/cal/' + 'x'.repeat(24) + '.ics'), env)).status, 404);
+});
+
+await test('gedeelde weergave laat niets persoonlijks zien', async () => {
+  routes = t212Routes();
+  await req('/api/keys', { method: 'POST', body: { name: 'SEC_CONTACT', value: 'prive@voorbeeld.nl' } });
+  await req('/api/settings', { method: 'POST', body: {
+    notes: { 'AAPL|1767348000000': 'Geheime notitie' },
+    accounts: [{ name: 'Pensioenrekening', cash: 10, holdings: [{ name: 'IWDA', value: 5 }] }],
+    prefs: { watchMeta: { AAPL: { note: 'Prive gedachte' } } },
+    priceAlerts: [{ id: 'a1', sym: 'AAPL', op: 'above', price: 999 }],
+  } });
+  const on = await jsonOf(await req('/api/share', { method: 'POST', body: { action: 'on', amounts: false } }));
+  const pub = await W.fetch(new Request('https://worker.test/share/' + on.token), env);
+  const text = await pub.clone().text();
+  const d = await jsonOf(pub);
+  ['Geheime notitie', 'Pensioenrekening', 'Prive gedachte', 'prive@voorbeeld.nl', TOKEN, env.T212_KEY, env.T212_SECRET, on.token]
+    .forEach((x) => assert.ok(!text.includes(x), 'staat niet in de gedeelde kopie: ' + x));
+  ['notes', 'accounts', 'prefs', 'priceAlerts', 'alerts', 'goals', 'tradeLimits'].forEach((k) => assert.ok(!(k in d.settings), 'settings.' + k + ' gaat niet mee'));
+  assert.ok(!('keys' in d.features), 'geen sleutelstatus');
+  assert.ok(!('pies' in (d.ext2 || {})), 'geen pies met eigen namen');
+  assert.ok(!('audit' in d) && !('log' in d) && !('status' in d) && !('sessions' in d), 'geen logboeken');
+  // Bedragen zijn geschaald: het vrije saldo van 80 euro is niet te zien
+  assert.ok(!d.cashNow || Math.round(d.cashNow.cash) !== 80, 'vrij saldo geschaald: ' + JSON.stringify(d.cashNow));
+  // Wat de gedeelde weergave wel nodig heeft, zit er nog in
+  ['weeks', 'positions', 'today', 'orders', 'intraday', 'days'].forEach((k) => assert.ok(d[k], k + ' hoort er wel in te zitten'));
+  await req('/api/share', { method: 'POST', body: { action: 'off' } });
+  await req('/api/keys', { method: 'POST', body: { name: 'SEC_CONTACT', value: '' } });
+});
+
+await test('vergelijken met een gedeelde link: alleen percentages', async () => {
+  const weeks = [
+    { date: '2026-01-02T00:00:00', accountValue: 8000, netDeposits: 8000, weekResultPct: 0, totalResultPct: 0 },
+    { date: '2026-10-30T00:00:00', accountValue: 9500, netDeposits: 8500, weekResultPct: 0.004, totalResultPct: 0.1176 },
+    { date: '2026-11-13T00:00:00', accountValue: 12345.67, netDeposits: 9000, weekResultPct: 0.0123, totalResultPct: 0.3717 },
+  ];
+  routes = [[/vriend\.test\/share\//, reply({ ok: true, generated: '2026-11-17T12:00:00', weeks, shared: { amounts: true, since: '2026-02-01T00:00:00' } })]];
+  const r = await jsonOf(await req('/api/friend', { method: 'POST', body: { url: 'https://vriend.test/share/' + 'a'.repeat(24) } }));
+  assert.equal(r.pct.week, 0.0123);
+  assert.equal(r.pct.total, 0.3717);
+  assert.ok(r.pct.ytd > 0.4 && r.pct.ytd < 0.5, 'dit jaar: ' + r.pct.ytd);
+  assert.ok(!JSON.stringify(r).includes('12345'), 'geen bedragen in het antwoord');
+  const bad = await req('/api/friend', { method: 'POST', body: { url: 'https://vriend.test/api/data' } });
+  assert.equal(bad.status, 400);
+  assert.match((await jsonOf(bad)).error, /deel-link/);
+  routes = [[/vriend\.test/, reply({ ok: false }, 404)]];
+  assert.equal((await req('/api/friend', { method: 'POST', body: { url: 'https://vriend.test/share/' + 'b'.repeat(24) } })).status, 400);
+});
+
+await test('logboek: sleutels, inloggen, orders en links, zonder waarden', async () => {
+  setKv('audit', '[]');
+  routes = t212Routes();
+  await req('/api/keys', { method: 'POST', body: { name: 'FMP_KEY', value: 'geheim-fmp-1234' } });
+  await req('/api/login', { method: 'POST', body: { key: 'fout-fout-fout', secret: 'fout-fout-fout' } });
+  await req('/api/share', { method: 'POST', body: { action: 'on', amounts: false } });
+  await req('/api/share', { method: 'POST', body: { action: 'off' } });
+  const log = (await jsonOf(await req('/api/audit'))).log;
+  const kinds = log.map((x) => x.kind);
+  ['sleutel', 'inloggen', 'link'].forEach((k) => assert.ok(kinds.includes(k), 'logboek bevat ' + k + ': ' + JSON.stringify(kinds)));
+  assert.ok(!JSON.stringify(log).includes('geheim-fmp-1234'), 'de sleutel zelf staat niet in het logboek');
+  assert.ok(log[0].at && log[0].msg, 'tijd en beschrijving');
+  await req('/api/keys', { method: 'POST', body: { name: 'FMP_KEY', value: '' } });
+});
+
+await test('inloggen geeft dit apparaat zijn eigen code', async () => {
+  setKv('sessions', '[]');
+  routes = t212Routes();
+  const r = await jsonOf(await req('/api/login', { method: 'POST', body: { key: env.T212_KEY, secret: env.T212_SECRET, label: 'Mac' } }));
+  assert.equal(r.token, TOKEN, 'oude versies van de site blijven werken');
+  assert.ok(r.session && r.session !== TOKEN, 'en er komt een eigen code voor dit apparaat bij');
+  assert.equal(r.device.label, 'Mac');
+  assert.equal((await req('/api/status', { headers: { Authorization: 'Bearer ' + r.session } })).status, 200);
+  setKv('sessions', '[]');
 });
 
 console.log((failed ? failed + ' fout, ' : '') + passed + ' geslaagd');

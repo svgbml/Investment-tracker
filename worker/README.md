@@ -46,12 +46,17 @@ Alle adressen vragen je toegangscode, als `?token=…` of als header `Authorizat
 | Agenda nu bijwerken (dividenden, kwartaalcijfers) | `POST /api/events` |
 | Orders (aan- en verkopen) nu ophalen | `POST /api/orders` |
 | Samenstelling van de indexfondsen nu ophalen / zelf toevoegen | `POST /api/etf` / `POST /api/etf-upload` met `{"key": "SP500" of "NDX", "csv": "…"}` |
-| Inloggen op een nieuw apparaat met de Trading 212-sleutel en -secret die al in de Worker staan; geeft de toegangscode terug (zonder toegangscode, max. 10 mislukte pogingen per uur) | `POST /api/login` |
-| Instellingen van de site (streefverdeling, inleg, doelen `goals`, volglijst, koersalarmen `priceAlerts`, herinnering inleg `depositReminder`, notities bij aankopen `notes`, andere rekeningen `accounts`) | `GET` / `POST /api/settings` |
+| Inloggen op een nieuw apparaat met de Trading 212-sleutel en -secret die al in de Worker staan; geeft de toegangscode én een eigen code voor dat apparaat terug (zonder toegangscode, max. 10 mislukte pogingen per uur) | `POST /api/login` |
+| Instellingen van de site (streefverdeling, inleg, doelen `goals`, volglijst, koersalarmen `priceAlerts`, herinnering inleg `depositReminder`, notities bij aankopen `notes`, andere rekeningen `accounts`, meldingsregels `alerts` met stille uren `quietFrom`/`quietTo` en dagbundel `digest`/`digestHour`) | `GET` / `POST /api/settings` |
 | Status van koppelingen en functies, met `health`: welke bron tijdelijk uit staat en welke reserve het werk doet | `GET /api/features` (alleen waar een sleutel staat, nooit de sleutel zelf) |
 | Meldingen: openbare sleutel en regels, apparaat aan- of afmelden, testmelding | `GET /api/push/key`, `POST /api/push/subscribe` met `{"sub": …}`, `POST /api/push/unsubscribe`, `POST /api/push/test` |
 | Weekmail nu als test sturen (optioneel, Resend) | `POST /api/mail/test` |
-| Deel-link (alleen lezen) maken, vernieuwen, met of zonder bedragen, uitzetten | `GET` / `POST /api/share` met `{"action": "on" \| "rotate" \| "off" \| "update", "amounts": false}` |
+| Deel-link (alleen lezen) maken, vernieuwen, met of zonder bedragen, einddatum (`days`, 0 = geen), uitzetten | `GET` / `POST /api/share` met `{"action": "on" \| "rotate" \| "off" \| "update", "amounts": false, "days": 30}` |
+| Meldingen: logboek van wat er verstuurd is, wat er in de wachtrij staat (stille uren of dagbundel) en de huidige regels | `GET /api/alerts` |
+| Logboek van je tracker: sleutelwijzigingen, inlogpogingen, orders, links en apparaatcodes (nooit de waarden zelf) | `GET /api/audit` |
+| Apparaten met toegang: lijst, een eigen code voor dit apparaat maken | `GET` / `POST /api/sessions` met `{"label": "Mac", "days": 0}` (de code komt één keer terug en wordt alleen als SHA-256 bewaard) |
+| Links en apparaatcodes intrekken | `POST /api/revoke` met `{"links": true, "devices": true}` |
+| Vergelijken met de deel-link van iemand anders; geeft alleen percentages terug en bewaart de link niet | `POST /api/friend` met `{"url": "https://…/share/<token>"}` |
 | Gedeelde weergave (zonder toegangscode, met geheime link) | `GET /share/<token>` |
 | Geschiedenis uit een Trading 212-export inlezen (de site leest de CSV) | `POST /api/import-csv` met `{"orders": […], "dividends": […]}` |
 | Sleutel opslaan of wissen | `POST /api/keys` met `{"name": "FINNHUB_KEY", "value": "…"}` (lege waarde wist) |

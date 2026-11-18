@@ -1,7 +1,7 @@
 name: Controles
 
 # Bij elke push en pull request: syntaxis en namen van de website, typecontrole (geen nieuwe typefouten),
-# en de Worker-tests met nep-API's.
+# de Worker-tests met nep-API's en de meegeleverde bibliotheek (vingerafdruk en bekende kwetsbaarheden).
 on:
   push:
   pull_request:
@@ -24,3 +24,5 @@ jobs:
         run: node tools/check-types.mjs
       - name: Worker
         run: node worker/test/run.mjs
+      - name: Meegeleverde bibliotheek (docs/vendor)
+        run: node tools/check-vendor.mjs

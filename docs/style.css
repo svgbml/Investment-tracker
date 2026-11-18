@@ -1399,3 +1399,39 @@ body.welcoming #mshell { padding-bottom: 0; }
 /* Het streepje onder het menu schuift via placeIndicators (Web Animations), niet via een CSS-overgang */
 .pill, :root[data-theme="dark"] .pill { transition: none; }
 .watch-add .ws-wrap .search { flex: 1 1 auto; max-width: none; }
+
+
+/* ===================== Instellingen zoeken, privacy en veiligheid (groep 63-69, 84, 140, 156-163) ===================== */
+.set-search { position: relative; width: 100%; max-width: 1180px; margin: 0 auto; padding: 14px 32px 0; box-sizing: border-box; }
+.set-search input { width: 100%; max-width: 420px; box-sizing: border-box; }
+.set-hits { list-style: none; margin: 6px 0 0; padding: 6px; max-width: 420px; border-radius: 14px; background: var(--surface); box-shadow: 0 10px 30px rgba(20, 24, 31, .14); }
+.set-hits li { margin: 0; }
+.set-hits li.muted { padding: 8px 10px; }
+.set-hits button { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; width: 100%; padding: 8px 10px; border: 0; border-radius: 10px; background: none; font: inherit; color: var(--ink); text-align: left; cursor: pointer; }
+.set-hits button:hover, .set-hits button:focus-visible { background: var(--soft); color: var(--soft-ink); }
+.set-sub { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--rule); }
+.set-sub > h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-2); margin-bottom: 6px; }
+.set-found { border-radius: 12px; box-shadow: 0 0 0 2px var(--accent); transition: box-shadow .4s ease; }
+
+.flag-row { padding: 8px 0; border-bottom: 1px solid var(--rule); }
+.flag-row:last-of-type { border-bottom: 0; }
+.flag-row .tag { margin-left: 26px; }
+.flag-row p { margin-top: 2px; }
+
+.log-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.log-list li { display: flex; flex-direction: column; gap: 1px; padding: 8px 10px; border-radius: 10px; background: var(--bg); }
+.log-list b { font-size: 14px; }
+.log-when { font-size: 12px; color: var(--ink-2); }
+.cmp-tbl { margin-top: 10px; }
+
+/* Privacyscherm: waas over de app als die naar de achtergrond gaat of je even niets doet */
+.privacy-blur #app, .privacy-blur #m-main, .privacy-blur #detail, .privacy-blur dialog, .privacy-blur .overlay-dlg {
+  filter: blur(14px);
+  transition: filter .18s ease;
+}
+html[data-motion="off"] .privacy-blur #app, html[data-motion="off"] .privacy-blur #m-main { transition: none; }
+.priv-veil { position: fixed; inset: auto 0 calc(24px + env(safe-area-inset-bottom)) 0; z-index: 60; margin: 0 auto; width: max-content; max-width: 90vw; padding: 10px 16px; border-radius: 999px; background: var(--surface); color: var(--ink-2); font-size: 13px; box-shadow: 0 10px 30px rgba(20, 24, 31, .18); }
+@media (max-width: 760px) {
+  .set-search { padding: 12px 16px 0; }
+  .set-search input, .set-hits { max-width: none; }
+}

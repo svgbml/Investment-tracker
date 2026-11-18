@@ -1,0 +1,30 @@
+{
+  "_": "Welke bibliotheek er in docs/vendor/ staat, waar die vandaan komt en hoe je weet dat het bestand ongewijzigd is. tools/check-vendor.mjs controleert de vingerafdruk en vraagt bij de npm-register-waarschuwingsdienst of er iets bekend is over deze versies.",
+  "vendored": [
+    {
+      "file": "preact-htm.js",
+      "from": "htm@3.1.1, bestand preact/standalone.module.js (Preact 10 + hooks + htm in één bestand)",
+      "license": "MIT",
+      "sha256": "2aeaa3232ca84a7ad7ac0bef39bad3223dbd2173bee6ce4554b77be2f7f271b3",
+      "skipLines": 2,
+      "check": [
+        {
+          "name": "htm",
+          "versions": [
+            "3.1.1"
+          ]
+        },
+        {
+          "name": "preact",
+          "versions": [
+            "10.2.0",
+            "10.5.0",
+            "10.11.0",
+            "10.19.0"
+          ],
+          "why": "htm 3.1.1 bundelt een Preact 10 zonder versienummer in het bestand; daarom wordt de hele 10-reeks nagelopen."
+        }
+      ]
+    }
+  ]
+}
