@@ -1712,6 +1712,7 @@ async function avTask(env, tk) {
   out.src = src;
   out.avAt = isoLocal(Date.now());
   if (!prev.updated) out.updated = out.avAt;
+  noteOpinionDay(prev, out, ymdUTC(Date.now()));
   await setKv(env, 'rs_' + tk, JSON.stringify(out));
   await noteExtError(env, 'alphavantage', null);
   return used;
@@ -1820,6 +1821,19 @@ async function newsArchive(env, q) {
   return { items: results.slice(0, limit), more: results.length > limit, filling: busy };
 }
 
+// Mening van analisten door de tijd: alleen een regel als aantallen of koersdoel veranderen, zodat de lijst klein blijft.
+// Regel: [dag, sterk kopen, kopen, aanhouden, verkopen, sterk verkopen, gemiddeld koersdoel]; de stand op een dag is de laatste regel ervoor.
+function noteOpinionDay(prev, out, day) {
+  const r = Array.isArray(out.rec) && out.rec[0] ? out.rec[0] : null;
+  const t = out.target && isFinite(Number(out.target.mean)) && Number(out.target.mean) > 0 ? Number(out.target.mean) : null;
+  const h = (Array.isArray(prev.recHist) ? prev.recHist : []).filter((x) => Array.isArray(x) && x[0] < day);
+  if (!r && t == null) { if (h.length) out.recHist = h; return; }
+  const row = [day, r ? r.sb : null, r ? r.b : null, r ? r.h : null, r ? r.s : null, r ? r.ss : null, t];
+  const last = h[h.length - 1];
+  if (!last || row.slice(1).some((v, i) => v !== last[i + 1])) h.push(row);
+  out.recHist = h.slice(-80);
+}
+
 async function finnhubTask(env, tk) {
   if (!env.FINNHUB_KEY) return 0;
   const sym = SYMBOL_MAP[tk] || tk;
@@ -1879,6 +1893,7 @@ async function finnhubTask(env, tk) {
     if (!last || last.d <= ymdUTC(Date.now() - 6 * 864e5)) th.push({ d: today, mean: out.target.mean });
     out.targetHist = th.slice(-60);
   }
+  noteOpinionDay(prev, out, today);
   await setKv(env, 'rs_' + tk, JSON.stringify(out));
   await noteExtError(env, 'finnhub', null);
   return calls;
@@ -2448,7 +2463,7 @@ function isDst(localIso) {
   return t >= start.getTime() + 2 * HOUR_MS && t < end.getTime() + 3 * HOUR_MS;
 }
 
-export const _test = { parts, isLive, shortTicker, isoLocal, isDst, hourStart, dayOf, newsHistTask, storeNews };
+export const _test = { parts, isLive, shortTicker, isoLocal, isDst, hourStart, dayOf, newsHistTask, storeNews, noteOpinionDay };
 
 
 // =====================================================================

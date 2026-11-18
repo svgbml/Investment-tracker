@@ -57,6 +57,7 @@ Zet ze aan op de website onder *Instellingen → Koppelingen en functies*. Sleut
 | Nieuwspagina met marktnieuws, analisten per bedrijf, betrouwbaarheid van analisten en suggesties, insiderhandel | Finnhub | gratis sleutel (`FINNHUB_KEY`) |
 | Risicopagina: bedrijven van je volglijst die je spreiding verbreden (andere sector of anders bewegend) en waar analisten en nieuws positief over zijn | Finnhub, FMP | gratis sleutels (`FINNHUB_KEY`, `FMP_KEY`) |
 | Nieuwsarchief: ouder nieuws per aandeel, elke ronde een maand verder terug tot een jaar (knop *Ouder nieuws laden*) | Finnhub | gratis sleutel (`FINNHUB_KEY`) |
+| Analisten per sector en door de tijd: alle analisten per sector samen, en wat er in een dag, week, maand of drie maanden veranderde (de Worker bewaart de stand elke dag als die verandert) | Finnhub of Alpha Vantage | gratis sleutel (`FINNHUB_KEY`) |
 | Suggesties om te volgen | FMP (vergelijkbare bedrijven) en de samenstelling van je indexfondsen | gratis sleutel (`FMP_KEY`) of een fondsbestand |
 | Agenda (kwartaalcijfers, dividenden), sector en branche, vergelijkbare bedrijven | [Financial Modeling Prep](https://site.financialmodelingprep.com/register) | gratis sleutel (`FMP_KEY`) |
 | Volglijst (aandelen die je niet hebt), agenda in Google Agenda | Financial Modeling Prep | gratis sleutel (`FMP_KEY`) |

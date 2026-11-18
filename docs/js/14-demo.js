@@ -257,6 +257,15 @@ function makeDemoData() {
     // Koersdoel-geschiedenis per week, voor de betrouwbaarheid van analisten
     const ph = prices[tk] || [];
     research[tk].targetHist = ph.length > 5 ? ph.filter((p, k) => k % 5 === 0).map(([d, v]) => ({ d, mean: +(v * (0.9 + rnd() * 0.3)).toFixed(2) })) : [];
+    // Mening per dag (alleen dagen met een verandering), terug vanaf nu: [dag, sb, b, h, s, ss, koersdoel]
+    const R0 = research[tk].rec[0], cur = [R0.sb, R0.b, R0.h, R0.s, R0.ss, research[tk].target.mean], rh = [];
+    for (let n = tk.length % 3; n <= 110; n += 2 + Math.floor(rnd() * 8)) {
+      rh.push([dIn(-n)].concat(cur));
+      const k = Math.floor(rnd() * 4);
+      if (k === 3) cur[5] = +(cur[5] * (1 + (rnd() - 0.4) * 0.06)).toFixed(2);
+      else { const j = [0, 1, 2][k]; cur[j] = Math.max(0, cur[j] + (rnd() < 0.55 ? -1 : 1)); }
+    }
+    research[tk].recHist = rh.reverse();
   });
   // LMT laat zien hoe een aanvulling van Alpha Vantage eruitziet (koersdoel zonder bandbreedte, verkregen/afgestaan)
   if (research.LMT) {

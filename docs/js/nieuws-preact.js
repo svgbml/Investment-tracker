@@ -212,6 +212,17 @@ function MoodMap({ pts, sel, onPick }) {
   </section>`;
 }
 
+// Meningen per sector en door de tijd: periode als eigen toestand, de inhoud komt uit js/12-nieuws.js
+function OpinionTile({ stamp }) {
+  const [per, setPer] = useState(xs.opPer || '30');
+  const pick = (k) => { xs.opPer = k; setPer(k); };
+  const body = useMemo(() => opinionBody(Number(per)), [per, stamp]);
+  return html`<section class="tile pad full op-tile">
+    <div class="plan-head"><h3>Meningen per sector en door de tijd</h3><${Seg} value=${per} options=${OP_PERIODS} onPick=${pick} label="Periode" /></div>
+    <${Legacy} markup=${body} />
+  </section>`;
+}
+
 const NEWS_SEGS = [['news', 'Nieuws'], ['an', 'Analisten'], ['ins', 'Insiders']];
 function NewsPage({ stamp }) {
   // stamp verandert bij nieuwe gegevens, zodat de lijsten opnieuw worden opgebouwd
@@ -226,14 +237,14 @@ function NewsPage({ stamp }) {
   if (mode === 'm') {
     return html`<div class="m-ptabs news-tabs" role="group" aria-label="Onderdeel">${NEWS_SEGS.map(([k, l]) => html`<button type="button" key=${k} aria-pressed=${String(seg === k)} onClick=${() => pickSeg(k)}>${l}</button>`)}</div>
       ${seg === 'news' ? html`<div class="grid wide">${map}${list}<${Legacy} markup=${newsToolsTile()} /></div>` : null}
-      ${seg === 'an' ? html`<div class="grid wide"><${Legacy} markup=${suggestTile()} /><${AnalystTable} rows=${rows} /><${Legacy} markup=${reliabilityTile()} /></div>` : null}
+      ${seg === 'an' ? html`<div class="grid wide"><${Legacy} markup=${suggestTile()} /><${AnalystTable} rows=${rows} /><${OpinionTile} stamp=${stamp} /><${Legacy} markup=${reliabilityTile()} /></div>` : null}
       ${seg === 'ins' ? html`<div class="grid wide"><${Legacy} markup=${insiderTile()} /></div>` : null}`;
   }
   return html`
     <div class="grid wide">${list}${map}</div>
     <div class="grid wide" style="margin-top:16px"><${Legacy} markup=${suggestTile()} /><${Legacy} markup=${newsToolsTile()} /></div>
     <div class="section-head"><h2>Analisten</h2><p class="muted small">Aanbevelingen, koersdoelen en hoe betrouwbaar ze zijn</p></div>
-    <div class="grid wide"><${AnalystTable} rows=${rows} /><${Legacy} markup=${reliabilityTile()} /></div>
+    <div class="grid wide"><${AnalystTable} rows=${rows} /><${Legacy} markup=${reliabilityTile()} /><${OpinionTile} stamp=${stamp} /></div>
     <div class="section-head"><h2>Insiders</h2><p class="muted small">Kopen en verkopen bestuurders zelf?</p></div>
     <div class="grid wide"><${Legacy} markup=${insiderTile()} /></div>`;
 }

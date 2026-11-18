@@ -562,5 +562,25 @@ await test('nieuwsarchief: ouder nieuws aanvullen en per blok ophalen', async ()
   routes = [];
 });
 
+await test('mening van analisten: alleen een regel bij een verandering', async () => {
+  const f = WM._test.noteOpinionDay;
+  const rec = (b) => [{ period: '2026-11-01', sb: 5, b, h: 4, s: 1, ss: 0 }];
+  let prev = {}, out = { rec: rec(10), target: { mean: 200 } };
+  f(prev, out, '2026-11-10');
+  assert.deepEqual(out.recHist, [['2026-11-10', 5, 10, 4, 1, 0, 200]]);
+  prev = out; out = { rec: rec(10), target: { mean: 200 } }; f(prev, out, '2026-11-11');
+  assert.equal(out.recHist.length, 1, 'zelfde mening: geen nieuwe regel');
+  prev = out; out = { rec: rec(11), target: { mean: 205 } }; f(prev, out, '2026-11-12');
+  assert.equal(out.recHist.length, 2);
+  assert.deepEqual(out.recHist[1], ['2026-11-12', 5, 11, 4, 1, 0, 205]);
+  // Twee keer op dezelfde dag: de regel van vandaag wordt vervangen
+  prev = out; out = { rec: rec(12), target: { mean: 205 } }; f(prev, out, '2026-11-12');
+  assert.equal(out.recHist.length, 2);
+  assert.equal(out.recHist[1][2], 12);
+  // Geen gegevens meer: geschiedenis blijft staan
+  prev = out; out = {}; f(prev, out, '2026-11-13');
+  assert.equal(out.recHist.length, 2);
+});
+
 console.log((failed ? failed + ' fout, ' : '') + passed + ' geslaagd');
 process.exit(failed ? 1 : 0);

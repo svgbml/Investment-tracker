@@ -74,6 +74,99 @@ function suggestTile() {
     (S.warn.length ? '<p class="small" style="margin-top:12px"><b>Om op te letten</b></p><div class="alt-list">' + S.warn.map((x) => item(x, true)).join('') + '</div>' : '') +
     '<p class="sub" style="margin-top:8px">Gekozen uit je posities en volglijst: veel analisten positief, koersdoel boven de koers en een redelijke betrouwbaarheid. Analisten zitten er vaak naast; dit is geen beleggingsadvies.</p></section>';
 }
+// ---------- Meningen van analisten door de tijd en per sector ----------
+// Finnhub geeft aanbevelingen per maand en de Worker bewaart het koersdoel per week; sinds v57 bewaart de Worker ook elke dag
+// de stand als die verandert (research.recHist: [dag, sb, b, h, s, ss, koersdoel]). Zo zijn ook verschillen tussen dagen te zien.
+const OP_PERIODS = [['1', '1 dag'], ['7', '1 week'], ['30', '1 maand'], ['91', '3 maanden']];
+const isoDayOf = (t) => { const d = new Date(t); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+const recShare = (sb, b, h, s, ss) => { const t = (sb || 0) + (b || 0) + (h || 0) + (s || 0) + (ss || 0); return t ? { buy: ((sb || 0) + (b || 0)) / t, tot: t } : null; };
+// Stand op tijdstip t. Maandcijfers tellen pas vanaf een maand terug en weekkoersdoelen vanaf een week, anders lijkt er niets veranderd.
+function opinionAt(tk, t, days) {
+  const r = (data.research || {})[tk];
+  if (!r) return null;
+  const day = isoDayOf(t);
+  const H = (r.recHist || []).filter((x) => Array.isArray(x) && x[0] <= day);
+  let rec = null, target = null, src = null;
+  if (H.length) { const x = H[H.length - 1]; rec = recShare(x[1], x[2], x[3], x[4], x[5]); target = isNum(x[6]) ? x[6] : null; src = 'dag'; }
+  if (!rec && days >= 28 && Array.isArray(r.rec)) { const x = r.rec.find((p) => p.period && p.period <= day); if (x && x !== r.rec[0]) { rec = recShare(x.sb, x.b, x.h, x.s, x.ss); src = src || 'maand'; } }
+  if (target == null && days >= 7 && Array.isArray(r.targetHist)) { const th = r.targetHist.filter((h) => h.d <= day); if (th.length) target = th[th.length - 1].mean; }
+  return rec || isNum(target) ? { rec, target, src } : null;
+}
+function opinionShifts(days) {
+  const then = Date.now() - days * DAY;
+  const total = M.totalValue || 0;
+  const rows = analystRows().map((x) => {
+    const r = (data.research || {})[x.o.tk];
+    const T = r && r.target && isNum(r.target.mean) ? r.target.mean : null;
+    const p = opinionAt(x.o.tk, then, days);
+    const prof = M.mk.ok ? (x.held ? M.mk.profOf(x.o.tk) : M.mk.prof(x.o.tk)) : null;
+    const sector = x.held && M.mk.ok ? M.mk.sectorOf(x.o) : (prof && prof.sector) || 'Onbekend';
+    return Object.assign({}, x, {
+      then: p, T, sector, cur: (prof && prof.currency) || x.o.cur || 'USD',
+      dBuy: x.rc && p && p.rec ? x.rc.buy - p.rec.buy : null,
+      dTot: x.rc && p && p.rec ? x.rc.tot - p.rec.tot : null,
+      dT: T && p && isNum(p.target) && p.target > 0 ? T / p.target - 1 : null,
+    });
+  });
+  const groups = new Map();
+  rows.forEach((x) => { if (!groups.has(x.sector)) groups.set(x.sector, []); groups.get(x.sector).push(x); });
+  const sectors = [...groups].map(([s, L]) => {
+    const R = L.filter((x) => x.rc);
+    const tot = R.reduce((a, x) => a + x.rc.tot, 0);
+    const camp = { sb: 0, b: 0, h: 0, s: 0, ss: 0 };
+    R.forEach((x) => Object.keys(camp).forEach((k) => { camp[k] += x.rc.rec[k] || 0; }));
+    // Verschil: dezelfde bedrijven nu en toen, zodat een nieuw gevolgd bedrijf het sectorcijfer niet verschuift
+    const P = R.filter((x) => x.then && x.then.rec);
+    const wNow = P.reduce((a, x) => a + x.rc.tot, 0), wThen = P.reduce((a, x) => a + x.then.rec.tot, 0);
+    const dBuy = wNow && wThen ? P.reduce((a, x) => a + x.rc.buy * x.rc.tot, 0) / wNow - P.reduce((a, x) => a + x.then.rec.buy * x.then.rec.tot, 0) / wThen : null;
+    const ups = L.filter((x) => isNum(x.up)).map((x) => x.up), dTs = L.filter((x) => isNum(x.dT)).map((x) => x.dT);
+    const byBuy = R.slice().sort((a, b) => b.rc.buy - a.rc.buy);
+    const w = total ? L.filter((x) => x.held).reduce((a, x) => a + (x.o.value || 0), 0) / total : 0;
+    return { s, L, tot, camp, buy: tot ? R.reduce((a, x) => a + x.rc.buy * x.rc.tot, 0) / tot : null, dBuy, up: ups.length ? mean(ups) : null, dT: dTs.length ? mean(dTs) : null,
+      hi: byBuy.length >= 2 ? byBuy[0] : null, lo: byBuy.length >= 2 ? byBuy[byBuy.length - 1] : null, w };
+  }).sort((a, b) => (isNum(b.buy) ? b.buy : -1) - (isNum(a.buy) ? a.buy : -1));
+  const size = (x) => Math.abs(x.dBuy || 0) + Math.abs(x.dT || 0) / 2 + Math.abs(x.dTot || 0) / 100;
+  const moves = rows.filter((x) => (isNum(x.dBuy) && Math.abs(x.dBuy) >= 0.005) || (isNum(x.dT) && Math.abs(x.dT) >= 0.005) || (isNum(x.dTot) && x.dTot !== 0)).sort((a, b) => size(b) - size(a));
+  const firstDay = rows.map((x) => { const H = ((data.research || {})[x.o.tk] || {}).recHist; return Array.isArray(H) && H.length ? H[0][0] : null; }).filter(Boolean).sort()[0] || null;
+  return { rows, sectors, moves: moves.slice(0, 8), known: rows.some((x) => x.then), then, firstDay };
+}
+const ppTxt = (d) => sgn(d * 100, N1) + ' pp';
+function opinionBody(days) {
+  const S = opinionShifts(days);
+  if (!S.rows.length) return '<p class="muted">Nog geen aanbevelingen van analisten opgehaald.</p>';
+  const per = (OP_PERIODS.find((p) => Number(p[0]) === days) || ['', days + ' dagen'])[1];
+  const bar = (c) => '<div class="rec-bar mini">' + [[c.sb, '#0B7A4B'], [c.b, '#5FB58A'], [c.h, '#C9CED6'], [c.s, '#E3A79C'], [c.ss, '#B4311F']].filter((p) => p[0]).map((p) => '<i style="flex:' + p[0] + ';background:' + p[1] + '"></i>').join('') + '</div>';
+  const table = '<div class="tbl-wrap"><table class="tbl op-tbl"><thead><tr><th>Sector</th><th>Aanbevelingen</th><th class="num">Kopen</th><th class="num">Verschil</th><th class="num">Koersdoel</th><th class="num">Koersdoel verschil</th><th>Meest en minst positief</th></tr></thead><tbody>' +
+    S.sectors.map((g) => '<tr><td class="co"><b>' + esc(sectorNl(g.s)) + '</b><span class="nm">' + esc(g.L.map((x) => x.o.tk).slice(0, 5).join(', ') + (g.L.length > 5 ? ' en ' + (g.L.length - 5) + ' meer' : '')) + '</span>' + (g.w >= 0.005 ? '<span class="sub">' + esc(P1.format(g.w) + ' van je beleggingen') + '</span>' : '') + '</td>' +
+      '<td>' + (g.tot ? bar(g.camp) : '–') + '</td>' +
+      '<td class="num">' + esc(isNum(g.buy) ? P1.format(g.buy) : '–') + (g.tot ? '<span class="sub">' + g.tot + ' analisten</span>' : '') + '</td>' +
+      '<td class="num ' + tone(g.dBuy) + '">' + esc(isNum(g.dBuy) ? ppTxt(g.dBuy) : '–') + '</td>' +
+      '<td class="num ' + tone(g.up) + '">' + esc(isNum(g.up) ? spct1(g.up) : '–') + '</td>' +
+      '<td class="num ' + tone(g.dT) + '">' + esc(isNum(g.dT) ? spct1(g.dT) : '–') + '</td>' +
+      '<td>' + (g.hi ? esc(g.hi.o.tk + ' ' + PCT0.format(g.hi.rc.buy) + ' · ' + g.lo.o.tk + ' ' + PCT0.format(g.lo.rc.buy)) + '<span class="sub">' + esc(Math.round((g.hi.rc.buy - g.lo.rc.buy) * 100) + ' pp uit elkaar') + '</span>' : '<span class="muted">één bedrijf</span>') + '</td></tr>').join('') +
+    '</tbody></table></div>';
+  const line = (x) => {
+    const bits = [];
+    if (isNum(x.dBuy) && x.then.rec) bits.push('kopen ' + PCT0.format(x.then.rec.buy) + ' → ' + PCT0.format(x.rc.buy) + ' (' + ppTxt(x.dBuy) + ')');
+    if (isNum(x.dTot) && x.dTot) bits.push(sgn(x.dTot, NI) + ' analist' + (Math.abs(x.dTot) === 1 ? '' : 'en'));
+    if (isNum(x.dT) && Math.abs(x.dT) >= 0.0005) bits.push('koersdoel ' + money(x.then.target, x.cur) + ' → ' + money(x.T, x.cur) + ' (' + spct1(x.dT) + ')');
+    return bits.join(' · ');
+  };
+  const dir = (x) => (x.dBuy || 0) + (x.dT || 0) / 2;
+  const moves = S.moves.length
+    ? '<div class="alt-list">' + S.moves.map((x) => '<button type="button" class="alt" data-ticker="' + esc(x.held ? x.o.tk : '~' + x.o.tk) + '"><b>' + esc(x.o.tk) + ' <span class="muted small">' + esc(x.o.name) + ' · ' + esc(sectorNl(x.sector)) + '</span></b>' +
+      '<span class="small ' + (dir(x) > 0 ? 'gain' : dir(x) < 0 ? 'loss' : '') + '">' + esc(line(x)) + '</span></button>').join('') + '</div>'
+    : '<p class="muted">' + esc(S.known ? 'Geen veranderingen in de meningen in deze periode.'
+      : days < 28 ? 'Nog niet genoeg dagen bewaard. De Worker houdt de mening van analisten sinds kort per dag bij' + (S.firstDay ? ' (vanaf ' + fD.format(ymd(S.firstDay)) + ')' : '') + '; kies tot die tijd 1 maand of 3 maanden.'
+        : 'Voor deze periode zijn nog geen eerdere cijfers bekend.') + '</p>';
+  return '<p class="small muted" style="margin-top:2px">Alle analisten van je posities en volglijst samen per sector, en wat er sinds ' + esc(fD.format(S.then)) + ' (' + esc(per) + ' terug) veranderde.</p>' + table +
+    '<p class="small" style="margin-top:14px"><b>Grootste verschuivingen in ' + esc(per) + '</b></p>' + moves +
+    '<p class="sub" style="margin-top:10px">Kopen: deel van alle analisten in die sector met koop of sterk kopen (bedrijven met meer analisten tellen zwaarder). Verschil: dezelfde bedrijven nu tegenover toen, in procentpunten. Meest en minst positief: hoe ver de bedrijven in één sector uit elkaar liggen. Finnhub ververst aanbevelingen per maand en koersdoelen vaker; verschillen per dag zie je pas als de Worker een paar dagen heeft bijgehouden. Geen beleggingsadvies.</p>';
+}
+function opinionTile() {
+  const days = Number(xs.opPer || 30);
+  return '<section class="tile pad full op-tile"><div class="plan-head"><h3>Meningen per sector en door de tijd</h3>' + segX('opPer', OP_PERIODS, String(days), 'Periode') + '</div>' + opinionBody(days) + '</section>';
+}
 function newsItems() {
   const held = new Set(M.companies.map((c) => c.tk)), watch = new Set(watchSyms()), out = [], seen = new Set();
   Object.entries(data.research || {}).forEach(([tk, r]) => (r.news || []).forEach((n) => { const kind = held.has(tk) ? 'mine' : watch.has(tk) ? 'watch' : null; if (kind) out.push(Object.assign({ tk, kind }, n)); }));
@@ -151,7 +244,7 @@ function renderNews() {
   if (window.NewsView && window.NewsView.ok) window.NewsView.clear(host);
   if (off) { host.innerHTML = '<div class="grid wide">' + offTile('Nieuws en analisten', 'Zet Finnhub aan (gratis sleutel) bij Koppelingen voor nieuws per aandeel, marktnieuws, analisten en insiderhandel.') + '</div>'; return; }
   host.innerHTML = '<div class="grid wide">' + newsListTile() + suggestTile() + '</div>' +
-    '<div class="section-head"><h2>Analisten</h2><p class="muted small">Aanbevelingen, koersdoelen en hoe betrouwbaar ze zijn</p></div><div class="grid wide">' + analystTableTile() + reliabilityTile() + '</div>' +
+    '<div class="section-head"><h2>Analisten</h2><p class="muted small">Aanbevelingen, koersdoelen en hoe betrouwbaar ze zijn</p></div><div class="grid wide">' + analystTableTile() + reliabilityTile() + opinionTile() + '</div>' +
     '<div class="section-head"><h2>Insiders</h2><p class="muted small">Kopen en verkopen bestuurders zelf?</p></div><div class="grid wide">' + insiderTile() + newsToolsTile() + '</div>';
 }
 
