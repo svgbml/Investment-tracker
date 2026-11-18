@@ -111,7 +111,10 @@ function AnalystTable({ rows }) {
     sortBy === 'rel' ? (b.rel ? b.rel.score : -1) - (a.rel ? a.rel.score : -1)
       : sortBy === 'up' ? (isNum(b.up) ? b.up : -9) - (isNum(a.up) ? a.up : -9)
         : (b.rc ? b.rc.buy : 0) - (a.rc ? a.rc.buy : 0)), [rows, sortBy]);
-  if (!rows.length) return html`<section class="tile pad full"><h3>Analisten per bedrijf</h3><p class="muted">Nog geen aanbevelingen van analisten opgehaald.</p></section>`;
+  if (!rows.length) {
+    return html`<section class="tile pad full"><h3>Analisten per bedrijf</h3><p class="muted">Nog geen aanbevelingen van analisten opgehaald.
+      ${fixShow('FINNHUB_KEY') ? html`<button type="button" class="linklike small" data-fix="FINNHUB_KEY">${fixLabel('FINNHUB_KEY')}</button>` : null}</p></section>`;
+  }
   return html`<section class="tile pad full">
     <div class="plan-head"><h3>Analisten per bedrijf</h3><${Seg} value=${sortBy} options=${[['buy', 'Meeste kopen'], ['up', 'Koersdoel'], ['rel', 'Betrouwbaarheid']]} onPick=${setSortBy} label="Sorteren" /></div>
     <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Bedrijf</th><th>Aanbevelingen</th><th class="num">Kopen</th><th class="num">Trend</th><th class="num">Koersdoel</th><th class="num">Betrouwbaarheid</th><th class="num">Nieuws</th></tr></thead>

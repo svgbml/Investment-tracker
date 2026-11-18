@@ -133,7 +133,7 @@ function opinionShifts(days) {
 const ppTxt = (d) => sgn(d * 100, N1) + ' pp';
 function opinionBody(days) {
   const S = opinionShifts(days);
-  if (!S.rows.length) return '<p class="muted">Nog geen aanbevelingen van analisten opgehaald.</p>';
+  if (!S.rows.length) return '<p class="muted">Nog geen aanbevelingen van analisten opgehaald. ' + fixBtn('FINNHUB_KEY') + '</p>';
   const per = (OP_PERIODS.find((p) => Number(p[0]) === days) || ['', days + ' dagen'])[1];
   const bar = (c) => '<div class="rec-bar mini">' + [[c.sb, '#0B7A4B'], [c.b, '#5FB58A'], [c.h, '#C9CED6'], [c.s, '#E3A79C'], [c.ss, '#B4311F']].filter((p) => p[0]).map((p) => '<i style="flex:' + p[0] + ';background:' + p[1] + '"></i>').join('') + '</div>';
   const table = '<div class="tbl-wrap"><table class="tbl op-tbl"><thead><tr><th>Sector</th><th>Aanbevelingen</th><th class="num">Kopen</th><th class="num">Verschil</th><th class="num">Koersdoel</th><th class="num">Koersdoel verschil</th><th>Meest en minst positief</th></tr></thead><tbody>' +
@@ -195,7 +195,7 @@ function newsListTile() {
 }
 function analystTableTile() {
   const rows = analystRows().sort((a, b) => (b.rc ? b.rc.buy : 0) - (a.rc ? a.rc.buy : 0));
-  if (!rows.length) return fullT('Analisten per bedrijf', '<p class="muted">Nog geen aanbevelingen van analisten opgehaald.</p>');
+  if (!rows.length) return fullT('Analisten per bedrijf', '<p class="muted">Nog geen aanbevelingen van analisten opgehaald. ' + fixBtn('FINNHUB_KEY') + '</p>');
   return '<section class="tile pad full"><h3>Analisten per bedrijf</h3><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Bedrijf</th><th>Aanbevelingen</th><th class="num">Kopen</th><th class="num">Trend</th><th class="num">Koersdoel</th><th class="num">Betrouwbaarheid</th><th class="num">Nieuws</th></tr></thead><tbody>' +
     rows.map((x) => { const rec = x.rc && x.rc.rec;
       const bar = rec ? '<div class="rec-bar mini">' + [[rec.sb, '#0B7A4B'], [rec.b, '#5FB58A'], [rec.h, '#C9CED6'], [rec.s, '#E3A79C'], [rec.ss, '#B4311F']].filter((p) => p[0]).map((p) => '<i style="flex:' + p[0] + ';background:' + p[1] + '"></i>').join('') + '</div>' : '–';
@@ -224,7 +224,7 @@ function insiderTile() {
     if (!ins.length) return null;
     return { tk, net: sum(ps.map((x) => (x.change || 0) * (x.price || 0))), buys: ps.filter((x) => x.code === 'P').length, sells: ps.filter((x) => x.code === 'S').length, last: ins[0] };
   }).filter(Boolean).sort((a, b) => b.net - a.net);
-  if (!per.length) return fullT('Insiderhandel', '<p class="muted">Nog geen meldingen van insiderhandel opgehaald (Finnhub, Amerikaanse bedrijven).</p>');
+  if (!per.length) return fullT('Insiderhandel', '<p class="muted">Nog geen meldingen van insiderhandel opgehaald (Finnhub, Amerikaanse bedrijven). ' + fixBtn('FINNHUB_KEY') + '</p>');
   const mx = Math.max(1, ...per.map((x) => Math.abs(x.net)));
   all.sort((a, b) => String(b.date).localeCompare(String(a.date)));
   return '<section class="tile pad full"><h3>Insiderhandel, laatste 6 maanden</h3><div class="ins-grid"><div class="hbars cmp">' + per.map((x) =>
@@ -242,7 +242,7 @@ function renderNews() {
   // Componentenversie (js/nieuws-preact.js) als die geladen is; anders deze HTML-versie
   if (window.NewsView && window.NewsView.ok && !off) { window.NewsView.draw(host); return; }
   if (window.NewsView && window.NewsView.ok) window.NewsView.clear(host);
-  if (off) { host.innerHTML = '<div class="grid wide">' + offTile('Nieuws en analisten', 'Zet Finnhub aan (gratis sleutel) bij Koppelingen voor nieuws per aandeel, marktnieuws, analisten en insiderhandel.') + '</div>'; return; }
+  if (off) { host.innerHTML = '<div class="grid wide">' + offTile('Nieuws en analisten', 'Zet Finnhub aan (gratis sleutel) bij Koppelingen voor nieuws per aandeel, marktnieuws, analisten en insiderhandel.', 'FINNHUB_KEY') + '</div>'; return; }
   host.innerHTML = '<div class="grid wide">' + newsListTile() + suggestTile() + '</div>' +
     '<div class="section-head"><h2>Analisten</h2><p class="muted small">Aanbevelingen, koersdoelen en hoe betrouwbaar ze zijn</p></div><div class="grid wide">' + analystTableTile() + reliabilityTile() + opinionTile() + '</div>' +
     '<div class="section-head"><h2>Insiders</h2><p class="muted small">Kopen en verkopen bestuurders zelf?</p></div><div class="grid wide">' + insiderTile() + newsToolsTile() + '</div>';

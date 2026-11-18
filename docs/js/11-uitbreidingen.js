@@ -186,7 +186,7 @@ function divForecast() {
 }
 function divCalendarTile() {
   const F = divForecast();
-  if (!F.info.length) return fullT('Dividendkalender', '<p class="muted">Nog geen dividend ontvangen of aangekondigd voor je posities. Na de eerste uitkeringen (of met een FMP-sleutel) zie je hier per maand wat er komt.</p>');
+  if (!F.info.length) return fullT('Dividendkalender', '<p class="muted">Nog geen dividend ontvangen of aangekondigd voor je posities. Na de eerste uitkeringen (of met een FMP-sleutel) zie je hier per maand wat er komt. ' + fixBtn('FMP_KEY') + '</p>');
   const cost = sum(M.companies.map((c) => (isNum(c.cost) ? c.cost : 0)));
   return '<section class="tile pad full divcal"><h3>Dividendkalender, komende 12 maanden</h3>' +
     '<div class="fx-head"><span class="v big">' + esc(eur(F.total)) + '</span><span class="muted small">verwacht' + (cost > 0 ? ', ' + esc(P2.format(F.total / cost)) + ' op je inleg' : '') + ', ongeveer ' + esc(eur(F.total / 12)) + ' per maand</span></div>' +
@@ -463,13 +463,13 @@ function drawCompare(root) {
 
 // ---------- 8. Waardering ----------
 function valuationOf(o) {
-  const out = { pe: null, dy: null, hist: [], avgPe: null, avgDy: null, secPe: null, src: null, sector: null };
+  const out = { pe: null, dy: null, hist: [], avgPe: null, avgDy: null, secPe: null, src: null, sector: null, at: null };
   if (isFundC(o)) return out;
   const mk = data.market || {};
   const sym = o.watch ? o.tk : M.mk.ok ? M.mk.sym(o.tk) : o.tk;
   const p = M.mk.ok ? M.mk.prof(sym) : null;
   const V = (mk.valuation || {})[sym] || null;
-  if (V) { out.pe = isNum(V.pe) ? V.pe : null; out.dy = isNum(V.dy) ? V.dy : null; out.src = 'FMP'; }
+  if (V) { out.pe = isNum(V.pe) ? V.pe : null; out.dy = isNum(V.dy) ? V.dy : null; out.src = 'FMP'; out.at = V.updated || null; }
   const Fin = (data.fin || {})[o.tk];
   if (!isNum(out.pe) && p && isNum(p.price) && Fin && Fin.series && Fin.series.eps) {
     const rows = Fin.series.eps.rows || []; const L = rows[rows.length - 1];
@@ -489,7 +489,7 @@ function valuationTile(c) {
   if (isFundC(c)) return '';
   const V = valuationOf(c);
   if (!isNum(V.pe) && !isNum(V.dy) && !V.hist.length) {
-    return offTile('Waardering', (data.market && data.market.valDenied) ? 'Waarderingscijfers zitten niet in je FMP-abonnement; met SEC-cijfers rekent de tracker de koers-winstverhouding zelf uit zodra die er zijn.' : FEAT().has.fmp || demo ? 'Nog geen waarderingscijfers opgehaald; ze komen wekelijks van Financial Modeling Prep.' : 'Waardering vraagt een gratis FMP-sleutel (Financial Modeling Prep).');
+    return offTile('Waardering', (data.market && data.market.valDenied) ? 'Waarderingscijfers zitten niet in je FMP-abonnement; met SEC-cijfers rekent de tracker de koers-winstverhouding zelf uit zodra die er zijn.' : FEAT().has.fmp || demo ? 'Nog geen waarderingscijfers opgehaald; ze komen wekelijks van Financial Modeling Prep.' : 'Waardering vraagt een gratis FMP-sleutel (Financial Modeling Prep).', 'FMP_KEY');
   }
   const loss = isNum(V.pe) && V.pe <= 0;
   const vsOwn = !loss && isNum(V.pe) && isNum(V.avgPe) ? V.pe / V.avgPe - 1 : null;
@@ -497,7 +497,7 @@ function valuationTile(c) {
   const said = [relWord(vsOwn, 'het eigen gemiddelde'), relWord(vsSec, 'de sector')].filter(Boolean).join(' en ');
   const peBars = V.hist.length ? '<div style="margin-top:10px">' + bars(V.hist.map((r) => ({ v: r[1], color: C.soft, tip: r[0] + ': ' + N1.format(r[1]) })).concat(isNum(V.pe) && !loss ? [{ v: V.pe, color: C.accent, tip: 'Nu: ' + N1.format(V.pe) }] : []), true) +
     barLabels(V.hist.map((r) => r[0]).concat(isNum(V.pe) && !loss ? ['nu'] : [])) + '</div>' : '';
-  return '<section class="tile pad"><h3>Waardering</h3>' + (said ? '<p class="small"><b>Koers-winstverhouding ' + esc(said) + '.</b></p>' : '') + peBars +
+  return '<section class="tile pad"><h3>Waardering' + ageTag(V.at, AGE_LIMIT.weekly) + '</h3>' + (said ? '<p class="small"><b>Koers-winstverhouding ' + esc(said) + '.</b></p>' : '') + peBars +
     '<div style="margin-top:8px">' + kvList([
       ['Koers-winstverhouding nu', loss ? 'geen (verlies)' : isNum(V.pe) ? N1.format(V.pe) : '–'],
       ['Eigen gemiddelde', isNum(V.avgPe) ? N1.format(V.avgPe) + ' over ' + V.hist.length + ' jaar (' + N1.format(Math.min(...V.hist.map((r) => r[1]))) + '–' + N1.format(Math.max(...V.hist.map((r) => r[1]))) + ')' : '–'],
@@ -515,7 +515,7 @@ function renderValuationList() {
         '<td class="num">' + esc(isNum(V.avgPe) ? N1.format(V.avgPe) : '–') + '</td><td class="num">' + esc(isNum(V.secPe) ? N1.format(V.secPe) : '–') + '</td>' +
         '<td class="num">' + esc(isNum(V.dy) ? P2.format(V.dy) : '–') + '</td><td class="num">' + esc(isNum(V.avgDy) ? P2.format(V.avgDy) : '–') + '</td></tr>'; }).join('') +
     '</tbody></table></div><p class="sub" style="margin-top:8px">K/W: koers-winstverhouding. Klein getal onder K/W: tegenover het eigen gemiddelde van de laatste jaren. Bron: FMP, of berekend uit SEC-cijfers.</p></section>'
-    : '<p class="empty">Waarderingscijfers komen wekelijks van Financial Modeling Prep (gratis sleutel). Ze zijn er nog niet.</p>';
+    : '<p class="empty">Waarderingscijfers komen wekelijks van Financial Modeling Prep (gratis sleutel). Ze zijn er nog niet. ' + fixBtn('FMP_KEY') + '</p>';
   if ($('val-grid')) $('val-grid').innerHTML = html;
   if ($('m-val')) $('m-val').innerHTML = html;
 }
