@@ -15,6 +15,7 @@ const WHATS_NEW = {
     'Instellingen > Koppelingen: het databasegebruik van de laatste 14 dagen, met hoe lang het bij deze groei duurt tot de limiet.',
     'Op de achtergrond ververst de tracker niet meer; zodra je hem weer opent wel. Meldingen komen gewoon door.',
     'Uurgegevens worden na 60 dagen opgeruimd (ze staan dan al in de dagtabel).',
+    'Grote gegevens staan in stukken in de database, zodat ook na jaren gebruik niets te groot wordt om op te slaan. Je orders worden alleen opnieuw gelezen als er nieuwe zijn.',
   ],
   v63: [
     'De Worker leest veel minder uit zijn database, zodat de gratis daglimiet van Cloudflare niet meer opraakt.',

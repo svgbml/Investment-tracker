@@ -231,8 +231,8 @@ const WORKER = {
       const c = await shareConf(envIn);
       if (!c || !c.token || !safeEqual(c.token, shr[1])) return json({ ok: false, error: 'Deze deel-link werkt niet (meer).' }, 404, cors);
       if (shareExpired(c)) return json({ ok: false, error: 'Deze deel-link is verlopen op ' + String(c.until).slice(0, 10) + '.' }, 410, cors);
-      let body = await getKv(envIn, 'data_share');
-      if (!body) { await saveDataCache(envIn, await buildData(await withKeys(envIn))); body = await getKv(envIn, 'data_share'); }
+      let body = await getBig(envIn, 'data_share');
+      if (!body) { await saveDataCache(envIn, await buildData(await withKeys(envIn))); body = await getBig(envIn, 'data_share'); }
       return new Response(body, { status: 200, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...cors } });
     }
     if (!envIn.WEB_TOKEN) {
@@ -434,10 +434,10 @@ const WORKER = {
           const tag0 = part === 'core' && !split0 ? (t0.core && t0.series ? '"' + t0.core.slice(1, 13) + t0.series.slice(1, 13) + '"' : null) : t0[part];
           if (tag0 && inm === tag0) return new Response(null, { status: 304, headers: { ...jh, ETag: tag0 } });
         }
-        let core = await getKv(env, 'data_core'), extra = await getKv(env, 'data_extra'), series = await getKv(env, 'data_series');
+        let core = await getBig(env, 'data_core'), extra = await getBig(env, 'data_extra'), series = await getBig(env, 'data_series');
         if (!core || !extra || !series || url.searchParams.has('fresh')) {
           await saveDataCache(env, await buildData(env));
-          core = await getKv(env, 'data_core'); extra = await getKv(env, 'data_extra'); series = await getKv(env, 'data_series');
+          core = await getBig(env, 'data_core'); extra = await getBig(env, 'data_extra'); series = await getBig(env, 'data_series');
         }
         const glue = (a, b) => a.slice(0, -1) + ',' + b.slice(1);
         // De site vanaf versie 38 vraagt core zonder reeksen (split=1); oudere versies krijgen core met reeksen
@@ -782,9 +782,9 @@ async function saveDataCache(env, data) {
   // generated verandert bij elke opbouw; zonder dat veld is de vingerafdruk alleen anders als de inhoud anders is
   const tagOf = async (o) => '"' + (await sha256Hex(JSON.stringify(Object.assign({}, o, { generated: null })))).slice(0, 24) + '"';
   await env.DB.batch([
-    env.DB.prepare('INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)').bind('data_core', cs),
-    env.DB.prepare('INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)').bind('data_extra', es),
-    env.DB.prepare('INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)').bind('data_series', ss),
+    ...bigStmts(env, 'data_core', cs),
+    ...bigStmts(env, 'data_extra', es),
+    ...bigStmts(env, 'data_series', ss),
     env.DB.prepare('INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)').bind('data_etags', JSON.stringify({ core: await tagOf(core), extra: await tagOf(extra), series: await tagOf(series), at: Date.now() })),
     env.DB.prepare('DELETE FROM kv WHERE key = ?').bind('data_cache'),
   ]);
@@ -1187,7 +1187,7 @@ async function renameTicker(env, from, to) {
     u('UPDATE OR REPLACE days SET ticker = ? WHERE ticker = ?'),
     u('UPDATE OR REPLACE positions SET ticker = ? WHERE ticker = ?'),
   ]);
-  try { await u('UPDATE OR REPLACE orders SET ticker = ? WHERE ticker = ?').run(); } catch (e) { /* geen orders */ }
+  try { await u('UPDATE OR REPLACE orders SET ticker = ? WHERE ticker = ?').run(); await invalidateOrders(env); } catch (e) { /* geen orders */ }
   try { await u('UPDATE OR REPLACE news_hist SET tk = ? WHERE tk = ?').run(); } catch (e) { /* geen nieuwsarchief */ }
   // Onderzoek, cijfers en waardering mee verhuizen
   for (const pre of ['rs_', 'fin_', 'val_']) {
@@ -1467,6 +1467,35 @@ async function getKv(env, key) {
 async function setKv(env, key, value) {
   await env.DB.prepare('INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)').bind(key, value).run();
 }
+// Grote waarden (het overzicht, de deel-link, caches) in stukken opslaan: D1 staat hoogstens 2 MB per rij toe,
+// en met jaren aan dagen per positie of veel gevolgde aandelen wordt één rij te groot. Een waarde van één stuk
+// staat gewoon onder zijn eigen sleutel; anders staat daar een verwijzing ('\u0000stukken:N') en volgen
+// sleutel#1 … sleutel#N. 900.000 tekens per stuk blijft ook bij veel speciale tekens (tot 2 bytes) onder de grens.
+const KV_PART = 900000;
+const KV_PART_MARK = '\u0000stukken:';
+function bigStmts(env, key, value) {
+  const v = String(value == null ? '' : value);
+  const put = (k, x) => env.DB.prepare('INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)').bind(k, x);
+  if (v.length <= KV_PART) return [put(key, v), env.DB.prepare("DELETE FROM kv WHERE key > ? AND key < ?").bind(key + '#', key + '#~')];
+  const n = Math.ceil(v.length / KV_PART);
+  const out = [put(key, KV_PART_MARK + n)];
+  for (let i = 0; i < n; i++) out.push(put(key + '#' + (i + 1), v.slice(i * KV_PART, (i + 1) * KV_PART)));
+  // Stukken van een eerdere, langere waarde opruimen (sleutel#N+1 en verder)
+  out.push(env.DB.prepare("DELETE FROM kv WHERE key > ? AND key < ? AND key NOT IN (" + Array.from({ length: n }, () => '?').join(',') + ')')
+    .bind(key + '#', key + '#~', ...Array.from({ length: n }, (_, i) => key + '#' + (i + 1))));
+  return out;
+}
+async function setBig(env, key, value) { await env.DB.batch(bigStmts(env, key, value)); }
+async function getBig(env, key) {
+  const v = await getKv(env, key);
+  if (!v || !v.startsWith(KV_PART_MARK)) return v;
+  const n = Number(v.slice(KV_PART_MARK.length)) || 0;
+  const keys = Array.from({ length: n }, (_, i) => key + '#' + (i + 1));
+  const { results } = await env.DB.prepare('SELECT key, value FROM kv WHERE key IN (' + keys.map(() => '?').join(',') + ')').bind(...keys).all();
+  const map = new Map(results.map((r) => [r.key, r.value]));
+  if (keys.some((k) => !map.has(k))) return null;   // onvolledig: de lezer bouwt opnieuw op
+  return keys.map((k) => map.get(k)).join('');
+}
 
 // ---------- Gegevens voor de website ----------
 
@@ -1474,23 +1503,34 @@ async function setKv(env, key, value) {
 // De opbouw gebeurt elke 10 minuten, maar uren en dagen veranderen hooguit eens per uur (housekeeping) en metingen
 // van vóór de vorige opbouw veranderen niet meer. Die staan daarom in een cache in kv; elke 10 minuten leest de Worker
 // alleen de metingen die er sindsdien bij kwamen. Elke schrijver van intraday/hours/days roept invalidateSeries aan.
-const SERIES_CACHE_MAX = 1.5e6;   // tekens per cacheregel (D1 staat tot 2 MB per rij toe)
+async function invalidateOrders(env) { try { await setKv(env, 'orders_ver', String(Date.now())); } catch (e) { /* niet erg */ } }
 async function invalidateSeries(env) { try { await setKv(env, 'series_ver', String(Date.now())); } catch (e) { /* niet erg */ } }
+// Twee caches (elk in stukken opgeslagen, zie setBig):
+//  - series_cache: metingen, uren en de dagen van dit jaar; opnieuw zodra er een uur is samengevat (eens per uur);
+//  - series_old: de dagen van eerdere jaren; die veranderen niet meer, behalve bij een splitsing, naamswijziging,
+//    import of herstel (dan verandert series_ver) en bij de jaarwisseling. Zo groeit wat elk uur gelezen wordt niet
+//    met elk jaar historie mee.
 async function seriesRows(env, now) {
-  const hk = [(await getKv(env, 'last_hour')) || '', (await getKv(env, 'last_day')) || '', (await getKv(env, 'series_ver')) || ''].join('|');
+  const ver = (await getKv(env, 'series_ver')) || '';
+  const yearStart = new Date(now).getUTCFullYear() + '-01-01';
+  let old = null;
+  try { old = JSON.parse((await getBig(env, 'series_old')) || 'null'); } catch (e) { old = null; }
+  if (!old || old.v !== 1 || old.ver !== ver || old.before !== yearStart) {
+    old = { v: 1, ver, before: yearStart, dys: (await env.DB.prepare('SELECT day, ticker, open, close, low, high, avg, range, range_pct FROM days WHERE day < ? ORDER BY day').bind(yearStart).all()).results };
+    try { await setBig(env, 'series_old', JSON.stringify(old)); } catch (e) { console.error('reekscache (oude dagen)', e); }
+  }
+  const hk = [(await getKv(env, 'last_hour')) || '', (await getKv(env, 'last_day')) || '', ver, yearStart].join('|');
   let c = null;
-  try { c = JSON.parse((await getKv(env, 'series_cache')) || 'null'); } catch (e) { c = null; }
-  if (!c || c.v !== 1 || c.hk !== hk || now - c.at > 6 * 3600e3) {
+  try { c = JSON.parse((await getBig(env, 'series_cache')) || 'null'); } catch (e) { c = null; }
+  if (!c || c.v !== 2 || c.hk !== hk || now - c.at > 6 * 3600e3) {
     const intra = (await env.DB.prepare('SELECT ts, ticker, name, value, unrealized, qty, price FROM intraday WHERE ts < ? ORDER BY ts').bind(now).all()).results;
     const hrs = (await env.DB.prepare('SELECT hour, ticker, open, close, low, high, avg FROM hours WHERE hour >= ? ORDER BY hour').bind(now - 32 * 864e5).all()).results;
-    const dys = (await env.DB.prepare('SELECT day, ticker, open, close, low, high, avg, range, range_pct FROM days ORDER BY day').all()).results;
-    c = { v: 1, hk, at: now, until: now, intra, hrs, dys };
-    const txt = JSON.stringify(c);
-    if (txt.length <= SERIES_CACHE_MAX) { try { await setKv(env, 'series_cache', txt); } catch (e) { console.error('reekscache', e); } }
-    else { try { await setKv(env, 'series_cache', ''); } catch (e) { /* niet erg */ } }
+    const dys = (await env.DB.prepare('SELECT day, ticker, open, close, low, high, avg, range, range_pct FROM days WHERE day >= ? ORDER BY day').bind(yearStart).all()).results;
+    c = { v: 2, hk, at: now, until: now, intra, hrs, dys };
+    try { await setBig(env, 'series_cache', JSON.stringify(c)); } catch (e) { console.error('reekscache', e); }
   }
   const fresh = (await env.DB.prepare('SELECT ts, ticker, name, value, unrealized, qty, price FROM intraday WHERE ts >= ? ORDER BY ts').bind(c.until).all()).results;
-  return { intra: c.intra.concat(fresh), hrs: c.hrs.filter((h) => h.hour >= now - 31 * 864e5), dys: c.dys };
+  return { intra: c.intra.concat(fresh), hrs: c.hrs.filter((h) => h.hour >= now - 31 * 864e5), dys: old.dys.concat(c.dys) };
 }
 
 async function buildData(env) {
@@ -1814,6 +1854,7 @@ async function syncOrders(env) {
       r2(Math.abs(num(wi.netValue))), numOrNull(wi.realisedProfitLoss), r2(feeFx), r2(feeOther), f.type || null));
   }
   await batchChunks(env, stmts);
+  if (stmts.length) await invalidateOrders(env);
   if (full) await setKv(env, 'orders_full', '1');
   await setKv(env, 'orders_synced', parts(new Date()).day);
   await saveDataCache(env, await buildData(env));
@@ -1995,8 +2036,16 @@ async function extraData(env) {
   try { out.posExtra = JSON.parse((await getKv(env, 'pos_extra')) || '{}'); } catch (e) { /* leeg */ }
   out.settings = await getSettings(env);
   if ((await getKv(env, 'orders_schema')) === '1') {
-    const { results } = await env.DB.prepare('SELECT ts, ticker, name, side, qty, price, currency, fx_rate, net, realised, fee_fx, fee_other, kind FROM orders ORDER BY ts').all();
-    out.orders = results.map((r) => [isoLocal(r.ts), r.ticker, r.name, r.side, r.qty, r.price, r.currency, r.fx_rate, r.net, r.realised, r.fee_fx, r.fee_other, r.kind]);
+    // De orders veranderen hooguit eens per dag (syncOrders) of bij een import; tot dan uit de cache
+    const ver = (await getKv(env, 'orders_ver')) || '';
+    let c = null;
+    try { c = JSON.parse((await getBig(env, 'orders_cache')) || 'null'); } catch (e) { c = null; }
+    if (c && c.ver === ver && Array.isArray(c.rows)) out.orders = c.rows;
+    else {
+      const { results } = await env.DB.prepare('SELECT ts, ticker, name, side, qty, price, currency, fx_rate, net, realised, fee_fx, fee_other, kind FROM orders ORDER BY ts').all();
+      out.orders = results.map((r) => [isoLocal(r.ts), r.ticker, r.name, r.side, r.qty, r.price, r.currency, r.fx_rate, r.net, r.realised, r.fee_fx, r.fee_other, r.kind]);
+      try { await setBig(env, 'orders_cache', JSON.stringify({ ver, rows: out.orders })); } catch (e) { console.error('orderscache', e); }
+    }
   }
   out.research = {}; out.fin = {}; out.fx = null; out.hicp = null;
   // Deponeringen, 13F, economische agenda, pies en kwartaalcijferdata
@@ -3034,11 +3083,11 @@ async function marketDataCached(env) {
   const watch = await extraStocks(env);
   const sig = JSON.stringify([(await getKv(env, 'mkt_ver')) || '', held.map((h) => h.ticker + '=' + h.symbol).sort(), watch.map((w) => w.symbol).sort()]);
   try {
-    const c = JSON.parse((await getKv(env, 'market_cache')) || 'null');
+    const c = JSON.parse((await getBig(env, 'market_cache')) || 'null');
     if (c && c.sig === sig && Date.now() - c.at < MARKET_CACHE_MS) return c.data;
   } catch (e) { /* opnieuw opbouwen */ }
   const data = await marketData(env);
-  try { await setKv(env, 'market_cache', JSON.stringify({ sig, at: Date.now(), data })); } catch (e) { console.error('marktcache', e); }
+  try { await setBig(env, 'market_cache', JSON.stringify({ sig, at: Date.now(), data })); } catch (e) { console.error('marktcache', e); }
   return data;
 }
 
@@ -3140,7 +3189,7 @@ function isDst(localIso) {
 
 export const _test = { parts, isLive, shortTicker, isoLocal, isDst, hourStart, dayOf, newsHistTask, storeNews, noteOpinionDay,
   tradingDay, usTradingDay, shiftDay, weekdayOf, srcPause, srcFail, srcOk, srcState, srcHistState, checkPositions, splitRatio,
-  planResearch, uniqTasks, dbWatch, testKey, r2Backup, r2Info, r2Preview, healthInfo, budgetInfo, buildData, bumpMarket, ensureMarketTables, ensureIndexes, countingDb, flushCalls, srcFail, searchCompanies, checkPriceAlerts, saveMode, buildAllowed, seriesRows, invalidateSeries, cfTrend };
+  planResearch, uniqTasks, dbWatch, testKey, r2Backup, r2Info, r2Preview, healthInfo, budgetInfo, buildData, bumpMarket, ensureMarketTables, ensureIndexes, countingDb, flushCalls, srcFail, searchCompanies, checkPriceAlerts, saveMode, buildAllowed, seriesRows, invalidateSeries, cfTrend, setBig, getBig, invalidateOrders };
 
 
 // =====================================================================
@@ -3521,7 +3570,7 @@ async function revokeThings(env, body) {
     await auditLog(env, 'apparaat', 'alle apparaatcodes ingetrokken (' + out.devices + ')');
   }
   if (body && body.links) {
-    if (await getKv(env, 'share')) { await setKv(env, 'share', 'null'); await setKv(env, 'data_share', ''); out.links.push('deel-link'); }
+    if (await getKv(env, 'share')) { await setKv(env, 'share', 'null'); await setBig(env, 'data_share', ''); out.links.push('deel-link'); }
     if (await getKv(env, 'cal_token')) { await setKv(env, 'cal_token', ''); out.links.push('agenda-link'); }
     if (out.links.length) await auditLog(env, 'link', 'ingetrokken: ' + out.links.join(' en '));
   }
@@ -3673,13 +3722,13 @@ function shareData(data, conf) {
 async function saveShareCache(env, data) {
   const c = await shareConf(env);
   if (!c || !c.token) return;
-  await setKv(env, 'data_share', JSON.stringify(shareData(data, c)));
+  await setBig(env, 'data_share', JSON.stringify(shareData(data, c)));
 }
 
 async function shareAction(env, body) {
   let c = (await shareConf(env)) || {};
   const act = body && body.action;
-  if (act === 'off') { await setKv(env, 'share', 'null'); await setKv(env, 'data_share', ''); await auditLog(env, 'link', 'deel-link uitgezet'); return { on: false }; }
+  if (act === 'off') { await setKv(env, 'share', 'null'); await setBig(env, 'data_share', ''); await auditLog(env, 'link', 'deel-link uitgezet'); return { on: false }; }
   if (act === 'on' || act === 'rotate' || !c.token) {
     if (act === 'rotate' || !c.token) c.token = b64u(crypto.getRandomValues(new Uint8Array(24)));
     c.since = c.since || isoLocal(Date.now());
@@ -3721,6 +3770,7 @@ async function importCsv(env, body) {
   const st = env.DB.prepare('INSERT OR IGNORE INTO orders (id, ts, ticker, name, side, qty, price, currency, fx_rate, net, realised, fee_fx, fee_other, kind) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
   const fresh = orders.filter((o) => !dup(o));
   await batchChunks(env, fresh.map((o) => st.bind(o.id, o.ts, o.tk, o.name || null, o.side, o.qty, o.price, o.cur, o.fx, r2(o.net), o.realised, r2(o.feeFx), r2(o.feeOther), 'TRADE')));
+  if (fresh.length) await invalidateOrders(env);
 
   // Dividenden: bewaard in kv 'div_csv' en samengevoegd met wat Trading 212 via de API geeft (met echte bronbelasting)
   let divCsv = [];
@@ -3798,7 +3848,7 @@ async function statusInfo(env, raw) {
   try { avCalls = JSON.parse((await getKv(env, 'av_calls')) || 'null'); } catch (e) { /* leeg */ }
   try { q = JSON.parse((await getKv(env, 'mkt_queue')) || '[]'); } catch (e) { q = []; }
   const sizes = {};
-  for (const k of ['data_core', 'data_extra', 'data_series']) sizes[k] = ((await getKv(env, k)) || '').length;
+  for (const k of ['data_core', 'data_extra', 'data_series']) sizes[k] = ((await getBig(env, k)) || '').length;
   return {
     now: isoLocal(Date.now()), lastMeasurement: last && last.ts ? isoLocal(last.ts) : null, live: isLive(new Date()),
     lastCron: await getKv(env, 'last_cron'), lastError: await getKv(env, 'last_error'), tickFails: Number((await getKv(env, 'tick_fail')) || 0),
@@ -3856,6 +3906,7 @@ async function restorePart(env, body) {
   const st = env.DB.prepare('INSERT OR REPLACE INTO ' + table + ' (' + cols.join(', ') + ') VALUES (' + cols.map(() => '?').join(',') + ')');
   await batchChunks(env, ok.map((r) => st.bind(...r.map((v) => (v === undefined ? null : v)))));
   if (['intraday', 'hours', 'days'].includes(table)) await invalidateSeries(env);
+  if (table === 'orders') await invalidateOrders(env);
   if (body.done) await saveDataCache(env, await buildData(env));
   return { table, restored: ok.length, skipped: rows.length - ok.length };
 }

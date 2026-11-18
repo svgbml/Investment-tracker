@@ -1428,35 +1428,48 @@ await test('geen volle tabelscans op groeiende tabellen (behalve de bekende, zel
   assert.equal(bad.length, 0, 'volle tabelscan(s); voeg een index toe of zet de query met een reden in SCAN_OK:\n         ' + bad.join('\n         '));
 });
 
-// ---------- Een jaar aan gegevens: hoeveel rijen leest de Worker per ronde? ----------
-// Met een bijna lege database valt een dure query niet op. Deze test vult de database zoals na een jaar gebruik en
-// meet (via rows_read, zoals D1 telt) wat een gewone ronde, een ronde met samenvatten en een ververs-vraag kosten.
-const ROUND_MAX = 3000;          // gewone ronde van 10 minuten
-const HOURLY_MAX = 60000;        // ronde waarin het afgelopen uur wordt samengevat
+// ---------- Vijf jaar aan gegevens: hoeveel rijen leest de Worker per ronde, en past alles in een D1-rij? ----------
+// Met een bijna lege database valt een dure query niet op. Deze test vult de database zoals na vijf jaar met 30
+// posities (met echte, lange namen) en 1500 orders, en meet (via rows_read, zoals D1 telt) wat een gewone ronde, een
+// ronde met samenvatten en een ververs-vraag kosten. Ook mag geen enkele kv-regel groter zijn dan D1 toestaat (2 MB).
+const ROUND_MAX = 3000;          // gewone ronde van 10 minuten (vijf jaar, 30 posities)
+const HOURLY_MAX = 40000;        // ronde waarin het afgelopen uur wordt samengevat
+const RARE_MAX = 150000;         // zelden: alle jaren dagen opnieuw (splitsing, import, jaarwisseling)
 const DAY_BUDGET = 1.5e6;        // geschat per dag: 30% van de gratis 5 miljoen
-await test('een jaar aan gegevens: een ronde van 10 minuten blijft ruim binnen de D1-daglimiet', async () => {
+await test('vijf jaar, 30 posities: een ronde blijft ruim binnen de D1-daglimiet en elke kv-regel past', async () => {
   const T = WM._test;
-  const HOUR = 3600e3, DAYMS = 864e5;
+  const HOUR = 3600e3, DAYMS = 864e5, YEARS = 5;
   const now = Date.now();
-  const tks = Array.from({ length: 15 }, (_, i) => 'TK' + i);
+  const tks = Array.from({ length: 30 }, (_, i) => 'TK' + i);
+  const NAMES = ['Taiwan Semiconductor Manufacturing Company Limited (ADR)', 'Alphabet Inc. Class A Common Stock', 'Vanguard S&P 500 UCITS ETF (USD) Accumulating',
+    'iShares Core MSCI World UCITS ETF USD (Acc)', 'Berkshire Hathaway Inc. Class B', 'Novo Nordisk A/S (Sponsored ADR)'];
+  const nameOf = (tk) => NAMES[Number(tk.slice(2)) % NAMES.length] + ' ' + tk;
   const day = (ms) => new Date(ms).toISOString().slice(0, 10);
   DB.db.exec('BEGIN');
   const dIns = DB.db.prepare('INSERT OR REPLACE INTO days (day, ticker, name, open, close, low, high, avg, range, range_pct) VALUES (?,?,?,?,?,?,?,?,?,?)');
-  for (let d = 1; d <= 365; d++) { const t = now - d * DAYMS; const wd = new Date(t).getUTCDay(); if (wd === 0 || wd === 6) continue; tks.forEach((tk) => dIns.run(day(t), tk, tk, 100, 101, 99, 102, 100, 3, 0.03)); }
+  for (let d = 1; d <= YEARS * 365; d++) { const t = now - d * DAYMS; const wd = new Date(t).getUTCDay(); if (wd === 0 || wd === 6) continue; tks.forEach((tk) => dIns.run(day(t), tk, nameOf(tk), 100, 101, 99, 102, 100, 3, 0.03)); }
   const hIns = DB.db.prepare('INSERT OR REPLACE INTO hours (hour, ticker, name, open, close, low, high, avg, n, close_price) VALUES (?,?,?,?,?,?,?,?,?,?)');
-  for (let d = 1; d <= 60; d++) for (let h = 8; h <= 21; h++) { const t = Math.floor((now - d * DAYMS) / HOUR) * HOUR - (new Date(now).getUTCHours() - h) * HOUR; tks.forEach((tk) => hIns.run(t, tk, tk, 1, 1, 1, 1, 1, 6, 1)); }
+  for (let d = 1; d <= 60; d++) for (let h = 8; h <= 21; h++) { const t = Math.floor((now - d * DAYMS) / HOUR) * HOUR - (new Date(now).getUTCHours() - h) * HOUR; tks.forEach((tk) => hIns.run(t, tk, nameOf(tk), 1, 1, 1, 1, 1, 6, 1)); }
   const iIns = DB.db.prepare('INSERT OR REPLACE INTO intraday (ts, ticker, name, value, unrealized, price, qty) VALUES (?,?,?,?,?,?,?)');
-  for (let k = 1; k <= 3 * 87; k++) { const t = Math.floor((now - k * 10 * 60e3) / 60000) * 60000; tks.forEach((tk) => iIns.run(t, tk, tk, 100, 1, 10, 10)); }
+  for (let k = 1; k <= 3 * 87; k++) { const t = Math.floor((now - k * 10 * 60e3) / 60000) * 60000; tks.forEach((tk) => iIns.run(t, tk, nameOf(tk), 100, 1, 10, 10)); }
   await T.ensureMarketTables(env);
   const pIns = DB.db.prepare('INSERT OR REPLACE INTO ext_prices (symbol, day, price) VALUES (?,?,?)');
-  for (let n = 0; n < 80; n++) for (let d = 1; d <= 380; d++) pIns.run('SYM' + n, day(now - d * DAYMS), 50);
+  for (let n = 0; n < 120; n++) for (let d = 1; d <= 390; d++) pIns.run('SYM' + n, day(now - d * DAYMS), 50);
   const fIns = DB.db.prepare('INSERT OR REPLACE INTO ext_perf (day, kind, name, exchange, change) VALUES (?,?,?,?,?)');
   for (let d = 1; d <= 380; d++) for (let n = 0; n < 11; n++) fIns.run(day(now - d * DAYMS), 'sector', 'Sector ' + n, 'NYSE', 0.1);
   try {
     const nIns = DB.db.prepare('INSERT OR IGNORE INTO news_hist (tk, t, headline, source, url, summary) VALUES (?,?,?,?,?,?)');
     for (let k = 0; k < 20000; k++) nIns.run(tks[k % 15], now - k * 1200e3, 'Kop ' + k, 'Test', 'https://nieuws.test/' + k, '');
   } catch (e) { /* geen nieuwsarchief in deze database */ }
+  // 1500 orders verspreid over vijf jaar
+  try {
+    const oIns = DB.db.prepare('INSERT OR REPLACE INTO orders (id, ts, ticker, name, side, qty, price, currency, fx_rate, net, realised, fee_fx, fee_other, kind) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+    for (let k = 0; k < 1500; k++) oIns.run('load-' + k, now - k * DAYMS * YEARS * 365 / 1500, tks[k % 30], nameOf(tks[k % 30]), k % 3 ? 'BUY' : 'SELL', 1.5, 100, 'USD', 1.08, 150, 0, 0.15, 0, 'TRADE');
+  } catch (e) { /* geen orderstabel in deze database */ }
   DB.db.exec('COMMIT');
+  setKv('orders_schema', '1');
+  await T.invalidateOrders(env);
+  await T.invalidateSeries(env);
 
   const measure = async (fn) => {
     setKv('cf_usage', {});
@@ -1479,8 +1492,10 @@ await test('een jaar aan gegevens: een ronde van 10 minuten blijft ruim binnen d
   routes = t212Routes();
   await round(at, false);                                   // eerste ronde: vult de caches
   const normal = await measure(() => round(at + 60e3, false));
-  // Ronde waarin uren worden samengevat en de reekscache opnieuw wordt opgebouwd (hooguit eens per uur)
-  const hourly = await measure(async () => { await WM._test.invalidateSeries(env); await round(at + 120e3, true); });
+  // Ronde waarin uren worden samengevat en de reekscache van dit jaar opnieuw wordt opgebouwd (eens per uur)
+  const hourly = await measure(async () => { setKv('series_cache', ''); await round(at + 120e3, true); });
+  // Zeldzaam: ook de dagen van eerdere jaren opnieuw (splitsing, naamswijziging, import, herstel, jaarwisseling)
+  const rare = await measure(async () => { await WM._test.invalidateSeries(env); await round(at + 150e3, true); });
   if (process.env.LOAD_DEBUG) { MEASURE.log = []; MEASURE.on = true; await WM._test.invalidateSeries(env); await round(at + 180e3, true); MEASURE.on = false; console.log(MEASURE.log.sort((a, b) => b[0] - a[0]).slice(0, 15).map((x) => '         ' + x[0] + '  ' + x[1]).join('\n')); MEASURE.log = null; }
   // Ververs-vraag van de site: niets veranderd (If-None-Match) en "wat is er nieuw sinds"
   const r1 = await req('/api/data?part=core&split=1');
@@ -1492,10 +1507,18 @@ await test('een jaar aan gegevens: een ronde van 10 minuten blijft ruim binnen d
   });
   // Per dag: 144 rondes, waarvan 24 met samenvatten, plus twee apparaten die elke 5 minuten verversen
   const perDay = 120 * normal + 24 * hourly + 2 * 288 * poll;
-  console.log('       gelezen rijen: gewone ronde ' + normal + ', met samenvatten ' + hourly + ', ververs-vraag ' + poll + '; geschat per dag ' + Math.round(perDay));
+  console.log('       gelezen rijen: gewone ronde ' + normal + ', met samenvatten ' + hourly + ', zelden (alle jaren) ' + rare + ', ververs-vraag ' + poll + '; geschat per dag ' + Math.round(perDay));
+  assert.ok(rare <= RARE_MAX, 'ronde met alle jaren opnieuw las ' + rare + ' rijen (grens ' + RARE_MAX + ')');
   assert.ok(normal <= ROUND_MAX, 'gewone ronde las ' + normal + ' rijen (grens ' + ROUND_MAX + ')');
   assert.ok(hourly <= HOURLY_MAX, 'ronde met samenvatten las ' + hourly + ' rijen (grens ' + HOURLY_MAX + ')');
   assert.ok(perDay <= DAY_BUDGET, 'geschat per dag ' + Math.round(perDay) + ' rijen (grens ' + DAY_BUDGET + ')');
+  // Geen enkele kv-regel groter dan D1 toestaat (2 MB per rij); grote waarden staan in stukken (setBig)
+  const big = DB.db.prepare('SELECT key, LENGTH(CAST(value AS BLOB)) AS b FROM kv ORDER BY b DESC LIMIT 3').all();
+  console.log('       grootste kv-regels: ' + big.map((r) => r.key + ' ' + Math.round(r.b / 1000) + ' kB').join(', '));
+  assert.ok(big[0].b < 2e6, 'kv-regel ' + big[0].key + ' is ' + big[0].b + ' bytes (D1: hoogstens 2 MB per rij)');
+  // Het overzicht voor de site komt heel terug, ook als het in stukken staat
+  const full = await jsonOf(await req('/api/data?part=series'));
+  assert.ok(full.days && full.days.rows.length >= YEARS * 250 * 30 * 0.9, 'alle dagen terug: ' + (full.days && full.days.rows.length));
   routes = [];
   setKv('cf_usage', {});
 });
