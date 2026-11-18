@@ -168,11 +168,13 @@ async function openTradeDialog(btn) {
       else res = await workerCall('/api/trade/order', { method: 'POST', body: JSON.stringify(body) });
       ordOkNow();
       st.busy = false; st.done = true; draw();
+      haptic('order');   // korte trilling op de telefoon, als dat aan staat (zie js/21-pwa.js)
       say((demo ? 'Voorbeeld: ' : '') + 'Order verstuurd' + (res.order && res.order.status ? ' (status ' + res.order.status + ')' : '') + '. Je ziet hem op Analyse bij Openstaande orders; je posities werken bij met de volgende meting.', 'gain');
       tradeState.open = null;
       if (!demo) setTimeout(() => load(), 20000);
     } catch (err) {
       st.busy = false; st.id = newOrderId(); draw();
+      haptic('fout');
       say('Niet verstuurd: ' + err.message, 'loss');
     }
   });

@@ -30,6 +30,7 @@
     <div id="demo-banner" class="banner" hidden>Je bekijkt de functies met voorbeeldgetallen. <a href="https://github.com/svgbml/Investment-tracker#zelf-installeren" target="_blank" rel="noopener">Eigen tracker opzetten</a> of <button id="btn-demo-exit" class="linklike" type="button">mijn eigen gegevens laden</button></div>
     <div id="error" class="banner error" role="alert" hidden></div>
     <div id="share-banner" class="banner" hidden>Je bekijkt een gedeelde portefeuille (alleen lezen). <a href="https://github.com/svgbml/Investment-tracker#zelf-installeren" target="_blank" rel="noopener">Zelf een tracker opzetten</a></div>
+    <div id="offline-banner" class="banner offline" role="status" hidden></div>
     <div id="update-banner" class="banner update" role="status" hidden>Er is een nieuwe versie van de tracker. <button type="button" class="btn primary" data-upd="now">Nu bijwerken</button> <button type="button" class="linklike" data-upd="later">Later</button></div>
     <section id="whatsnew" class="banner whatsnew" role="status" hidden>
       <b id="whatsnew-title">Wat is er nieuw</b>
@@ -332,11 +333,21 @@
     <div id="detail-inner" class="detail-inner"></div>
   </div>
 
+  <!-- Vergrendeling met vingerafdruk of gezicht (optioneel, per apparaat; zie js/21-pwa.js) -->
+  <div id="lock" class="lock" role="dialog" aria-modal="true" aria-labelledby="lock-title" hidden>
+    <div class="lock-card">
+      <span class="lock-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 0 1 9 9M12 3a9 9 0 0 0-9 9M8 12a4 4 0 0 1 8 0v3a4 4 0 0 1-8 0M12 11v5"/></svg></span>
+      <h2 id="lock-title">Vergrendeld</h2>
+      <p class="muted small" id="lock-text">Ontgrendel met je vingerafdruk, gezicht of de pincode van dit apparaat.</p>
+      <button type="button" class="btn primary" id="lock-go">Ontgrendelen</button>
+      <p class="small" id="lock-st" role="status"></p>
+      <button type="button" class="linklike small" id="lock-escape" hidden>Vergrendeling kwijt? Tracker van dit apparaat wissen</button>
   <dialog id="dlg-alarm" class="dlg-alarm" aria-labelledby="dlg-alarm-title">
     <div class="dlg-alarm-top">
       <h2 id="dlg-alarm-title">Koersalarm</h2>
       <button type="button" class="set-close" data-alarm-close aria-label="Sluiten"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
     </div>
+  </div>
     <div id="alarm-body"></div>
   </dialog>
 
@@ -541,6 +552,7 @@
   <script src="js/17-markt.js?v=57"></script>
   <script src="js/18-gemak.js?v=57"></script>
   <script src="js/20-handel.js?v=57"></script>
+  <script src="js/21-pwa.js?v=57"></script>
   <script src="js/21-privacy.js?v=57"></script>
   <script src="js/21-markt-extra.js?v=57"></script>
   <script src="js/22-handel-extra.js?v=57"></script>

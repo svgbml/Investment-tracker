@@ -2062,3 +2062,72 @@ body.skeleton footer.foot-page { visibility: hidden; }
 @media (min-width: 2400px) {
   .grid, .grid.movers, .grid.stats { grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); }
 }
+
+/* ===== App en apparaat (ideeën 116, 120, 123–125, 170–176): vandaag, widget, offline-melding,
+   teller voor ongelezen meldingen, slepen in "pagina aanpassen", vergrendeling en trilling ===== */
+
+/* Melding: je ziet de bewaarde stand (zonder verbinding of nog voor de eerste keer ophalen) */
+.banner.offline { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.banner.offline[hidden] { display: none; }
+.banner.offline b { white-space: nowrap; }
+
+/* Ongelezen nieuws en afgegane koersalarmen: een stip met getal bij Nieuws */
+.pillnav a, .m-tabs a { position: relative; }
+.pillnav a[data-unread]::after, .m-tabs a[data-unread]::after {
+  content: attr(data-unread); position: absolute; top: 2px; right: 6px; min-width: 16px; height: 16px; padding: 0 4px;
+  border-radius: 8px; background: var(--loss); color: #FFFFFF; font-size: 10px; font-weight: 700; line-height: 16px; text-align: center;
+}
+.m-tabs a[data-unread]::after { top: 4px; right: calc(50% - 20px); }
+
+/* Vandaag: de grootste bewegingen als korte regels */
+.today-rows { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; }
+.today-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-height: 44px;
+  padding: 6px 4px; border: 0; border-bottom: 1px solid var(--rule); background: none; text-align: left; cursor: pointer; }
+.today-row:last-child { border-bottom: 0; }
+.today-row:hover { background: var(--empty); }
+.today-row .l { display: flex; flex-direction: column; min-width: 0; }
+.today-row .nm { color: var(--ink-2); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.today-row .r { display: flex; flex-direction: column; align-items: flex-end; font-weight: 600; }
+.today-row .r span { font-size: 12px; font-weight: 500; }
+
+/* Kieslijst (order plaatsen, delen naar de volglijst) */
+.pick-list { list-style: none; margin: 10px 0; padding: 0; max-height: 46vh; overflow: auto; }
+.pick-list button { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-height: 46px;
+  padding: 8px 6px; border: 0; border-bottom: 1px solid var(--rule); background: none; text-align: left; cursor: pointer; }
+.pick-list button:hover { background: var(--empty); }
+.pick-list button[disabled] { opacity: .5; cursor: default; }
+
+/* Pagina aanpassen: slepen met de greep, en de grootte van de tegels per sectie */
+.dash-list li { gap: 6px; }
+.dash-list li.dragging { background: var(--empty); border-radius: 10px; position: relative; z-index: 2; }
+.dash-grip { flex: 0 0 auto; width: 32px; height: 32px; border: 0; border-radius: 8px; background: none; color: var(--ink-2);
+  cursor: grab; touch-action: none; font-size: 15px; }
+.dash-grip:active { cursor: grabbing; }
+.dash-list .check { flex: 1 1 auto; min-width: 0; }
+.dash-size { flex: 0 0 auto; height: 34px; border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); color: var(--ink); }
+.dash-sec[data-size="s"] > .grid, .dash-sec[data-size="s"] > .plan-grid { grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr)); }
+.dash-sec[data-size="l"] > .grid, .dash-sec[data-size="l"] > .plan-grid { grid-template-columns: repeat(auto-fit, minmax(min(460px, 100%), 1fr)); }
+.dash-sec[data-size="s"] .tile .chart { height: 110px; }
+.dash-sec[data-size="l"] .tile .chart { height: 200px; }
+.dash-sec[data-size="s"] > .m-stack > .tile { padding: 12px 12px 0; }
+.dash-sec[data-size="s"] > .m-stack > .tile.pad { padding-bottom: 12px; }
+
+/* Omlaag trekken om te vernieuwen: tekst onder het rondje */
+.ptr-txt { position: fixed; top: 108px; left: 50%; z-index: 60; margin-top: -40px; padding: 3px 10px; border-radius: 10px;
+  background: var(--surface); box-shadow: 0 4px 14px rgba(0, 0, 0, .14); color: var(--ink-2); font-size: 12px;
+  transform: translate(-50%, 0); opacity: 0; pointer-events: none; white-space: nowrap; }
+
+/* Vergrendeling met vingerafdruk of gezicht */
+html.applocked { overflow: hidden; }
+.lock { position: fixed; inset: 0; z-index: 300; display: grid; place-items: center; padding: 24px;
+  background: var(--bg); backdrop-filter: blur(6px); }
+.lock[hidden] { display: none; }
+.lock-card { max-width: 340px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.lock-ic { display: grid; place-items: center; width: 64px; height: 64px; border-radius: 50%; background: var(--band); color: var(--accent); }
+.lock-ic svg { width: 34px; height: 34px; }
+.lock-card h2 { font-size: 22px; }
+.lock-card .btn { min-width: 160px; }
+
+:root[data-theme="dark"] .dash-size { border-color: #3A4250; }
+:root[data-theme="dark"] .today-row:hover, :root[data-theme="dark"] .pick-list button:hover { background: rgba(255, 255, 255, .06); }
+:root[data-theme="dark"] .pillnav a[data-unread]::after, :root[data-theme="dark"] .m-tabs a[data-unread]::after { color: #0F1217; }

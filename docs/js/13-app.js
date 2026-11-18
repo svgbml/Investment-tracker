@@ -253,6 +253,21 @@ Object.assign(EN, {
 EN_RE.push([/^(\d+) van (\d+) stappen klaar$/, '$1 of $2 steps done']);
 
 EN_RE.push([/^Inloggen is mislukt: (.*)$/, 'Sign-in failed: $1'], [/^Ingelogd\. Al gekoppeld: (.*)$/, 'Signed in. Already connected: $1'], [/^Ingelogd\. Trading 212 is gekoppeld\.$/, 'Signed in. Trading 212 is connected.']);
+// App en apparaat: vandaag, widget, vergrendeling, trilling, delen en de offline-melding
+Object.assign(EN, {
+  'Vandaag': 'Today', 'Vergrendeld': 'Locked', 'Ontgrendelen': 'Unlock', 'In een oogopslag': 'At a glance', 'Grootste bewegingen': 'Biggest moves',
+  'Komt eraan': 'Coming up', 'Op je beginscherm': 'On your home screen', 'Beleggingen': 'Investments', 'Order plaatsen': 'Place order',
+  'Toevoegen aan volglijst': 'Add to watchlist', 'Naar de volglijst': 'To the watchlist', 'Naar Koppelingen': 'To connections',
+  'Opnieuw proberen': 'Try again', 'Verbergen': 'Hide', 'Geen verbinding': 'No connection', 'Bewaarde stand': 'Saved snapshot',
+  'Vandaag en widgets': 'Today and widgets', 'Vandaag bekijken': 'View today', 'Telefoon': 'Phone',
+  'Korte trilling bij bevestigen en wisselen': 'Short vibration when confirming and switching',
+  'Vergrendelen met vingerafdruk of gezicht': 'Lock with fingerprint or face', 'Vergrendeling aanzetten': 'Turn on lock', 'Vergrendeling uitzetten': 'Turn off lock',
+  'Ontgrendel met je vingerafdruk, gezicht of de pincode van dit apparaat.': 'Unlock with your fingerprint, face or this device\u2019s PIN.',
+  'Verplaatsen': 'Move', 'Klein': 'Small', 'Normaal': 'Normal', 'Groot': 'Large', 'Ongelezen nieuws en alarmen': 'Unread news and alerts',
+  'Trek omlaag om te vernieuwen': 'Pull down to refresh', 'Laat los om te vernieuwen': 'Release to refresh', 'Bezig met vernieuwen\u2026': 'Refreshing\u2026',
+  'Ga naar risico': 'Go to risk', 'Ga naar accountwaarde': 'Go to account value', 'Ga naar resultaat': 'Go to result', 'Ga naar stortingen': 'Go to deposits',
+  'Toon bedragen (of verberg ze)': 'Show amounts (or hide them)', 'Vandaag in een oogopslag': 'Today at a glance',
+});
 const DICT = LANG === 'de' ? Object.assign({}, EN, DE) : LANG === 'fr' ? Object.assign({}, EN, FR) : EN;
 const T = (s) => (LANG !== 'nl' ? DICT[s] || s : s);
 function trText(s) {

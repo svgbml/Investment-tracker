@@ -1,0 +1,50 @@
+{
+  "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+  "type": "AdaptiveCard",
+  "version": "1.5",
+  "body": [
+    {
+      "type": "TextBlock",
+      "text": "Beleggingen",
+      "size": "Small",
+      "isSubtle": true,
+      "wrap": true
+    },
+    {
+      "type": "TextBlock",
+      "text": "${value}",
+      "size": "ExtraLarge",
+      "weight": "Bolder",
+      "spacing": "None",
+      "wrap": true
+    },
+    {
+      "type": "TextBlock",
+      "text": "${change}",
+      "spacing": "None",
+      "color": "${tone}",
+      "wrap": true
+    },
+    {
+      "type": "TextBlock",
+      "text": "${movers}",
+      "size": "Small",
+      "isSubtle": true,
+      "wrap": true
+    },
+    {
+      "type": "TextBlock",
+      "text": "${updated}",
+      "size": "Small",
+      "isSubtle": true,
+      "wrap": true
+    }
+  ],
+  "actions": [
+    {
+      "type": "Action.Execute",
+      "title": "Openen",
+      "verb": "open"
+    }
+  ]
+}

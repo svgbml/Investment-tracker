@@ -37,10 +37,49 @@
   ],
   "shortcuts": [
     {
+      "name": "Vandaag",
+      "short_name": "Vandaag",
+      "description": "Waarde, resultaat van vandaag en wat eraan komt",
+      "url": "./#vandaag",
+      "icons": [
+        {
+          "src": "icons/donker-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Order plaatsen",
+      "short_name": "Order",
+      "description": "Kies een aandeel en plaats een order (als kopen aanstaat)",
+      "url": "./#order",
+      "icons": [
+        {
+          "src": "icons/donker-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
       "name": "Nieuws",
       "short_name": "Nieuws",
       "description": "Nieuws, analisten en insiders",
       "url": "./#nieuws",
+      "icons": [
+        {
+          "src": "icons/donker-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Risico",
+      "short_name": "Risico",
+      "description": "Risicoklasse, wat samen beweegt en wat het risico verlaagt",
+      "url": "./#risico",
       "icons": [
         {
           "src": "icons/donker-192.png",
@@ -89,5 +128,36 @@
       ]
     }
   ],
+  "widgets": [
+    {
+      "name": "Vandaag",
+      "short_name": "Vandaag",
+      "description": "Waarde van je beleggingen en het resultaat van vandaag",
+      "tag": "vandaag",
+      "template": "vandaag",
+      "ms_ac_template": "widget-vandaag.json",
+      "data": "widget-vandaag-data.json",
+      "type": "application/json",
+      "auth": false,
+      "update": 900,
+      "icons": [
+        {
+          "src": "icons/donker-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    }
+  ],
+  "share_target": {
+    "action": "./",
+    "method": "GET",
+    "enctype": "application/x-www-form-urlencoded",
+    "params": {
+      "title": "share_title",
+      "text": "share_text",
+      "url": "share_url"
+    }
+  },
   "prefer_related_applications": false
 }

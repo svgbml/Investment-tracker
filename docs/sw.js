@@ -5,8 +5,9 @@
  */
 const CACHE = 'tracker-v57';
 const FILES = ['./', './index.html', './style.css?v=57', './config.js?v=57', './manifest.webmanifest',
-  './js/00-vroeg.js?v=57', './js/00-kern.js?v=57', './js/01-basis.js?v=57', './js/02-instellingen.js?v=57', './js/03-model.js?v=57', './js/04-grafieken.js?v=57', './js/05-portefeuille.js?v=57', './js/06-plannen.js?v=57', './js/07-onderzoek.js?v=57', './js/08-risico.js?v=57', './js/09-weergaven.js?v=57', './js/10-navigatie.js?v=57', './js/11-uitbreidingen.js?v=57', './js/12-nieuws.js?v=57', './js/13-app.js?v=57', './js/14-demo.js?v=57', './js/15-ui.js?v=57', './js/15-risico-analyse.js?v=57', './js/15-toon.js?v=57', './js/15-bronnen.js?v=57', './js/16-analyse.js?v=57', './js/17-markt.js?v=57', './js/18-gemak.js?v=57', './js/20-handel.js?v=57', './js/21-privacy.js?v=57', './js/21-markt-extra.js?v=57', './js/22-handel-extra.js?v=57', './js/21-plannen2.js?v=57', './js/21-nieuwsplus.js?v=57', './js/26-posities.js?v=57', './js/27-volglijst.js?v=57', './js/28-tickerkaart.js?v=57', './js/21-overzicht.js?v=57', './js/21-handig.js?v=57', './js/19-start.js?v=57',
+  './js/00-vroeg.js?v=57', './js/00-kern.js?v=57', './js/01-basis.js?v=57', './js/02-instellingen.js?v=57', './js/03-model.js?v=57', './js/04-grafieken.js?v=57', './js/05-portefeuille.js?v=57', './js/06-plannen.js?v=57', './js/07-onderzoek.js?v=57', './js/08-risico.js?v=57', './js/09-weergaven.js?v=57', './js/10-navigatie.js?v=57', './js/11-uitbreidingen.js?v=57', './js/12-nieuws.js?v=57', './js/13-app.js?v=57', './js/14-demo.js?v=57', './js/15-ui.js?v=57', './js/15-risico-analyse.js?v=57', './js/15-toon.js?v=57', './js/15-bronnen.js?v=57', './js/16-analyse.js?v=57', './js/17-markt.js?v=57', './js/18-gemak.js?v=57', './js/20-handel.js?v=57', './js/21-privacy.js?v=57', './js/21-markt-extra.js?v=57', './js/22-handel-extra.js?v=57', './js/21-plannen2.js?v=57', './js/21-nieuwsplus.js?v=57', './js/26-posities.js?v=57', './js/27-volglijst.js?v=57', './js/28-tickerkaart.js?v=57', './js/21-overzicht.js?v=57', './js/21-handig.js?v=57', './js/19-start.js?v=57', './js/21-pwa.js?v=57',
   './js/nieuws-preact.js?v=57', './js/plannen-preact.js?v=57', './vendor/preact-htm.js', './fonts/figtree-latin.woff2', './fonts/figtree-latin-ext.woff2',
+  './widget-vandaag.json', './widget-vandaag-data.json',
   './icon-192.png', './icon-512.png', './icon-maskable-512.png', './icon-monochrome-512.png', './apple-touch-icon.png', './favicon.png'];
 
 // Een nieuwe versie wacht tot de gebruiker op de site "Nu bijwerken" kiest (of alle vensters sluit)
@@ -16,6 +17,8 @@ self.addEventListener('install', (e) => {
 
 self.addEventListener('message', (e) => {
   if (e.data === 'skip') self.skipWaiting();
+  const m = e.data && typeof e.data === 'object' ? e.data : null;
+  if (m && m.type === 'widget') e.waitUntil(saveWidget(m.data).then(() => widgetPush()));
 });
 
 self.addEventListener('activate', (e) => {
@@ -54,4 +57,61 @@ self.addEventListener('notificationclick', (e) => {
     if (open) { open.focus(); return open.navigate ? open.navigate(target) : null; }
     return self.clients.openWindow(target);
   }));
+});
+
+
+// ---------- Widget "Vandaag" op het beginscherm (waar de browser widgets ondersteunt) ----------
+// De site stuurt hier al opgemaakte tekst naartoe (dus met de keuze "bedragen verbergen" erin verwerkt);
+// die bewaren we in dezelfde IndexedDB als de laatste stand, zodat de widget ook zonder open venster iets toont.
+const WIDGET_TAG = 'vandaag';
+function swIdb(fn) {
+  return new Promise((ok, no) => {
+    if (!self.indexedDB) { no(new Error('geen IndexedDB')); return; }
+    const r = self.indexedDB.open('tracker', 1);
+    r.onupgradeneeded = () => { try { r.result.createObjectStore('kv'); } catch (e) { /* bestaat al */ } };
+    r.onsuccess = () => { try { fn(r.result, ok, no); } catch (e) { no(e); } };
+    r.onerror = () => no(r.error);
+  });
+}
+const saveWidget = (d) => swIdb((db, ok, no) => {
+  const t = db.transaction('kv', 'readwrite');
+  t.objectStore('kv').put(d, 'widget');
+  t.oncomplete = () => ok();
+  t.onerror = () => no(t.error);
+}).catch(() => {});
+const readWidget = () => swIdb((db, ok, no) => {
+  const q = db.transaction('kv').objectStore('kv').get('widget');
+  q.onsuccess = () => ok(q.result || null);
+  q.onerror = () => no(q.error);
+}).catch(() => null);
+
+async function widgetPush() {
+  const w = self.widgets;
+  if (!w) return;
+  try {
+    const inst = await w.getByTag(WIDGET_TAG);
+    if (!inst) return;
+    const d = await readWidget();
+    if (!d) return;
+    await w.updateByTag(WIDGET_TAG, { data: JSON.stringify(d) });
+  } catch (e) { /* widget nog niet geplaatst of niet ondersteund */ }
+}
+self.addEventListener('widgetinstall', (e) => e.waitUntil(widgetPush()));
+self.addEventListener('widgetresume', (e) => e.waitUntil(widgetPush()));
+self.addEventListener('widgetclick', (e) => {
+  const target = new URL('./#vandaag', self.registration.scope).href;
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+    const open = list.find((c) => c.url.startsWith(self.registration.scope));
+    if (open) { open.focus(); return open.navigate ? open.navigate(target) : null; }
+    return self.clients.openWindow(target);
+  }));
+});
+
+// ---------- Achtergrondsync: instellingen die zonder verbinding zijn opgeslagen ----------
+// De service worker heeft zelf geen toegangscode, dus hij kan niet opslaan; hij maakt een open venster wakker
+// dat het alsnog naar de Worker stuurt. Is er geen venster, dan gebeurt het bij de volgende keer openen.
+self.addEventListener('sync', (e) => {
+  if (e.tag !== 'tracker-prefs') return;
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+    .then((list) => { list.forEach((c) => c.postMessage({ type: 'flush-prefs' })); }));
 });

@@ -9,7 +9,9 @@ const anState = { contrib: 'ytd', heatYear: null, bench: null, pA: 'ytd', pB: 'p
 const userPrefs = () => (M && M.settings && M.settings.prefs) || {};
 async function savePrefs(patch) {
   const next = Object.assign({}, userPrefs(), patch);
-  await saveSettings({ prefs: next });
+  // Zonder verbinding gaat de wijziging in de wachtrij en later alsnog naar de Worker (zie js/21-pwa.js)
+  try { await saveSettings({ prefs: next }); }
+  catch (err) { if (!await queuePrefsOffline(patch, err)) throw err; }
   return next;
 }
 const YEAR_MS = 365.25 * DAY;

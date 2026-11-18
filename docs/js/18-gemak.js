@@ -204,7 +204,41 @@ function dashApply(root, key) {
   const order = P.order || [];
   secs.slice().sort((a, b) => { const ia = order.indexOf(a.dataset.sec), ib = order.indexOf(b.dataset.sec); return (ia < 0 ? 999 + secs.indexOf(a) : ia) - (ib < 0 ? 999 + secs.indexOf(b) : ib); })
     .forEach((s) => { const foot = root.querySelector(':scope > .dash-foot'); if (foot) root.insertBefore(s, foot); else root.appendChild(s); });
-  secs.forEach((s) => { s.hidden = (P.hidden || []).includes(s.dataset.sec); });
+  const sizes = P.sizes || {};
+  secs.forEach((el) => {
+    const sec = /** @type {HTMLElement} */ (el);
+    sec.hidden = (P.hidden || []).includes(sec.dataset.sec);
+    const z = sizes[sec.dataset.sec];
+    if (z === 's' || z === 'l') sec.dataset.size = z; else delete sec.dataset.size;
+  });
+  foldSoon();
+}
+const DASH_SIZES = [['s', 'Klein'], ['m', 'Normaal'], ['l', 'Groot']];
+// Slepen om een sectie te verplaatsen (werkt met de muis en met een vinger)
+function dashDrag(list, save) {
+  let li = null, y0 = 0;
+  const mid = (el) => { const r = el.getBoundingClientRect(); return r.top + r.height / 2; };
+  const stop = () => { if (!li) return; li.classList.remove('dragging'); li.style.transform = ''; li = null; save(); };
+  list.addEventListener('pointerdown', (e) => {
+    const t = /** @type {HTMLElement} */ (e.target);
+    const g = t.closest ? t.closest('[data-grip]') : null;
+    if (!g) return;
+    li = g.closest('li');
+    if (!li) return;
+    y0 = e.clientY;
+    li.classList.add('dragging');
+    try { /** @type {HTMLElement} */ (g).setPointerCapture(e.pointerId); } catch (err) { /* niet erg */ }
+    e.preventDefault();
+  });
+  list.addEventListener('pointermove', (e) => {
+    if (!li) return;
+    const prev = li.previousElementSibling, next = li.nextElementSibling;
+    if (prev && e.clientY < mid(prev)) { prev.before(li); y0 = e.clientY; li.style.transform = ''; return; }
+    if (next && e.clientY > mid(next)) { next.after(li); y0 = e.clientY; li.style.transform = ''; return; }
+    li.style.transform = 'translateY(' + (e.clientY - y0) + 'px)';
+  });
+  list.addEventListener('pointerup', stop);
+  list.addEventListener('pointercancel', stop);
 }
 const dashTitle = (s) => { const h = s.querySelector('h2'); return h ? h.textContent.trim() : s.dataset.sec; };
 function dashEditor(key) {
@@ -213,17 +247,26 @@ function dashEditor(key) {
   const secs = [...root.querySelectorAll(':scope > .dash-sec')];
   const dlg = document.createElement('div');
   dlg.className = 'overlay-dlg';
-  dlg.innerHTML = '<div class="dlg-card" role="dialog" aria-modal="true" aria-label="Pagina aanpassen"><h3>Pagina aanpassen</h3><p class="small muted">Zet secties in je eigen volgorde, zet ze bovenaan vast of verberg ze. Alleen op dit apparaat.</p><ol class="dash-list">' +
-    secs.map((s) => '<li data-k="' + esc(s.dataset.sec) + '"><label class="check"><input type="checkbox"' + (s.hidden ? '' : ' checked') + '> ' + esc(dashTitle(s)) + '</label>' +
+  const P0 = dashPrefs()[key] || {};
+  const sizeOf = (k) => ((P0.sizes || {})[k] || 'm');
+  dlg.innerHTML = '<div class="dlg-card" role="dialog" aria-modal="true" aria-label="Pagina aanpassen"><h3>Pagina aanpassen</h3><p class="small muted">Sleep met ⠿ om de volgorde te wijzigen (of gebruik de pijlen), vink uit om te verbergen en kies hoe groot de tegels zijn. Alleen op dit apparaat.</p><ol class="dash-list">' +
+    secs.map((s) => '<li data-k="' + esc(s.dataset.sec) + '"><button type="button" class="dash-grip" data-grip aria-label="Verplaatsen" title="Slepen om te verplaatsen">⠿</button>' +
+      '<label class="check"><input type="checkbox"' + (s.hidden ? '' : ' checked') + '> ' + esc(dashTitle(s)) + '</label>' +
+      '<select class="dash-size" data-size aria-label="Grootte van de tegels in ' + esc(dashTitle(s)) + '">' +
+      DASH_SIZES.map(([v, l]) => '<option value="' + v + '"' + (sizeOf(s.dataset.sec) === v ? ' selected' : '') + '>' + esc(l) + '</option>').join('') + '</select>' +
       '<span><button type="button" class="icon-sm" data-mv="top" aria-label="Bovenaan vastzetten">⤒</button><button type="button" class="icon-sm" data-mv="up" aria-label="Omhoog">↑</button><button type="button" class="icon-sm" data-mv="down" aria-label="Omlaag">↓</button></span></li>').join('') +
     '</ol><div class="dlg-actions"><button type="button" class="btn ghost" data-dash-reset>Standaard</button><button type="button" class="btn primary" data-dash-done>Klaar</button></div></div>';
   document.body.appendChild(dlg);
   const list = dlg.querySelector('.dash-list');
   const save = () => {
     const all = dashPrefs();
-    all[key] = { order: [...list.children].map((li) => li.dataset.k), hidden: [...list.children].filter((li) => !li.querySelector('input').checked).map((li) => li.dataset.k) };
+    const sizes = {};
+    const rows = /** @type {HTMLElement[]} */ ([...list.children]);
+    rows.forEach((li) => { const sel = /** @type {HTMLSelectElement|null} */ (li.querySelector('[data-size]')); if (sel && sel.value !== 'm') sizes[li.dataset.k] = sel.value; });
+    all[key] = { order: rows.map((li) => li.dataset.k), hidden: rows.filter((li) => !(/** @type {HTMLInputElement} */ (li.querySelector('input[type="checkbox"]'))).checked).map((li) => li.dataset.k), sizes };
     dashSave(all); dashApply(root, key);
   };
+  dashDrag(list, save);
   dlg.addEventListener('click', (e) => {
     const mv = e.target.closest('[data-mv]');
     if (mv) { const li = mv.closest('li'); if (mv.dataset.mv === 'top') list.prepend(li); else if (mv.dataset.mv === 'up' && li.previousElementSibling) li.previousElementSibling.before(li); else if (mv.dataset.mv === 'down' && li.nextElementSibling) li.nextElementSibling.after(li); save(); return; }
@@ -248,11 +291,26 @@ function cmdItems() {
   const items = [
     ['Overzicht', 'pagina', go('#overzicht')], ['Bedrijven', 'pagina', go('#bedrijven')], ['Nieuws', 'pagina', go('#nieuws')], ['Analyse', 'pagina', go('#analyse')], ['Plannen', 'pagina', go('#plannen')],
     ['Status van je tracker', 'pagina', go('#status')], ['Instellingen', 'pagina', () => openSettings(false)],
+    ['Vandaag in een oogopslag', 'pagina', go('#vandaag')],
+    ['Ga naar risico', 'pagina', go('#risico')], ['Ga naar accountwaarde', 'pagina', go('#accountwaarde')], ['Ga naar resultaat', 'pagina', go('#resultaat')],
+    ['Ga naar stortingen', 'pagina', go('#stortingen')], ['Twee aandelen vergelijken', 'pagina', go('#vergelijken')],
+    ['Order plaatsen', 'actie', () => openOrderPicker()],
     ['Donker of licht thema wisselen', 'actie', () => { const d = document.documentElement.dataset.theme === 'dark'; try { localStorage.setItem('tracker.theme', d ? 'light' : 'dark'); } catch (e) { /* niet erg */ } applyTheme(); rerenderAll(); }],
-    ['Bedragen verbergen of tonen', 'actie', () => { const b = $$('.btn-hide')[0]; if (b) b.click(); }],
+    ['Toon bedragen (of verberg ze)', 'actie', () => { const b = $$('.btn-hide')[0]; if (b) b.click(); }],
     ['Gegevens vernieuwen', 'actie', () => load()], ['Rondleiding starten', 'actie', () => startTour()], ['Sneltoetsen tonen', 'actie', () => showKeys()],
     ['Pagina aanpassen (overzicht)', 'actie', () => { location.hash = '#overzicht'; setTimeout(() => dashEditor(mode === 'm' ? 'm-home' : 'home'), 300); }],
+    ['Pagina aanpassen (analyse)', 'actie', () => { location.hash = '#analyse'; setTimeout(() => dashEditor('analyse'), 500); }],
+    ['Reservekopie downloaden', 'actie', () => { openSettings(false); setGo('backup'); }],
   ];
+  // Onderdelen van de instellingen
+  [['Koppelingen en sleutels', 'links'], ['Toegang en Worker', 'account'], ['Vergrendelen met vingerafdruk of gezicht', 'account'], ['Weergave, taal en animaties', 'view'],
+    ['Trilling op de telefoon', 'view'], ['Meldingen (push)', 'push'], ['Delen (alleen lezen)', 'share'], ['Als app installeren', 'install'], ['Status en reservekopie', 'backup'],
+    ['Updates', 'update'], ['Geschiedenis uit Google Sheet', 'import']]
+    .forEach(([t, k]) => items.push([t, 'instelling', () => { openSettings(false); setGo(k); }]));
+  // Weergave-opties aan- of uitzetten
+  DISP.forEach(([k, l]) => items.push([l + ' aan of uit', 'weergave', () => { try { localStorage.setItem('tracker.' + k, dispOn(k) ? '0' : '1'); } catch (e) { /* niet erg */ } applyDisplay(); rerenderAll(); }]));
+  items.push(['Animaties aan of uit', 'weergave', () => { try { localStorage.setItem('tracker.motion', reduceMotion() ? 'on' : 'off'); } catch (e) { /* niet erg */ } applyMotion(); if (typeof syncMotionButtons === 'function') syncMotionButtons(); }]);
+  items.push(['Trilling aan of uit', 'weergave', () => { try { localStorage.setItem(LS_HAPTIC, hapticOn() ? '0' : '1'); } catch (e) { /* niet erg */ } haptic('aan'); }]);
   [['Echt rendement', 'analyse'], ['Jij tegenover je maatstaf', 'analyse'], ['Grootste daling', 'analyse'], ['Screener', 'analyse'], ['ETF-zoeker', 'analyse'], ['Wat grote beleggers bezitten', 'analyse'], ['Economische agenda', 'analyse'], ['Alle transacties', 'analyse'],
     ['Kans om je doelen te halen', 'plannen'], ['Financieel onafhankelijk (FIRE)', 'plannen'], ['Box 3: nu tegenover werkelijk rendement', 'plannen'], ['Herbalanceren met verkopen', 'plannen'], ['Doelen', 'plannen'], ['Kostenoverzicht', 'plannen'], ['Exporteren', 'plannen']]
     .forEach(([t, pg]) => items.push([t, 'tegel op ' + (pg === 'analyse' ? 'Analyse' : 'Plannen'), () => { location.hash = '#' + pg; setTimeout(() => { const h = [...document.querySelectorAll('.page:not([hidden]) h3, .m-view:not([hidden]) h3')].find((x) => x.textContent.trim().startsWith(t)); if (h) h.scrollIntoView({ block: 'start', behavior: reduceMotion() ? 'auto' : 'smooth' }); }, 450); }]));
@@ -274,7 +332,10 @@ function openCmd() {
   let shown = [], sel = 0;
   const draw = () => {
     const q = inp.value.trim().toLowerCase();
-    shown = all.filter((x) => !q || q.split(/\s+/).every((w) => (x[0] + ' ' + x[1]).toLowerCase().includes(w))).slice(0, 12);
+    const hits = all.filter((x) => !q || q.split(/\s+/).every((w) => (x[0] + ' ' + x[1]).toLowerCase().includes(w)));
+    // Wat met de getypte tekst begint, staat bovenaan
+    if (q) hits.sort((a, b) => Number(b[0].toLowerCase().startsWith(q)) - Number(a[0].toLowerCase().startsWith(q)));
+    shown = hits.slice(0, 12);
     sel = Math.min(sel, Math.max(0, shown.length - 1));
     ul.innerHTML = shown.map((x, i) => '<li role="option" data-i="' + i + '" aria-selected="' + (i === sel) + '"><span>' + esc(x[0]) + '</span><span class="muted small">' + esc(x[1]) + '</span></li>').join('') || '<li class="muted">Niets gevonden</li>';
   };
@@ -321,55 +382,80 @@ document.addEventListener('keydown', (e) => {
 });
 
 // ---------- Telefoon: omlaag trekken om te vernieuwen, vegen tussen pagina's ----------
+// Trekken werkt alleen bovenaan de pagina; vegen alleen als de beweging duidelijk horizontaal is en er
+// niets anders onder je vinger zit dat zelf zijwaarts beweegt (grafiek met zoom, tabel, keuzebalk).
 const SWIPE_ORDER = ['home', 'list', 'news', 'stats', 'plan'];
-const NO_SWIPE = '.chart, .tbl-wrap, input, textarea, select, .m-chips, .seg, .m-seg, .vlist, .yheat-wrap, .mk-grid, [data-noswipe], .detail';
+const NO_SWIPE = '.chart, .tbl-wrap, input, textarea, select, .m-chips, .seg, .m-seg, .vlist, .yheat-wrap, .mk-grid, [data-noswipe], .detail, .m-ptabs, .pick-list, .overlay-dlg';
+const PULL_ON = 72;      // zover omlaag trekken om te vernieuwen
+const SWIPE_MIN = 70;    // minimale veeg om van pagina te wisselen
+// Zit er iets onder je vinger dat zelf zijwaarts schuift?
+function scrollsSideways(el) {
+  for (let n = el; n && n !== document.body; n = n.parentElement) {
+    if (n.scrollWidth > n.clientWidth + 4) { const o = getComputedStyle(n).overflowX; if (o === 'auto' || o === 'scroll') return true; }
+  }
+  return false;
+}
 (function gestures() {
   const main = $('m-main');
   if (!main) return;
-  let x0 = 0, y0 = 0, t0 = 0, pull = false, swipe = false, dy = 0;
+  let x0 = 0, y0 = 0, t0 = 0, pull = false, swipe = false, dy = 0, busy = false;
   const ptr = document.createElement('div');
   ptr.className = 'ptr'; ptr.setAttribute('aria-hidden', 'true'); ptr.innerHTML = '<span>↓</span>';
+  const ptrTxt = document.createElement('div');
+  ptrTxt.className = 'ptr-txt'; ptrTxt.setAttribute('aria-hidden', 'true');
   document.body.appendChild(ptr);
-  const setPtr = (d) => { ptr.style.transform = 'translate(-50%,' + Math.min(90, d) * 0.8 + 'px)'; ptr.style.opacity = String(Math.min(1, d / 70)); ptr.classList.toggle('ready', d > 70); };
+  document.body.appendChild(ptrTxt);
+  const setPtr = (d) => {
+    ptr.style.transform = 'translate(-50%,' + Math.min(96, d) * 0.8 + 'px)';
+    ptr.style.opacity = String(Math.min(1, d / PULL_ON));
+    ptr.classList.toggle('ready', d > PULL_ON);
+    ptrTxt.style.transform = 'translate(-50%,' + Math.min(96, d) * 0.8 + 'px)';
+    ptrTxt.style.opacity = String(Math.min(1, Math.max(0, (d - 20) / PULL_ON)));
+    ptrTxt.textContent = busy ? 'Bezig met vernieuwen…' : d > PULL_ON ? 'Laat los om te vernieuwen' : 'Trek omlaag om te vernieuwen';
+  };
+  const done = () => { busy = false; ptr.classList.remove('spin'); setPtr(0); };
   main.addEventListener('touchstart', (e) => {
-    if (mode !== 'm' || ui.detail || e.touches.length !== 1) { pull = swipe = false; return; }
+    if (mode !== 'm' || ui.detail || e.touches.length !== 1 || busy) { pull = swipe = false; return; }
     const t = e.touches[0];
     x0 = t.clientX; y0 = t.clientY; t0 = Date.now(); dy = 0;
     pull = window.scrollY <= 0;
-    swipe = !(e.target.closest && e.target.closest(NO_SWIPE));
+    const el = /** @type {HTMLElement} */ (e.target);
+    swipe = !(el.closest && el.closest(NO_SWIPE)) && !scrollsSideways(el);
   }, { passive: true });
   main.addEventListener('touchmove', (e) => {
-    if (!pull) return;
+    if (e.touches.length !== 1) { pull = swipe = false; setPtr(0); return; }
     const t = e.touches[0];
+    const dx = t.clientX - x0;
     dy = t.clientY - y0;
-    if (dy > 0 && Math.abs(t.clientX - x0) < dy) setPtr(dy); else setPtr(0);
+    // Duidelijk horizontaal: niet meer trekken; duidelijk verticaal: niet meer vegen
+    if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy)) { if (pull) { pull = false; setPtr(0); } }
+    else if (Math.abs(dy) > 12 && Math.abs(dy) > Math.abs(dx)) swipe = false;
+    if (pull && dy > 0) setPtr(dy); else if (pull) setPtr(0);
   }, { passive: true });
   main.addEventListener('touchend', (e) => {
     const t = e.changedTouches[0];
     const dx = t.clientX - x0, dyy = t.clientY - y0;
-    if (pull && dy > 70 && Math.abs(dx) < dy) { ptr.classList.add('spin'); Promise.resolve(load()).finally(() => { ptr.classList.remove('spin'); setPtr(0); }); }
-    else setPtr(0);
-    if (swipe && Date.now() - t0 < 600 && Math.abs(dx) > 80 && Math.abs(dx) > 2 * Math.abs(dyy)) {
+    if (pull && dy > PULL_ON && Math.abs(dx) < dy) {
+      busy = true; ptr.classList.add('spin'); setPtr(PULL_ON);
+      haptic('tik');
+      Promise.resolve(load()).finally(done);
+    } else setPtr(0);
+    if (swipe && Date.now() - t0 < 700 && Math.abs(dx) > SWIPE_MIN && Math.abs(dx) > 1.8 * Math.abs(dyy)) {
       const i = SWIPE_ORDER.indexOf(ui.page);
       const next = SWIPE_ORDER[i + (dx < 0 ? 1 : -1)];
-      if (i >= 0 && next) location.hash = '#' + pageHash(next);
+      // Via de adresbalk, zodat de paginawissel dezelfde richting en animatie krijgt als een tik op de balk
+      if (i >= 0 && next) { haptic('tik'); location.hash = '#' + pageHash(next); }
     }
     pull = swipe = false;
   }, { passive: true });
 })();
 
-// ---------- Teller op het app-icoon: nieuw nieuws over je aandelen en afgegane koersalarmen ----------
+// ---------- Teller op het app-icoon en in het menu: nieuw nieuws over je aandelen en afgegane koersalarmen ----------
+// Eén teller voor alles (pictogram en de stip bij Nieuws); het rekenwerk staat in js/21-pwa.js
 const LS_SEEN = 'tracker.newsSeen';
 function updateBadge() {
-  if (!M || !('setAppBadge' in navigator)) return;
-  let seen = 0;
-  try { seen = Number(localStorage.getItem(LS_SEEN) || 0); } catch (e) { seen = 0; }
-  if (ui.page === 'news' || !seen) { seen = Date.now(); try { localStorage.setItem(LS_SEEN, String(seen)); } catch (e) { /* niet erg */ } }
-  const held = new Set(M.companies.map((c) => c.tk));
-  let n = 0;
-  Object.entries(data.research || {}).forEach(([tk, r]) => { if (held.has(tk)) (r.news || []).forEach((x) => { if (x.t > seen && !newsMuted(x)) n++; }); });
-  n += ((M.settings && M.settings.priceAlerts) || []).filter((a) => a.hit && Date.parse(a.hit) > seen).length;
-  try { (n ? navigator.setAppBadge(Math.min(n, 99)) : navigator.clearAppBadge()).catch(() => {}); } catch (e) { /* niet ondersteund */ }
+  if (!M) return;
+  syncUnread();
 }
 
 // ---------- Weergave: compact, grotere tekst, kleurenblindvriendelijk ----------
