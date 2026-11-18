@@ -43,6 +43,28 @@ const EN = {
   'rendement deze week': 'return this week', 'accountwaarde': 'account value', 'Eerste aandeel': 'First stock', 'Tweede aandeel': 'Second stock', 'Naast een ander aandeel zetten': 'Compare with another stock',
   'Nieuws en analisten': 'News and analysts', '▲ Positief': '▲ Positive', '▼ Negatief': '▼ Negative', '● Neutraal': '● Neutral', 'Mijn tracker koppelen': 'Connect my tracker', 'Functies bekijken met voorbeeldgetallen': 'Explore with sample data',
 };
+Object.assign(EN, {
+  // Risico en Analyse: wat als, stresstests, valuta, overlap, bijdrage, rollend rendement, herstel, kosten en doorkijk
+  'Wat als je anders verdeelt': 'What if you allocate differently', 'Van': 'From', 'Naar': 'To', 'Hoeveel verschuiven': 'How much to shift', 'Terug naar nu': 'Back to now',
+  'Risicoklasse': 'Risk class', 'Spreiding (even grote posities)': 'Diversification (equally sized positions)', 'Slechte dag (1 op 20)': 'Bad day (1 in 20)',
+  'Stresstests: wat deden sectoren in slechte jaren': 'Stress tests: how sectors fared in bad years', 'Effect 2008': 'Impact 2008', 'In welke munt zit je geld': 'Which currency your money is in',
+  'Munt': 'Currency', 'Niet in euro': 'Not in euro', 'Als de dollar 10% minder waard wordt': 'If the dollar loses 10%', 'Als de dollar 10% meer waard wordt': 'If the dollar gains 10%',
+  'Overlap in je fondsen': 'Overlap within your funds', 'Samen': 'Together', 'Deel': 'Share', 'Waar je resultaat vandaan komt': 'Where your result comes from',
+  'Ongerealiseerd resultaat': 'Unrealised result', 'Waarvan door de koersen': 'Of which from prices', 'Waarvan door de wisselkoers': 'Of which from the exchange rate',
+  'Door de wisselkoers': 'From the exchange rate', 'Door de koers': 'From the price', 'Deel van het resultaat': 'Share of the result',
+  'Rollend rendement': 'Rolling return', 'Beste periode': 'Best period', 'Slechtste periode': 'Worst period', 'Periodes met winst': 'Periods with a gain',
+  'Dalingen en herstel': 'Drops and recovery', 'Vanaf de top': 'From the peak', 'Diepste punt': 'Lowest point', 'Daling': 'Drop', 'Dagen omlaag': 'Days down',
+  'Hersteld': 'Recovered', 'Dagen herstel': 'Days to recover', 'Aantal dalingen': 'Number of drops', 'Nog niet hersteld': 'Not yet recovered', 'Herstel duurde meestal': 'Recovery usually took',
+  'Kostenrem': 'Cost drag', 'Tegenover je resultaat': 'Versus your result', 'Kosten per jaar': 'Costs per year', 'Als deel van je inleg per jaar': 'As a share of your deposits per year',
+  'Deel van de omzet': 'Share of turnover', 'Doorkijk: waar je geld werkelijk in zit': 'Look-through: what your money is really in',
+  'Per sector': 'By sector', 'Per land': 'By country', 'Per bedrijf': 'By company', 'Grootste 10 bedrijven samen': 'Largest 10 companies together', 'Aantal bedrijven': 'Number of companies',
+  'Via fondsen doorgerekend': 'Looked through via funds', 'Grootste sector': 'Largest sector', 'Grootste land': 'Largest country',
+  'Wisselkosten vooruit': 'FX costs ahead', 'Ik koop per maand': 'I buy per month', 'Daarvan niet in euro': 'Of which not in euro', 'Per jaar': 'Per year', 'Over 10 jaar': 'Over 10 years',
+  'Alles in euro gekocht': 'All bought in euro', 'Je tempo, laatste 12 maanden': 'Your pace, last 12 months', 'Werkelijk betaald, laatste 12 maanden': 'Actually paid, last 12 months',
+  'Doorkijk en kosten': 'Look-through and costs', 'Doorkijk': 'Look-through', 'Rapport (pdf)': 'Report (pdf)', 'Analyse': 'Analysis',
+  'Samenhang': 'Correlation', 'Samen in je portefeuille': 'Together in your portfolio', 'Beweeglijkheid los': 'Volatility separately', 'Samen als paar': 'Together as a pair',
+  'Zelfde sector': 'Same sector', 'Gemeenschappelijke dagen': 'Days in common', 'Indeling': 'Breakdown', 'Periode': 'Period', 'Vanaf welke daling': 'From which drop',
+});
 const EN_RE = [
   [/^Alle (\d+) bedrijven bekijken$/, 'View all $1 companies'], [/^Alle (\d+) bedrijven$/, 'All $1 companies'], [/^(\d+) van 7$/, '$1 of 7'], [/^Via (.+)$/, 'Via $1'],
   [/^Stijgers, markt en dalers (.*)$/, 'Risers, market and fallers $1'], [/^(\d+) dagen$/, '$1 days'], [/^(\d+) jaar$/, '$1 years'], [/^Waarde beleggingen, (.+)$/, 'Investments value, $1'],

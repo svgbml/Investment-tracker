@@ -5,7 +5,7 @@
  */
 const CACHE = 'tracker-v57';
 const FILES = ['./', './index.html', './style.css?v=57', './config.js?v=57', './manifest.webmanifest',
-  './js/00-kern.js?v=57', './js/01-basis.js?v=57', './js/02-instellingen.js?v=57', './js/03-model.js?v=57', './js/04-grafieken.js?v=57', './js/05-portefeuille.js?v=57', './js/06-plannen.js?v=57', './js/07-onderzoek.js?v=57', './js/08-risico.js?v=57', './js/09-weergaven.js?v=57', './js/10-navigatie.js?v=57', './js/11-uitbreidingen.js?v=57', './js/12-nieuws.js?v=57', './js/13-app.js?v=57', './js/14-demo.js?v=57', './js/16-analyse.js?v=57', './js/17-markt.js?v=57', './js/18-gemak.js?v=57', './js/20-handel.js?v=57', './js/19-start.js?v=57',
+  './js/00-kern.js?v=57', './js/01-basis.js?v=57', './js/02-instellingen.js?v=57', './js/03-model.js?v=57', './js/04-grafieken.js?v=57', './js/05-portefeuille.js?v=57', './js/06-plannen.js?v=57', './js/07-onderzoek.js?v=57', './js/08-risico.js?v=57', './js/09-weergaven.js?v=57', './js/10-navigatie.js?v=57', './js/11-uitbreidingen.js?v=57', './js/12-nieuws.js?v=57', './js/13-app.js?v=57', './js/14-demo.js?v=57', './js/15-risico-analyse.js?v=57', './js/16-analyse.js?v=57', './js/17-markt.js?v=57', './js/18-gemak.js?v=57', './js/20-handel.js?v=57', './js/19-start.js?v=57',
   './js/nieuws-preact.js?v=57', './js/plannen-preact.js?v=57', './vendor/preact-htm.js', './fonts/figtree-latin.woff2', './fonts/figtree-latin-ext.woff2',
   './icon-192.png', './icon-512.png', './icon-maskable-512.png', './icon-monochrome-512.png', './apple-touch-icon.png', './favicon.png'];
 

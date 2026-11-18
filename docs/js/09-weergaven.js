@@ -746,7 +746,7 @@ function diversifyIdeas() {
     return sxx > 0 && syy > 0 ? sxy / Math.sqrt(sxx * syy) : null;
   };
   const held = new Set(M.companies.map((c) => c.tk));
-  const pos = [], near = [];
+  const pos = [], near = [], rejected = [];
   watchSyms().filter((s) => !held.has(s)).forEach((sym) => {
     const p = M.mk.ok ? M.mk.prof(sym) : null;
     const sector = p && p.sector ? p.sector : null;
@@ -763,7 +763,19 @@ function diversifyIdeas() {
     const newsOk = nb && nb.bull >= 0.55;
     const o = { sym, name: (p && p.name) || sym, sector, sw, cor, rc, up, nb, newSector, lowCorr };
     o.score = (newSector ? 1 - sw * 5 : 0) + (isNum(cor) ? (1 - cor) : 0) + (rc ? rc.buy : 0) + (nb ? nb.bull : 0);
-    if ((newSector || lowCorr) && anaOk && newsOk) pos.push(o); else if (newSector || lowCorr) near.push(o);
+    if ((newSector || lowCorr) && anaOk && newsOk) pos.push(o);
+    else {
+      if (newSector || lowCorr) near.push(o);
+      // Waarom niet voorgesteld: alles wat niet klopte, zodat het navolgbaar is
+      const why = [];
+      if (!p || !sector) why.push('sector onbekend: FMP heeft (nog) geen profiel van dit bedrijf');
+      else if (!newSector && !lowCorr) why.push(sectorNl(sector) + ' heb je al voor ' + P1.format(sw) + (isNum(cor) ? ', en de koers beweegt sterk mee met je portefeuille (' + N2.format(cor) + ')' : ''));
+      else if (!newSector) why.push(sectorNl(sector) + ' heb je al voor ' + P1.format(sw) + ' (dat verbreedt je spreiding niet)');
+      if (!anaOk) why.push(rc ? (rc.buy < 0.55 ? 'analisten: ' + P1.format(rc.buy) + ' zegt kopen, dat is minder dan 55%' : 'het gemiddelde koersdoel ligt onder de huidige koers') : 'geen analisten bekend');
+      if (!newsOk) why.push(nb ? 'nieuws ' + P1.format(nb.bull) + ' positief, dat is minder dan 55%' : 'geen nieuwsstemming bekend');
+      if (!isNum(cor)) why.push('te weinig koershistorie om de samenhang met je portefeuille te meten');
+      rejected.push({ sym, name: o.name, why });
+    }
   });
   pos.sort((a, b) => b.score - a.score);
   // Nog niet gevolgde bedrijven uit sectoren die je (bijna) niet hebt: eerst volgen, dan kunnen analisten en nieuws meetellen
@@ -777,7 +789,7 @@ function diversifyIdeas() {
       seen.add(p.sector); gaps.push({ sym: c.sym, name: p.name || c.name || c.sym, sector: p.sector, sw: secW.get(p.sector) || 0 });
     });
   }
-  return { pos: pos.slice(0, 6), near: near.slice(0, 3), gaps: gaps.slice(0, 4), watchN: watchSyms().filter((s) => !held.has(s)).length };
+  return { pos: pos.slice(0, 6), near: near.slice(0, 3), gaps: gaps.slice(0, 4), rejected, watchN: watchSyms().filter((s) => !held.has(s)).length };
 }
 function diversifyTile() {
   if (!M) return '';
@@ -799,6 +811,10 @@ function diversifyTile() {
     (D.pos.length ? '<div class="alt-list">' + D.pos.map(item).join('') + '</div>'
       : '<p class="muted" style="margin-top:10px">' + esc(D.watchN ? 'Op je volglijst staat nu geen bedrijf dat de spreiding verbreedt én waar analisten en nieuws allebei positief over zijn.' : 'Je volglijst is leeg. Analisten en nieuws worden alleen opgehaald voor je posities en je volglijst.') + '</p>' +
         (D.near.length ? '<p class="small" style="margin-top:12px"><b>Verbreden wel, maar analisten of nieuws zijn niet duidelijk positief</b></p><div class="alt-list">' + D.near.map(item).join('') + '</div>' : '')) +
+    (D.rejected.length ? '<details class="whynot"><summary>Waarom staan de andere er niet bij? (' + D.rejected.length + ')</summary>' +
+      '<ul class="whynot-list">' + D.rejected.map((r) => '<li><b>' + esc(r.sym) + '</b> <span class="muted small">' + esc(r.name) + '</span>' +
+        (r.why.length ? '<ul>' + r.why.map((w) => '<li class="small">' + esc(w) + '</li>').join('') + '</ul>' : '<span class="small muted">geen reden vastgelegd</span>') + '</li>').join('') + '</ul>' +
+      '<p class="small muted">Voorwaarden om voorgesteld te worden: een sector die je voor minder dan 10% hebt of een samenhang onder 0,6, en analisten en nieuws allebei minstens 55% positief.</p></details>' : '') +
     (D.gaps.length ? '<p class="small" style="margin-top:12px"><b>Sectoren die je weinig of niet hebt: volg er een</b></p><p class="small watch-status" role="status" aria-live="polite"></p><div class="alt-list">' + D.gaps.map(gap).join('') + '</div>' +
       '<p class="small muted" style="margin-top:6px">Na het volgen haalt de Worker bij de volgende ronde analisten en nieuws op; dan kan het bedrijf hierboven verschijnen.</p>' : '') +
     '<p class="sub" style="margin-top:10px">Samenhang: hoe gelijk de dagkoersen van het laatste jaar bewogen met je huidige verdeling (1 is gelijk, 0 is los van elkaar). Nieuws is geschat uit de koppen. Analisten zitten er vaak naast; dit is geen beleggingsadvies.</p></section>';
@@ -844,7 +860,14 @@ function renderRiskView() {
   const head = pseudoHead('Risico-indicatie', R.cls ? R.cls + ' van 7' : 'Nog geen indicatie', R.cls ? RISK_WORDS[R.cls] + ', beweeglijkheid ongeveer ' + P1.format(R.vol) + ' per jaar' : 'Er zijn nog te weinig gegevens.');
   const why = whyListTile();
   const div = diversifyTile();
-  return pseudoPage('Risico', head, [[sugg, year], [div], [why], [t[0], t[1], t[2]], [per]], [sugg, div, why, year, t[0], t[1], t[2], per]);
+  // Extra tegels uit 15-risico-analyse.js: wat als, valuta, stresstests en overlap in fondsen
+  const X = typeof riskExtraTiles === 'function' ? riskExtraTiles() : ['', '', '', ''];
+  const deskRows = [[sugg, year], [X[0]], [X[1], X[2]], [X[3]], [div], [why], [t[0], t[1], t[2]], [per]]
+    .map((r) => r.filter(Boolean)).filter((r) => r.length);
+  const out = pseudoPage('Risico', head, deskRows, [sugg, X[0], X[1], X[2], X[3], div, why, year, t[0], t[1], t[2], per].filter(Boolean));
+  // De router tekent deze pagina zonder tekenstap; de zware rekensom start daarom zelf
+  if (typeof mountRiskExtra === 'function') setTimeout(() => { try { mountRiskExtra(); } catch (err) { console.error(err); } }, 0);
+  return out;
 }
 
 function plTile() {

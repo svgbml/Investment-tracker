@@ -157,6 +157,8 @@ function makeDemoData() {
   const mDays = [];
   const md = new Date(now); md.setDate(md.getDate() - 1);
   while (mDays.length < 25) { if (md.getDay() % 6) mDays.unshift(iso(md).slice(0, 10)); md.setDate(md.getDate() - 1); }
+  // Land per voorbeeldbedrijf, zodat de doorkijk per land iets te laten zien heeft
+  const CTRY = { ASML: 'NL', TSM: 'TW', SONY: 'JP', NVO: 'DK', AZN: 'GB', BABA: 'CN', SHOP: 'CA', NTES: 'CN', EBAY: 'US', SPCX: 'US' };
   const profiles = {}, prices = {}, peersMk = {}, symbols = {};
   const sectorOfSym = {};
   Object.entries(META_INFO).forEach(([tk, [sec, ind, prs]]) => { symbols[tk] = tk; peersMk[tk] = prs; sectorOfSym[tk] = [sec, ind]; prs.forEach((x) => { if (!sectorOfSym[x]) sectorOfSym[x] = [sec, ind]; }); });
@@ -164,7 +166,7 @@ function makeDemoData() {
     const price = 40 + rnd() * 600, lo = price * (0.55 + rnd() * 0.3), hi = price * (1.02 + rnd() * 0.4);
     profiles[sym] = { symbol: sym, name: (book.find((b) => b[0] === sym) || [0, sym + ' Corporation'])[1], price: +price.toFixed(2), currency: 'USD',
       marketCap: Math.round((0.02 + rnd() * 3) * 1e12), beta: +(0.4 + rnd() * 1.6).toFixed(2), range: lo.toFixed(2) + '-' + hi.toFixed(2),
-      change: +(gauss() * 1.4).toFixed(2), sector: sec, industry: ind, exchange: i % 2 ? 'NYSE' : 'NASDAQ', country: 'US', ipoDate: (1980 + Math.floor(rnd() * 40)) + '-06-15' };
+      change: +(gauss() * 1.4).toFixed(2), sector: sec, industry: ind, exchange: i % 2 ? 'NYSE' : 'NASDAQ', country: CTRY[sym] || 'US', ipoDate: (1980 + Math.floor(rnd() * 40)) + '-06-15' };
     let v = price;
     const hist = i % 3 === 2 ? mDays.slice(-1) : mDays;
     prices[sym] = hist.slice().reverse().map((d) => { const out = [d, +v.toFixed(2)]; v /= 1 + gauss() * 0.015; return out; }).reverse();
