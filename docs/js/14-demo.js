@@ -107,7 +107,7 @@ function makeDemoData() {
     const sat = new Date(day); sat.setDate(sat.getDate() + 1);
     const wi = weeks.length;
     let newDep = 0;
-    if (wi === 3 || wi === 7) { newDep = 50; cash += 50; }
+    if (wi === 3 || wi === 7 || wi === 11) { newDep = 50; cash += 50; }
     if (prev && day.getTime() > dates[buyDay].getTime() && !weeks.some((w) => w.boughtKO)) { newDep += 20; }
     const acc = r2(r[3] + cash);
     if (deposits == null) deposits = r2(acc + 12);
@@ -133,10 +133,10 @@ function makeDemoData() {
     updated: iso(now), fmp: true, errors: [],
     // ticker, dagen geleden, bruto per aandeel (dollar), aantal; netto = na 15% bronbelasting, omgerekend naar euro
     received: [
-      ['KO', -411, 0.485, 0.9], ['KO', -320, 0.485, 0.9], ['KO', -229, 0.485, 0.9], ['KO', -138, 0.51, 0.9], ['KO', -47, 0.51, 1.8],
+      ['KO', -375, 0.485, 0.9], ['KO', -320, 0.485, 0.9], ['KO', -229, 0.485, 0.9], ['KO', -138, 0.51, 0.9], ['KO', -47, 0.51, 1.8],
       ['MSFT', -341, 0.75, 0.2], ['MSFT', -250, 0.75, 0.2], ['MSFT', -160, 0.83, 0.2], ['MSFT', -68, 0.83, 0.2],
       ['AAPL', -372, 0.24, 0.29], ['AAPL', -190, 0.25, 0.29], ['AAPL', -99, 0.25, 0.29], ['AAPL', -8, 0.26, 0.29],
-      ['TSM', -395, 0.6, 0.3], ['TSM', -120, 0.7, 0.3], ['TSM', -30, 0.83, 0.3],
+      ['TSM', -370, 0.6, 0.3], ['TSM', -120, 0.7, 0.3], ['TSM', -30, 0.83, 0.3],
     ].map(([ticker, n, perShare, qty]) => ({ ticker, date: dIn(n), amount: Math.round(perShare * qty * 0.85 / 1.09 * 100) / 100, perShare, qty })),
     earnings: [['AAPL', 6, 2.35], ['MSFT', 9, 3.1], ['META', 12, 6.7], ['GOOGL', 15, 2.6], ['AMZN', 19, 1.9], ['ASML', 23, 5.6], ['TSM', 27, 2.7], ['PLTR', 34, 0.21], ['KO', 41, 0.6]]
       .map(([ticker, n, epsEst]) => ({ ticker, symbol: ticker, date: dIn(n), epsEst, revEst: null })),

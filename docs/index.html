@@ -122,7 +122,8 @@
               <p id="hero-value" class="hero-value"></p>
               <p id="hero-change" class="hero-change"></p>
             </div>
-            <div class="hero-ctrl"><div id="hero-ranges" class="seg" role="group" aria-label="Periode van de grafiek"></div></div>
+            <div class="hero-ctrl"><div id="hero-ranges" class="seg" role="group" aria-label="Periode van de grafiek"></div>
+              <div id="hero-cmp" class="seg light cmp" role="group" aria-label="Vergelijken met"></div></div>
           </div>
           <div id="hero-chart" class="chart hero-chart" role="img" aria-label="Verloop van de totale waarde"></div>
           <div id="hero-x" class="xlabels"></div>
@@ -131,12 +132,16 @@
 
         <div class="wrap">
           <div id="drift-note"></div>
+          <p id="day-line" class="day-line"></p>
           <div id="kpis" class="grid stagger"></div>
-          <div class="section-head">
+          <div class="section-head" data-daily>
             <h2 id="movers-title">Grootste veranderingen vandaag</h2>
             <div class="aside"><span id="breadth" class="breadth"></span><a class="link" href="#bedrijven" id="link-all">Alle bedrijven bekijken</a></div>
           </div>
-          <div id="movers" class="grid movers stagger"></div>
+          <div id="movers-strip" data-daily hidden></div>
+          <div id="movers" class="grid movers stagger" data-daily></div>
+          <div class="section-head"><h2>Je ritme en mijlpalen</h2><p class="muted small">Dividend dat eraan komt, wat je hebt bereikt en je stortingen</p></div>
+          <div id="home-extra" class="grid wide stagger"></div>
           <div class="section-head"><h2>Agenda</h2><p class="muted small">Kwartaalcijfers en dividenden van je posities</p></div>
           <div id="agenda" class="grid wide stagger"></div>
           <div class="section-head"><h2>Sectoren</h2><p class="muted small">Waar je aandelen in zitten en hoe die sectoren het doen</p></div>
@@ -224,13 +229,18 @@
           <div id="m-hero-chart" class="chart m-chart" role="img" aria-label="Verloop van de totale waarde"></div>
           <div id="m-hero-x" class="xlabels"></div>
           <div id="m-hero-ranges" class="m-seg" role="group" aria-label="Periode van de grafiek"></div>
+          <div id="m-hero-cmp" class="m-seg cmp" role="group" aria-label="Vergelijken met"></div>
           <p id="m-hero-note" class="chart-note"></p>
         </div>
         <div class="m-body">
           <div id="m-drift-note"></div>
+          <p id="m-day-line" class="day-line"></p>
           <div id="m-kpis" class="m-grid2 stagger"></div>
-          <div class="m-head"><h2 id="m-movers-title">Grootste veranderingen</h2><span id="m-breadth" class="breadth"></span></div>
-          <div id="m-movers" class="m-card m-rows stagger"></div>
+          <div class="m-head" data-daily><h2 id="m-movers-title">Grootste veranderingen</h2><span id="m-breadth" class="breadth"></span></div>
+          <div id="m-movers-strip" data-daily hidden></div>
+          <div id="m-movers" class="m-card m-rows stagger" data-daily></div>
+          <div class="m-head"><h2>Je ritme en mijlpalen</h2></div>
+          <div id="m-home-extra" class="m-stack stagger"></div>
           <div class="m-head"><h2>Agenda</h2></div>
           <div id="m-agenda" class="m-stack stagger"></div>
           <div class="m-head"><h2>Weken</h2></div>
@@ -489,6 +499,7 @@
   <script src="js/17-markt.js?v=57"></script>
   <script src="js/18-gemak.js?v=57"></script>
   <script src="js/20-handel.js?v=57"></script>
+  <script src="js/21-overzicht.js?v=57"></script>
   <script src="js/21-handig.js?v=57"></script>
   <script src="js/19-start.js?v=57"></script>
   <script type="module" src="js/nieuws-preact.js?v=57"></script>

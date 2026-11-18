@@ -185,6 +185,7 @@ function seriesFor(tk, range) {
   if (range === '3d') { const ks = [...new Set(intra.map((p) => dayKey(p.t)))].slice(-3); return intra.filter((p) => ks.includes(dayKey(p.t))); }
   const s = seriesOf(tk);
   // Te weinig punten op deze schaal: val terug op de fijnere metingen
+  if (range === '1w') { const from = (M.lastT || Date.now()) - 7 * DAY; const h = s.hourly.filter((p) => p.t >= from); return h.length >= 3 ? h : intra; }
   if (range === '1m') { const from = (M.lastT || Date.now()) - 30 * DAY; const h = s.hourly.filter((p) => p.t >= from); return h.length >= 3 ? h : intra; }
   if (range === 'ytd' || range === '1y') {
     const from = range === 'ytd' ? new Date(new Date(M.lastT || Date.now()).getFullYear(), 0, 1).getTime() : (M.lastT || Date.now()) - 365 * DAY;
@@ -201,6 +202,7 @@ function coverageNote(range, pts) {
   let short;
   if (range === 'today') short = first > dayStart(M.lastT) + (8 * 60 + 40) * 60000;
   else if (range === '3d') short = M.intraDays < 3;
+  else if (range === '1w') short = first > M.lastT - 6 * DAY;
   else if (range === '1m') short = first > M.lastT - 28 * DAY;
   else short = first > M.lastT - 60 * DAY;
   if (!short) return '';

@@ -1470,3 +1470,67 @@ body.welcoming #mshell { padding-bottom: 0; }
 }
 .toast.gone { opacity: 0; }
 @media (max-width: 700px) { .toast { bottom: calc(76px + env(safe-area-inset-bottom)); } }
+/* ---------- Overzicht: periode en vergelijkingslijn, dagsamenvatting, stijgers en dalers, mijlpalen, rustige modus ---------- */
+
+/* Vergelijkingslijn-keuze onder de periodekeuze van de grote grafiek */
+.hero-ctrl .seg.cmp button { min-height: 34px; font-size: 13.5px; }
+/* Op de telefoon als kleine pillen, zodat ze niet op de periodetabs lijken */
+.m-hero .m-seg.cmp { justify-content: flex-start; gap: 6px; margin: 8px 10px 0; }
+.m-hero .m-seg.cmp button { flex: 0 1 auto; min-height: 34px; padding: 0 12px; border: 1px solid var(--rule); border-radius: 999px; font-size: 12.5px; color: var(--band-ink); }
+.m-hero .m-seg.cmp button[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: #FFFFFF; }
+:root[data-theme="dark"] .m-hero .m-seg.cmp button[aria-pressed="true"] { background: var(--ink); color: #0F1217; }
+
+/* Eén regel in gewoon Nederlands over vandaag (of de maand, in de rustige modus) */
+.day-line { margin: 0 0 18px; max-width: 70ch; color: var(--ink-2); font-size: 15px; }
+.day-line:empty { display: none; }
+.m-body .day-line { margin: 2px 2px 16px; font-size: 14.5px; }
+
+/* Strook met de drie grootste stijgers en dalers */
+.mv-strip { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding: 2px 2px 10px; margin-bottom: 4px; }
+.mv-strip::-webkit-scrollbar { display: none; }
+.mv-chip {
+  flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
+  min-width: 104px; padding: 8px 12px; border: 1px solid var(--rule); border-radius: 14px;
+  background: var(--surface); cursor: pointer; text-align: left; transition: transform .18s var(--ease), border-color .18s;
+}
+.mv-chip:hover { border-color: var(--accent-soft); transform: translateY(-2px); }
+html[data-motion="off"] .mv-chip:hover { transform: none; }
+.mv-tk { font-weight: 700; font-size: 13px; letter-spacing: .02em; }
+.mv-p { font-size: 16px; font-weight: 700; }
+.mv-e { font-size: 12.5px; color: var(--ink-2); }
+.mv-sep { flex: 0 0 auto; width: 1px; align-self: stretch; margin: 4px 2px; background: var(--rule); }
+#m-movers-strip .mv-strip { padding-left: 2px; }
+
+/* Volgend dividend: hoe dichtbij */
+.dv-bar { height: 6px; margin: 10px 0 8px; border-radius: 999px; background: var(--track); overflow: hidden; }
+.dv-bar > div { height: 100%; border-radius: 999px; background: var(--accent); }
+
+/* Mijlpalen */
+.mile-list { list-style: none; margin: 12px 0 0; padding: 0; }
+.mile-i { position: relative; display: grid; grid-template-columns: 22px 1fr; gap: 0 8px; padding: 10px 0; border-top: 1px solid var(--rule); }
+.mile-i:first-child { border-top: 0; }
+.mile-ic { grid-row: span 2; color: var(--ink-2); font-weight: 700; }
+.mile-i.ok .mile-ic { color: var(--gain); }
+.mile-t { font-weight: 600; }
+.mile-s { font-size: 13px; color: var(--ink-2); }
+.mile-i.mile-new .mile-t { color: var(--gain); }
+.mile-dots { position: absolute; left: 4px; top: 12px; width: 14px; height: 14px; pointer-events: none; }
+.mile-dots i { position: absolute; left: 6px; top: 6px; width: 5px; height: 5px; border-radius: 50%; background: var(--gain); opacity: 0; }
+.mile-party .mile-t { animation: mile-pop .5s var(--ease) both; }
+.mile-party .mile-dots i { animation: mile-spark .9s var(--ease) both; }
+.mile-party .mile-dots i:nth-child(1) { --dx: -14px; --dy: -12px; }
+.mile-party .mile-dots i:nth-child(2) { --dx: 14px; --dy: -10px; animation-delay: .06s; }
+.mile-party .mile-dots i:nth-child(3) { --dx: 16px; --dy: 8px; animation-delay: .12s; }
+.mile-party .mile-dots i:nth-child(4) { --dx: -12px; --dy: 10px; animation-delay: .18s; }
+.mile-party .mile-dots i:nth-child(5) { --dx: 0; --dy: -18px; animation-delay: .24s; }
+@keyframes mile-pop { from { transform: translateY(4px) scale(.96); opacity: .4; } to { transform: none; opacity: 1; } }
+@keyframes mile-spark {
+  0% { opacity: 0; transform: none; }
+  25% { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--dx), var(--dy)); }
+}
+html[data-motion="off"] .mile-party .mile-t, html[data-motion="off"] .mile-party .mile-dots i { animation: none; }
+html[data-motion="off"] .mile-dots { display: none; }
+
+/* Rustige modus: alles wat over één dag gaat, blijft verborgen */
+:root[data-calm="1"] [data-daily] { display: none !important; }

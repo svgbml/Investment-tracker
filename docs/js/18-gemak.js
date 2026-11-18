@@ -175,12 +175,15 @@ function dashWrap(root, key) {
   if (!root || root.dataset.dash) return;
   [...root.children].forEach((h) => {
     if (!h.matches('.section-head, .m-head')) return;
-    const g = h.nextElementSibling;
-    if (!g || !g.id || g.matches('.section-head, .m-head')) return;
+    // Alles tussen deze kop en de volgende hoort bij de sectie (soms meer dan één blok, zoals een strook boven de tegels)
+    const members = [];
+    for (let n = h.nextElementSibling; n && !n.matches('.section-head, .m-head, .dash-foot'); n = n.nextElementSibling) members.push(n);
+    const main = members.filter((x) => x.id).pop();
+    if (!main) return;
     const w = document.createElement('div');
     w.className = 'dash-sec';
-    w.dataset.sec = g.id.replace(/^m-/, '');
-    h.before(w); w.append(h, g);
+    w.dataset.sec = main.id.replace(/^m-/, '');
+    h.before(w); w.append(h, ...members);
   });
   root.dataset.dash = key;
   const foot = document.createElement('div');
