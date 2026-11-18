@@ -961,6 +961,8 @@ function renderDetail(animate, swapDir) {
   if (ui.detail === RES) { const inner = $('detail-inner'); inner.innerHTML = renderResultView(); drawMacro(inner); return; }
   if (ui.detail === DEP) { $('detail-inner').innerHTML = renderDepositView(); return; }
   if (ui.detail === STATUS) { $('detail-inner').innerHTML = renderStatusView(); return; }
+  // Pseudo-pagina's uit latere bestanden (bijvoorbeeld Vandaag, zie js/21-pwa.js)
+  if (isPseudo(ui.detail) && PSEUDO_VIEWS[ui.detail]) { $('detail-inner').innerHTML = PSEUDO_VIEWS[ui.detail](); return; }
   if (ui.detail === CMP) { const inner = $('detail-inner'); inner.innerHTML = renderCompareView(); drawCompare(inner); return; }
   if (isWatchKey(ui.detail)) { const inner = $('detail-inner'); inner.innerHTML = renderWatchDetail(ui.detail.slice(1)); drawWatchChart(inner); drawSectorChart(inner); return; }
   const c = M.byTk.get(ui.detail);

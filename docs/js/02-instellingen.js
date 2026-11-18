@@ -499,6 +499,7 @@ async function load() {
     const last = await readLast(url);
     if (last && !data) {
       data = last.data; render();
+      noteCacheData(last.saved);   // melding "bewaarde stand" (zie js/21-pwa.js)
       // Met de vingerafdrukken van de vorige keer hoeft er na een herstart vaak niets opnieuw te komen
       if (last.tags && last.tags.core) {
         dataParts.core = last.data; dataParts.extra = {}; dataParts.tags = { core: last.tags.core };
@@ -523,7 +524,9 @@ async function load() {
       data = json;
       saveLast(url, json);
       render();
+      noteLiveData();
     } else if (data) {
+      noteLiveData();
       // Niets veranderd: alleen de tijd bijwerken
       $$('.updated').forEach((e) => { e.textContent = (mode === 'm' ? '' : 'Bijgewerkt ') + fDT.format(new Date()); });
     }
@@ -531,7 +534,7 @@ async function load() {
   } catch (err) {
     const offline = !navigator.onLine || err instanceof TypeError;
     if (data && offline) {
-      showError('Geen verbinding. Je ziet de laatst geladen stand van ' + fDT.format(new Date(data.generated)) + '.');
+      noteOffline();   // melding met de ouderdom van de stand (zie js/21-pwa.js)
       refreshTimer = setTimeout(load, 60000);
     } else {
       showError('De gegevens konden niet worden geladen: ' + err.message + '. Controleer de toegangscode en het adres bij Instellingen.');
