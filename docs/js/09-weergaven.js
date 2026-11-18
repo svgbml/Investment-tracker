@@ -8,10 +8,16 @@ function renderHome() {
   $('hero-label').textContent = 'Waarde beleggingen, ' + (M.lastT ? fDT.format(M.lastT) : 'laatste meting');
   countTo($('hero-value'), M.totalValue, eur);
   const ch = $('hero-change');
-  ch.textContent = changeLine(T) + (isNum(T.change) ? ', ' + baseText(T) : '');
-  ch.className = 'hero-change ' + (isNum(T.change) ? tone(T.change) : 'muted');
+  if (calmMode()) {
+    ch.textContent = calmChangeLine();
+    ch.className = 'hero-change ' + (isNum(calmChangeValue()) ? tone(calmChangeValue()) : 'muted');
+  } else {
+    ch.textContent = changeLine(T) + (isNum(T.change) ? ', ' + baseText(T) : '');
+    ch.className = 'hero-change ' + (isNum(T.change) ? tone(T.change) : 'muted');
+  }
   drawHero('', false);
 
+  renderHomeExtra('');
   fill('kpis', kpiCards());
 
   const withChange = M.companies.filter((c) => isNum(c.change));
@@ -176,11 +182,14 @@ function renderMHome() {
   const T = M.tot;
   $('m-hero-label').textContent = 'Waarde beleggingen, ' + (M.lastT ? fDT.format(M.lastT) : 'laatste meting');
   countTo($('m-hero-value'), M.totalValue, eur);
-  $('m-hero-change').innerHTML = isNum(T.change)
-    ? '<span class="pill-chg ' + tone(T.change) + '">' + esc(changeLine(T)) + '</span><span class="base" style="padding:6px 0 0">' + esc(baseText(T)) + '</span>'
-    : '<span class="pill-chg">Nog geen metingen van vandaag</span>';
+  $('m-hero-change').innerHTML = calmMode()
+    ? '<span class="pill-chg ' + tone(calmChangeValue()) + '">' + esc(calmChangeLine()) + '</span>'
+    : isNum(T.change)
+      ? '<span class="pill-chg ' + tone(T.change) + '">' + esc(changeLine(T)) + '</span><span class="base" style="padding:6px 0 0">' + esc(baseText(T)) + '</span>'
+      : '<span class="pill-chg">Nog geen metingen van vandaag</span>';
   drawHero('m-', false);
 
+  renderHomeExtra('m-');
   fill('m-kpis', kpiCards());
   const withChange = M.companies.filter((c) => isNum(c.change));
   const up = withChange.filter((c) => c.change > 0).length, down = withChange.filter((c) => c.change < 0).length;
@@ -302,8 +311,12 @@ $('m-search').addEventListener('input', (e) => { ui.listQuery = e.target.value; 
 function setMini() {
   if (!M) return;
   const T = M.tot;
+  const mo = calmMode() ? monthNow() : null;
+  const cal = mo && (mo.cur || mo.prev);
   const html = '<span class="mini-v">' + esc(eur(M.totalValue)) + '</span>' +
-    (isNum(T.changePct) ? '<span class="mini-c ' + tone(T.change) + '">' + esc(spct(T.changePct)) + '<span class="mini-w"> ' + esc(M.dayWord) + '</span></span>' : '') +
+    (calmMode()
+      ? (cal && isNum(cal.pct) ? '<span class="mini-c ' + tone(cal.v) + '">' + esc(spct(cal.pct)) + '<span class="mini-w"> ' + esc(mo.cur ? 'deze maand' : fMonLong.format(cal.t)) + '</span></span>' : '')
+      : isNum(T.changePct) ? '<span class="mini-c ' + tone(T.change) + '">' + esc(spct(T.changePct)) + '<span class="mini-w"> ' + esc(M.dayWord) + '</span></span>' : '') +
     spark(seriesFor(TOTAL, ui.heroRange), C.accent, 'mini-spark');
   ['top-mini', 'm-mini'].forEach((id) => { const el = $(id); if (el) el.innerHTML = html; });
   heroPast();

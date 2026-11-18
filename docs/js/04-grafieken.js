@@ -508,14 +508,17 @@ function segButtons(host, opts, current, onPick) {
 }
 
 function drawHero(p, animate) {
-  const r = ui.heroRange;
+  const r = heroRangeNow();
   const pts = seriesFor(TOTAL, r);
-  segButtons($(p + 'hero-ranges'), RANGES, r, (k) => { ui.heroRange = k; drawHero(p, true); });
-  lineChart($(p + 'hero-chart'), [{ pts, color: C.accent, width: 2.5 }], {
+  // Periodekeuze (bewaard per apparaat) en de keuze voor een vergelijkingslijn: zie js/21-overzicht.js
+  segButtons($(p + 'hero-ranges'), heroRangeList(), r, (k) => { ui.heroRange = k; saveHeroRange(k); drawHero(p, true); });
+  heroCmpButtons(p);
+  const cmp = heroCmpSets(pts);
+  lineChart($(p + 'hero-chart'), [{ pts, color: C.accent, width: 2.5, label: 'Jouw beleggingen' }].concat(cmp.sets), {
     animate, markers: heroMarkers(pts, r), xl: $(p + 'hero-x'), xfmt: xFmt(r, pts), tfmt: tFmt(r, pts),
     empty: 'Nog te weinig metingen voor deze periode. De tracker meet op werkdagen tussen 08:00 en 22:30.',
   });
-  $(p + 'hero-note').textContent = coverageNote(r, pts);
+  $(p + 'hero-note').textContent = [cmp.note, coverageNote(r, pts)].filter(Boolean).join(' ');
   setMini();
 }
 
