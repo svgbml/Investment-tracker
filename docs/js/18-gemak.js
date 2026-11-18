@@ -639,5 +639,5 @@ function segFit(root) {
 }
 let segTimer = 0;
 new MutationObserver(() => { clearTimeout(segTimer); segTimer = setTimeout(() => segFit(), 120); }).observe(document.body, { childList: true, subtree: true });
-window.addEventListener('resize', () => segFit());
+onResize(() => segFit(), { key: 'seg' });
 window.addEventListener('scroll', () => { clearTimeout(segTimer); segTimer = setTimeout(() => segFit(), 200); }, { passive: true });

@@ -15,6 +15,10 @@
   <meta name="apple-mobile-web-app-title" content="Beleggen">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>Investeringstracker</title>
+  <script>try{var t=localStorage.getItem('tracker.theme')||'auto';document.documentElement.dataset.theme=(t==='dark'||(t==='auto'&&matchMedia('(prefers-color-scheme: dark)').matches))?'dark':'light';var m=localStorage.getItem('tracker.motion')||'auto';document.documentElement.dataset.motion=(m==='off'||(m==='auto'&&matchMedia('(prefers-reduced-motion: reduce)').matches))?'off':'on';var l=localStorage.getItem('tracker.lang');if(l==='en'||l==='de'||l==='fr')document.documentElement.lang=l;['compact','big','cb'].forEach(function(k){if(localStorage.getItem('tracker.'+k)==='1')document.documentElement.setAttribute('data-'+k,'1');});}catch(e){}</script>
+  <script>(function(){try{var k=localStorage.getItem('tracker.icon');if(/^(lijn|donker|blauw|licht)$/.test(k||'')){document.querySelector('link[rel="manifest"]').href='manifest-'+k+'.webmanifest';document.querySelector('link[rel="apple-touch-icon"]').href='icons/'+k+'-apple.png';}}catch(e){}})();</script>
+  <!-- Snelle start: de laatst getekende beginpagina alvast uit de browser halen, zodat js/15-prestaties.js hem meteen kan tonen -->
+  <script>window.__snapRead=new Promise(function(ok){try{var r=indexedDB.open('tracker',1);r.onupgradeneeded=function(){try{r.result.createObjectStore('kv');}catch(e){}};r.onerror=function(){ok(null);};r.onsuccess=function(){try{var q=r.result.transaction('kv').objectStore('kv').get('home-snap');q.onsuccess=function(){ok(q.result);};q.onerror=function(){ok(null);};}catch(e){ok(null);}};}catch(e){ok(null);}});</script>
   <script src="config.js?v=57"></script>
   <script src="js/00-vroeg.js?v=57"></script>
   <link rel="preload" href="fonts/figtree-latin.woff2" as="font" type="font/woff2" crossorigin>
@@ -544,6 +548,7 @@
   <script src="js/11-uitbreidingen.js?v=57"></script>
   <script src="js/12-nieuws.js?v=57"></script>
   <script src="js/13-app.js?v=57"></script>
+  <script src="js/15-prestaties.js?v=57"></script>
   <script src="js/15-ui.js?v=57"></script>
   <script src="js/15-risico-analyse.js?v=57"></script>
   <script src="js/15-toon.js?v=57"></script>

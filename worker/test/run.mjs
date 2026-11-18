@@ -1149,6 +1149,56 @@ await test('inloggen geeft dit apparaat zijn eigen code', async () => {
   assert.equal(r.device.label, 'Mac');
   assert.equal((await req('/api/status', { headers: { Authorization: 'Bearer ' + r.session } })).status, 200);
   setKv('sessions', '[]');
+await test('onderzoek per aandeel: part=research&tk= geeft alleen dat aandeel, met ETag', async () => {
+  routes = t212Routes();
+  setKv('rs_AAPL', { prof: { name: 'Apple', sector: 'Technology' }, target: { mean: 260 } });
+  setKv('fin_AAPL', { pe: 30 });
+  setKv('rs_MSFT', { prof: { name: 'Microsoft' }, target: { mean: 500 } });
+  await req('/api/run', { method: 'POST' });
+  const r = await req('/api/data?part=research&tk=AAPL');
+  assert.equal(r.status, 200);
+  const tag = r.headers.get('ETag');
+  assert.ok(tag, 'ETag ontbreekt');
+  const j = await jsonOf(r.clone());
+  assert.equal(j.part, 'research');
+  assert.equal(j.tk, 'AAPL');
+  assert.equal(j.research.target.mean, 260);
+  assert.equal(j.fin.pe, 30);
+  assert.ok(!JSON.stringify(j).includes('Microsoft'), 'alleen het gevraagde aandeel');
+  const whole = await (await req('/api/data?part=extra')).text();
+  const one = await r.text();
+  assert.ok(one.length < whole.length, 'kleiner dan het hele extra-deel');
+  // Onveranderd: 304
+  const again = await req('/api/data?part=research&tk=AAPL', { headers: { 'If-None-Match': tag } });
+  assert.equal(again.status, 304);
+  // Onbekend aandeel: leeg, geen fout
+  const none = await jsonOf(await req('/api/data?part=research&tk=TSLA'));
+  assert.equal(none.ok, true);
+  assert.equal(none.research, null);
+  // Zonder of met een onmogelijke ticker: nette fout
+  assert.equal((await req('/api/data?part=research')).status, 400);
+  assert.equal((await req('/api/data?part=research&tk=' + encodeURIComponent('a b'))).status, 400);
+});
+
+await test('agenda, orders en peildatum zitten in het extra-deel, niet in core', async () => {
+  routes = t212Routes();
+  setKv('events', { updated: '2026-11-18T10:00:00', earnings: [{ tk: 'AAPL', date: '2026-12-01' }], dividends: [], received: [], lastEarnings: [], errors: [] });
+  setKv('peil_2026', { date: '2026-01-01', total: 1000, investments: 900, cash: 100, positions: [] });
+  await req('/api/run', { method: 'POST' });
+  const core = await jsonOf(await req('/api/data?part=core&split=1'));
+  const extra = await jsonOf(await req('/api/data?part=extra'));
+  assert.equal(core.events, undefined, 'events hoort niet meer in core');
+  assert.equal(core.orders, undefined, 'orders hoort niet meer in core');
+  assert.equal(core.peil, undefined, 'peil hoort niet meer in core');
+  assert.ok(extra.events && extra.events.earnings.length === 1, 'events in extra');
+  assert.ok(extra.orders && Array.isArray(extra.orders.rows), 'orders in extra');
+  assert.ok(extra.peil && extra.peil.length === 1, 'peil in extra');
+  // De site plakt de delen aan elkaar; samen is alles er nog
+  const all = Object.assign({}, extra, core);
+  assert.ok(all.events && all.positions && all.weeks, 'samengevoegd is alles aanwezig');
+  // Zonder part (oude versies van de site) blijft alles in één antwoord komen
+  const whole = await jsonOf(await req('/api/data'));
+  assert.ok(whole.events && whole.orders && whole.positions, 'alles samen zonder part');
 });
 
 console.log((failed ? failed + ' fout, ' : '') + passed + ' geslaagd');

@@ -41,6 +41,7 @@ function openDetail(tk, originEl, push) {
   if (push) { history.pushState({ detail: tk }, '', viewHash(tk)); pushedDetail = true; }
   markFresh();
   renderDetail(true);
+  if (typeof ensureResearch === 'function') ensureResearch(tk);   // onderzoek van dit aandeel zo nodig losbijhalen
   ov.querySelectorAll('.tile.ghost').forEach((g) => g.remove());
   ov.classList.remove('anim', 'open', 'pop', 'fade-out');
   ov.hidden = false;
@@ -87,6 +88,7 @@ function switchDetail(tk, dir) {
   ov.scrollTo({ top: 0, behavior: reduceMotion() ? 'auto' : 'smooth' });
   markFresh();
   renderDetail(false, reduceMotion() ? null : dir);
+  if (typeof ensureResearch === 'function') ensureResearch(tk);
 }
 
 function closeDetail() {
@@ -285,11 +287,12 @@ function route(first) {
     return;
   }
   if (ui.detail) { pushedDetail = false; finishDetail(); }
-  if (r.page !== ui.page || first) showPage(r.page, true);
+  // Stond de bewaarde tekening er al (snelle start)? Dan komt de eerste pagina niet nog eens binnenwandelen
+  if (r.page !== ui.page || first) showPage(r.page, !(first && typeof snapTookOver === 'function' && snapTookOver()));
 }
 
 window.addEventListener('hashchange', () => route(false));
-window.addEventListener('resize', () => { placeIndicators(); setMtop(); });
+onResize(() => { placeIndicators(); setMtop(); }, { lead: true, key: 'balk' });
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { placeIndicators(); setMtop(); foldAll(); });
 
 // ---------- Tekenen ----------
@@ -321,7 +324,12 @@ function ensurePage(p) {
 
 // ---------- Panelen inklappen: lange tegels op de beginpagina's starten compact ----------
 // Tegels in dezelfde rij krijgen ingeklapt dezelfde hoogte; een klik op een leeg stuk van de tegel klapt hem uit of in.
-function foldSoon() { foldAll(); cancelAnimationFrame(foldTimer); foldTimer = requestAnimationFrame(() => requestAnimationFrame(foldAll)); }
+function foldSoon() {
+  foldAll();
+  // Nog één keer als de browser alles heeft neergezet (webfont, afbeeldingen); samengevoegd, dus hoogstens één keer per frame
+  cancelAnimationFrame(foldTimer);
+  foldTimer = requestAnimationFrame(() => rafWork('fold', foldAll));
+}
 function foldAll() {
   const H = mode === 'm' ? 300 : 320;
   FOLD_ROOTS.forEach((rid) => {
@@ -432,11 +440,11 @@ document.addEventListener('click', (e) => {
   }
   toggleFold(t);
 });
-let foldResize = null;
-window.addEventListener('resize', () => { clearTimeout(foldResize); foldResize = setTimeout(foldAll, 200); });
+onResize(foldAll, { key: 'fold' });
 
 function render() {
   clearSkeleton();
+  if (typeof snapClear === 'function') snapClear();   // een bewaarde tekening (snelle start) maakt nu plaats voor de echte
   $('welcome').hidden = true;
   document.body.classList.remove('welcoming');
   $('app').hidden = false;
@@ -452,4 +460,5 @@ function render() {
     else closeDetail();
   }
   if (firstRender) { firstRender = false; route(true); }
+  if (typeof snapSoon === 'function') snapSoon();     // deze tekening bewaren voor de volgende start
 }

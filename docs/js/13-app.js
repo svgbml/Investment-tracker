@@ -222,8 +222,15 @@ Object.assign(EN, {
   'Nieuws instellen': 'News settings', 'Bronnen': 'Sources', 'Aandelen': 'Stocks', 'Woorden': 'Words', 'Dempen': 'Mute',
   'hoger = positiever nieuws': 'higher = more positive news', 'Ouder nieuws laden': 'Load older news', 'Meningen per sector en door de tijd': 'Opinions by sector and over time', 'Koersdoel verschil': 'Target change', 'Meest en minst positief': 'Most and least positive', 'één bedrijf': 'one company', '1 dag': '1 day', '1 maand': '1 month', '3 maanden': '3 months', 'Verschil': 'Change', 'Bedrijven die je spreiding verbreden': 'Companies that broaden your diversification', 'Sectoren die je weinig of niet hebt: volg er een': 'Sectors you hold little or none of: follow one', 'Koersdoel analisten': 'Analyst price target', 'volgt na de volgende meting': 'follows after the next measurement', 'Geen ouder nieuws meer.': 'No older news.', 'namen die niet passen: tik op de stip': 'names that do not fit: tap the dot', 'Pictogram op je beginscherm': 'Home screen icon', 'Glas': 'Glass', 'Doorzichtig, witte lijn': 'Transparent, white line', 'Donker': 'Dark', 'Blauw': 'Blue', 'Licht': 'Light', 'Installeren': 'Install', 'Toegang en Worker': 'Access and Worker', 'Koppelingen': 'Connections', 'Als app installeren': 'Install as app', 'Status en reservekopie': 'Status and backup', 'Geschiedenis uit Google Sheet': 'History from Google Sheet', 'Delen (alleen lezen)': 'Sharing (read only)', 'Meldingen': 'Notifications', 'Opslaan en laden': 'Save and load', 'Code vergeten': 'Forget code', 'Toegangscode': 'Access code', 'je bronnen en extra functies': 'your sources and extra features', 'gekoppeld · code in deze browser': 'connected · code in this browser', 'nog niet gekoppeld': 'not connected yet', 'koersbewegingen, cijfers en insiders': 'price moves, earnings and insiders', 'een link om mee te kijken': 'a read-only link to share', 'op je beginscherm, met meldingen': 'on your home screen, with notifications', 'meetstatus en reservekopie': 'measurement status and backup', 'optioneel, eenmalig': 'optional, one time', 'alles aan met voorbeeldgegevens': 'everything on with sample data', 'Inleg': 'Contributions', 'Wat als': 'What if', 'Spreiding': 'Diversification', 'Delen': 'Sharing', 'Vooruit': 'Ahead', 'Belasting': 'Tax', 'Rendement': 'Return', 'Transacties': 'Transactions', 'Toon alles': 'Show all', 'Per sector': 'By sector', 'Eén lijst': 'One list', 'Toon': 'Show', 'Periode': 'Period', 'Indeling': 'Layout', 'Totaal': 'Total', 'Waarde': 'Value',
 });
+// Prestaties: snelle start, nieuwsarchief per 30 koppen en het meetpaneel (?perf)
 // Overzicht: periode en vergelijkingslijn, dagsamenvatting, stijgers en dalers, mijlpalen, rustige modus
 Object.assign(EN, {
+  'De samenhang tussen je posities wordt berekend…': 'Working out how your positions move together…',
+  'Prestaties': 'Performance', 'Opnieuw meten': 'Measure again', 'laatst': 'last', 'gem.': 'avg', 'keer': 'times',
+  'Eerste tekening na': 'First render after', 'Snelle start na': 'Quick start after', 'niet gebruikt': 'not used',
+  'Pagina gereed na': 'Page ready after', 'DOM-knopen': 'DOM nodes', 'Nog niets getekend.': 'Nothing rendered yet.',
+  'desktop': 'desktop', 'telefoon': 'phone',
+  'Tijd in milliseconden per tekening van een weergave. Alleen zichtbaar met ?perf in het adres.': 'Milliseconds per render of a view. Only visible with ?perf in the address.',
   '1 week': '1 week', 'Alleen waarde': 'Value only', 'Maatstaf': 'Benchmark', 'Vergelijken met': 'Compare with', 'Jouw beleggingen': 'Your investments',
   'Je ritme en mijlpalen': 'Your rhythm and milestones', 'Dividend dat eraan komt, wat je hebt bereikt en je stortingen': 'Upcoming dividend, what you reached and your deposits',
   'Volgend dividend': 'Next dividend', 'Stortingen op rij': 'Deposits in a row', 'Maandresultaten': 'Monthly results', 'Net bereikt': 'Just reached',
@@ -231,6 +238,7 @@ Object.assign(EN, {
   'Rustig kijken': 'Calm view', 'Rustige modus: geen dagveranderingen, alleen maandresultaten': 'Calm mode: no daily changes, monthly results only',
   'Drie grootste stijgers en dalers vandaag': 'Three biggest risers and fallers today',
 });
+EN_RE.push([/^Nog (\d+) koppen: scrol verder\.$/, 'Another $1 headlines: keep scrolling.'], [/^Nog 1 kop: scrol verder\.$/, 'Another headline: keep scrolling.']);
 EN_RE.push([/^Alleen (.+)$/, 'Only $1'], [/^Posities (\d+)$/, 'Positions $1'], [/^Volglijst (\d+)$/, 'Watchlist $1']);
 // Kruimelpad, getalweergave, meldingen en de startchecklist
 Object.assign(EN, {

@@ -570,7 +570,7 @@ function riskIdeas(R) {
     }
   }
   // 5. Posities die samen bewegen
-  if (R.mat && R.mat.length >= 3) {
+  if (R.mat && R.mat.length >= 3 && R.C2) {
     let best = null;
     R.mat.forEach((a, i) => R.mat.forEach((b, j) => { const v = R.C2[i][j]; if (j > i && isNum(v) && v >= 0.6 && !isFundC(a.c) && !isFundC(b.c) && (!best || v > best[2])) best = [a, b, v]; }));
     if (best) out.push({ title: best[0].c.tk + ' en ' + best[1].c.tk + ' bewegen bijna samen',

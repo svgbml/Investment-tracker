@@ -321,6 +321,21 @@ export default {
         const glue = (a, b) => a.slice(0, -1) + ',' + b.slice(1);
         // De site vanaf versie 38 vraagt core zonder reeksen (split=1); oudere versies krijgen core met reeksen
         const split = url.searchParams.get('split') === '1';
+        // Eén aandeel uit het onderzoek (koersdoelen, profiel, cijfers), voor een bedrijfspagina:
+        // veel kleiner dan het hele 'extra'-deel ophalen.
+        if (part === 'research') {
+          const tk = String(url.searchParams.get('tk') || '').toUpperCase();
+          if (!/^[A-Z0-9][A-Z0-9.\-]{0,11}$/.test(tk)) return json({ ok: false, error: 'Geef een ticker mee (?part=research&tk=…).' }, 400, cors);
+          let tags0 = {};
+          try { tags0 = JSON.parse((await getKv(env, 'data_etags')) || '{}'); } catch (e) { tags0 = {}; }
+          const tag = tags0.extra ? '"rs-' + tk + '-' + String(tags0.extra).replace(/"/g, '') + '"' : null;
+          const h = { ...jh, ...(tag ? { ETag: tag } : {}) };
+          if (tag && request.headers.get('If-None-Match') === tag) return new Response(null, { status: 304, headers: h });
+          let ex = {};
+          try { ex = JSON.parse(extra || '{}'); } catch (e) { ex = {}; }
+          const body = { ok: true, part: 'research', tk, research: (ex.research || {})[tk] || null, fin: (ex.fin || {})[tk] || null };
+          return new Response(JSON.stringify(body), { status: 200, headers: h });
+        }
         if (part === 'core' || part === 'extra' || part === 'series') {
           let tags = {};
           try { tags = JSON.parse((await getKv(env, 'data_etags')) || '{}'); } catch (e) { tags = {}; }
@@ -596,7 +611,10 @@ function corsHeaders(request, env) {
 }
 
 // ---------- Opgebouwde gegevens bewaren (in twee delen, met een vingerafdruk per deel) ----------
-const EXTRA_KEYS = ['market', 'research', 'fin', 'idx', 'hicp', 'fx', 'marketNews', 'etf', 'ext2'];
+// 'core' haalt de site elke paar minuten op, 'extra' alleen als het veranderde (ETag, anders 304).
+// Alles wat hoogstens een keer per dag verandert hoort daarom in 'extra': events (1x per dag),
+// orders (alleen bij een aankoop of verkoop) en peil (1x per jaar, voor box 3).
+const EXTRA_KEYS = ['market', 'research', 'fin', 'idx', 'hicp', 'fx', 'marketNews', 'etf', 'ext2', 'events', 'orders', 'peil'];
 
 async function sha256Hex(s) {
   const h = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(s)));
