@@ -15,14 +15,10 @@
   <meta name="apple-mobile-web-app-title" content="Beleggen">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>Investeringstracker</title>
-  <script>try{var t=localStorage.getItem('tracker.theme')||'auto';document.documentElement.dataset.theme=(t==='dark'||(t==='auto'&&matchMedia('(prefers-color-scheme: dark)').matches))?'dark':'light';var m=localStorage.getItem('tracker.motion')||'auto';document.documentElement.dataset.motion=(m==='off'||(m==='auto'&&matchMedia('(prefers-reduced-motion: reduce)').matches))?'off':'on';var l=localStorage.getItem('tracker.lang');if(l==='en'||l==='de'||l==='fr')document.documentElement.lang=l;['compact','big','cb'].forEach(function(k){if(localStorage.getItem('tracker.'+k)==='1')document.documentElement.setAttribute('data-'+k,'1');});}catch(e){}</script>
-  <script>(function(){try{var k=localStorage.getItem('tracker.icon');if(/^(lijn|donker|blauw|licht)$/.test(k||'')){document.querySelector('link[rel="manifest"]').href='manifest-'+k+'.webmanifest';document.querySelector('link[rel="apple-touch-icon"]').href='icons/'+k+'-apple.png';}}catch(e){}})();</script>
-  <!-- Snelle start: de laatst getekende beginpagina alvast uit de browser halen, zodat js/15-prestaties.js hem meteen kan tonen -->
-  <script>window.__snapRead=new Promise(function(ok){try{var r=indexedDB.open('tracker',1);r.onupgradeneeded=function(){try{r.result.createObjectStore('kv');}catch(e){}};r.onerror=function(){ok(null);};r.onsuccess=function(){try{var q=r.result.transaction('kv').objectStore('kv').get('home-snap');q.onsuccess=function(){ok(q.result);};q.onerror=function(){ok(null);};}catch(e){ok(null);}};}catch(e){ok(null);}});</script>
-  <script src="config.js?v=57"></script>
-  <script src="js/00-vroeg.js?v=57"></script>
+  <script src="config.js?v=58"></script>
+  <script src="js/00-vroeg.js?v=58"></script>
   <link rel="preload" href="fonts/figtree-latin.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="style.css?v=57">
+  <link rel="stylesheet" href="style.css?v=58">
 </head>
 <body data-page="home">
 
@@ -542,43 +538,43 @@
   <div id="print-area" aria-hidden="true"></div>
 
   <!-- De site: gewone scripts op volgorde (één gedeeld bereik), daarna de Preact-componenten als module -->
-  <script src="js/00-kern.js?v=57"></script>
-  <script src="js/01-basis.js?v=57"></script>
-  <script src="js/02-instellingen.js?v=57"></script>
-  <script src="js/03-model.js?v=57"></script>
-  <script src="js/04-grafieken.js?v=57"></script>
-  <script src="js/05-portefeuille.js?v=57"></script>
-  <script src="js/06-plannen.js?v=57"></script>
-  <script src="js/07-onderzoek.js?v=57"></script>
-  <script src="js/08-risico.js?v=57"></script>
-  <script src="js/09-weergaven.js?v=57"></script>
-  <script src="js/10-navigatie.js?v=57"></script>
-  <script src="js/11-uitbreidingen.js?v=57"></script>
-  <script src="js/12-nieuws.js?v=57"></script>
-  <script src="js/13-app.js?v=57"></script>
-  <script src="js/15-prestaties.js?v=57"></script>
-  <script src="js/15-ui.js?v=57"></script>
-  <script src="js/15-risico-analyse.js?v=57"></script>
-  <script src="js/15-toon.js?v=57"></script>
-  <script src="js/15-bronnen.js?v=57"></script>
-  <script src="js/16-analyse.js?v=57"></script>
-  <script src="js/17-markt.js?v=57"></script>
-  <script src="js/18-gemak.js?v=57"></script>
-  <script src="js/20-handel.js?v=57"></script>
-  <script src="js/21-toegankelijk.js?v=57"></script>
-  <script src="js/21-pwa.js?v=57"></script>
-  <script src="js/21-privacy.js?v=57"></script>
-  <script src="js/21-markt-extra.js?v=57"></script>
-  <script src="js/22-handel-extra.js?v=57"></script>
-  <script src="js/21-plannen2.js?v=57"></script>
-  <script src="js/21-nieuwsplus.js?v=57"></script>
-  <script src="js/26-posities.js?v=57"></script>
-  <script src="js/27-volglijst.js?v=57"></script>
-  <script src="js/28-tickerkaart.js?v=57"></script>
-  <script src="js/21-overzicht.js?v=57"></script>
-  <script src="js/21-handig.js?v=57"></script>
-  <script src="js/19-start.js?v=57"></script>
-  <script type="module" src="js/nieuws-preact.js?v=57"></script>
-  <script type="module" src="js/plannen-preact.js?v=57"></script>
+  <script src="js/00-kern.js?v=58"></script>
+  <script src="js/01-basis.js?v=58"></script>
+  <script src="js/02-instellingen.js?v=58"></script>
+  <script src="js/03-model.js?v=58"></script>
+  <script src="js/04-grafieken.js?v=58"></script>
+  <script src="js/05-portefeuille.js?v=58"></script>
+  <script src="js/06-plannen.js?v=58"></script>
+  <script src="js/07-onderzoek.js?v=58"></script>
+  <script src="js/08-risico.js?v=58"></script>
+  <script src="js/09-weergaven.js?v=58"></script>
+  <script src="js/10-navigatie.js?v=58"></script>
+  <script src="js/11-uitbreidingen.js?v=58"></script>
+  <script src="js/12-nieuws.js?v=58"></script>
+  <script src="js/13-app.js?v=58"></script>
+  <script src="js/15-prestaties.js?v=58"></script>
+  <script src="js/15-ui.js?v=58"></script>
+  <script src="js/15-risico-analyse.js?v=58"></script>
+  <script src="js/15-toon.js?v=58"></script>
+  <script src="js/15-bronnen.js?v=58"></script>
+  <script src="js/16-analyse.js?v=58"></script>
+  <script src="js/17-markt.js?v=58"></script>
+  <script src="js/18-gemak.js?v=58"></script>
+  <script src="js/20-handel.js?v=58"></script>
+  <script src="js/21-toegankelijk.js?v=58"></script>
+  <script src="js/21-pwa.js?v=58"></script>
+  <script src="js/21-privacy.js?v=58"></script>
+  <script src="js/21-markt-extra.js?v=58"></script>
+  <script src="js/22-handel-extra.js?v=58"></script>
+  <script src="js/21-plannen2.js?v=58"></script>
+  <script src="js/21-nieuwsplus.js?v=58"></script>
+  <script src="js/26-posities.js?v=58"></script>
+  <script src="js/27-volglijst.js?v=58"></script>
+  <script src="js/28-tickerkaart.js?v=58"></script>
+  <script src="js/21-overzicht.js?v=58"></script>
+  <script src="js/21-handig.js?v=58"></script>
+  <script src="js/19-start.js?v=58"></script>
+  <script type="module" src="js/nieuws-preact.js?v=58"></script>
+  <script type="module" src="js/plannen-preact.js?v=58"></script>
 </body>
 </html>

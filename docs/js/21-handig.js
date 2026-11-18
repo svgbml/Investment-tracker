@@ -8,15 +8,18 @@
 // (gemaakt met node tools/changelog.mjs); hieronder staat alleen wat de gebruiker merkt.
 // Bij een nieuwe versie: zet de regels van die versie bovenaan, met VERSION uit js/01-basis.js als sleutel.
 const WHATS_NEW = {
-  v57: [
-    'Een kaartje als dit bij een nieuwe versie, met wat er veranderde.',
-    'Tegels met oude gegevens krijgen een klein label, bijvoorbeeld “3 u oud”.',
-    'Lege tegels hebben nu een knop naar de instelling of sleutel die ze vult.',
-    'Lange tabellen houden hun kop in beeld bij scrollen.',
-    'Een getal kopiëren: rechtsklik op de computer, lang indrukken op de telefoon.',
-    'De tracker opent weer op de pagina die je als laatste bekeek (uit te zetten bij Weergave).',
-    'Nieuws: wat analisten vinden per sector en door de tijd.',
+  v58: [
+    'Overzicht: kies de periode van de grote grafiek, vergelijk met een maatstaf, zie de stijgers en dalers van vandaag, mijlpalen en een rustige modus.',
+    'Bedrijven en volglijst: indelen per sector, land of munt, elke aankoop apart, een dagboek en eigen koersdoel per aandeel, labels en een lijst importeren.',
+    'Nieuws en analisten: berichten van meer bronnen gebundeld, betere toonschatting, analisten door de tijd, het cijferseizoen en "wat heb ik gemist".',
+    'Risico en Analyse: wat als-schuiven, stresstests, valuta, fondsoverlap, doorkijk, rollend rendement, herstel na dalingen en een rapport om af te drukken.',
+    'Plannen: twee plannen vergelijken, bedragen na inflatie, gebeurtenissen, dividendkalender, box 3 per jaar, spaargeld en netto vermogen.',
+    'Kopen en verkopen: wat een order met je portefeuille doet, extra bevestiging bij grote orders, een oefenmodus en een beslisdagboek.',
+    'Instellingen: zoeken, stille uren en een dagbundel voor meldingen, deel-links met einddatum, uitloggen op alle apparaten en een logboek.',
+    'Sneller en toegankelijker: de beginpagina staat er meteen, alles werkt met het toetsenbord, grafieken ook als tabel, en een eenvoudige-taalmodus.',
+    'Een kaartje als dit bij een nieuwe versie, labels bij oude gegevens, knoppen bij lege tegels en vastgezette tabelkoppen.',
   ],
+  v57: ['Nieuws: wat analisten vinden per sector en door de tijd.'],
   v56: ['Animaties hersteld bij het wisselen van pagina, en op de risicopagina suggesties die je spreiding verbreden.'],
   v55: ['Kopen en verkopen: je vrije saldo, het risico van het aandeel en wat analisten ervan vinden in het orderscherm.'],
   v54: ['Computer: menu en knoppen in één balk, en de site gebruikt de volle breedte van je scherm.'],

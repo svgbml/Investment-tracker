@@ -12,6 +12,10 @@
  */
 'use strict';
 
+// Snelle start: de laatst getekende beginpagina alvast uit de browser halen, zodat js/15-prestaties.js hem meteen kan tonen.
+// (Stond als inline script in index.html; dat mag niet meer door het veiligheidsbeleid.)
+window.__snapRead=new Promise(function(ok){try{var r=indexedDB.open('tracker',1);r.onupgradeneeded=function(){try{r.result.createObjectStore('kv');}catch(e){}};r.onerror=function(){ok(null);};r.onsuccess=function(){try{var q=r.result.transaction('kv').objectStore('kv').get('home-snap');q.onsuccess=function(){ok(q.result);};q.onerror=function(){ok(null);};}catch(e){ok(null);}};}catch(e){ok(null);}});
+
 (function vroegeVoorkeuren() {
   try {
     var t = localStorage.getItem('tracker.theme') || 'auto';
