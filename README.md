@@ -49,7 +49,12 @@ Zet ze aan op de website onder *Instellingen → Koppelingen en functies*. Sleut
 | Deponeringen bij de SEC (jaar- en kwartaalverslagen, 8-K), 13F van grote beleggers, insiders die samen kopen, koersreactie op kwartaalcijfers | SEC EDGAR, Finnhub | `SEC_CONTACT`; insiders via `FINNHUB_KEY` |
 | Screener en ETF-zoeker | profielen en waardering van de Worker; vaste lijst bekende fondsen | werkt beter met `FMP_KEY` of `FINNHUB_KEY` |
 | Trading 212-pies met rendement per pie | Trading 212 | de sleutel moet de pies mogen lezen |
-| Volglijst met labels, notitie en koopzone; nieuws met gedempte bronnen en een ochtendmelding | je eigen Worker | niets extra |
+| Volglijst met labels (met aantallen en een filter), notitie met datum ("waarom volg ik dit") en koopzone; nieuws met gedempte bronnen en een ochtendmelding | je eigen Worker | niets extra |
+| Bedrijvenlijst in te delen per sector, land, munt of pie, met subtotalen, in- en uitklapbare groepen en een grafiekje van 30 dagen per rij | Trading 212; land en sector via FMP | niets extra; `FMP_KEY` voor land en sector |
+| Per aandeel: elke aankoop apart met het resultaat sinds die aankoop, kostprijs gemiddeld of FIFO (ter informatie), een dagboek met datums en een eigen koersdoel naast dat van analisten | Trading 212 (berekend op de site) | niets extra |
+| Koersalarm vanaf een rij of vanaf je eigen koersdoel, al ingevuld; de Worker kijkt er tijdens de meettijden naar | je eigen Worker | niets extra |
+| Volglijst vullen met een geplakte lijst of CSV-export, met een voorbeeld van wat erbij komt | SEC-bedrijvenlijst en Finnhub | niets extra |
+| Tickerkaart: wijs een beurssymbool aan (of druk lang op een telefoon) voor koers, verandering, je deel en wat analisten vinden | Trading 212, Finnhub | niets extra |
 | Alle transacties in één lijst, export naar Excel (.xlsx) en JSON, uitleg van begrippen, pagina's aanpassen, snel zoeken (Ctrl+K) en sneltoetsen, vegen en omlaag trekken op de telefoon, teller op het app-icoon, compact, grotere tekst en kleurenblindvriendelijk, rondleiding, Duits en Frans, inzoomen in grafieken | de site zelf | niets extra |
 | Statuspagina met verbruik per bron, meetgeschiedenis van 30 dagen en fouten van de website | je eigen Worker | niets extra |
 | Gemak: kaartje *Wat is er nieuw* na een update, label "3 u oud" bij verouderde gegevens, knop *Naar inhoud* voor het toetsenbord, knop naar de juiste sleutel bij een lege tegel, vastgezette tabelkoppen, een getal kopiëren (rechtsklik of lang indrukken) en opnieuw openen op de laatst bekeken pagina | de site zelf | niets extra |

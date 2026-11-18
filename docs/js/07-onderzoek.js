@@ -127,21 +127,29 @@ function finTile(Fin) {
 // Koersdoel van analisten tegenover de koers nu
 function targetBlock(R, c) {
   const T = R.target;
-  if (!T || !isNum(T.mean)) return (R.denied || []).includes('target') ? '<p class="sub" style="margin-top:8px">Koersdoelen zitten niet in je Finnhub-abonnement.</p>' : '';
   const price = isNum(c.priceNative) ? c.priceNative : null;
   const cur = c.cur || 'USD';
+  // Eigen koersdoel (zie 26-posities.js) ernaast, zodat je je eigen aanname naast die van analisten ziet
+  const mine = typeof myTargetOf === 'function' ? myTargetOf(c.tk) : null;
+  const mineTxt = isNum(mine) ? 'Jouw koersdoel is ' + money(mine, cur) + (isNum(price) && price > 0 ? ', ' + spct1(mine / price - 1) + ' ten opzichte van de koers nu' : '') + '.' : '';
+  if (!T || !isNum(T.mean)) {
+    return ((R.denied || []).includes('target') ? '<p class="sub" style="margin-top:8px">Koersdoelen zitten niet in je Finnhub-abonnement.</p>' : '') +
+      (mineTxt ? '<p class="sub" style="margin-top:8px">' + esc(mineTxt) + '</p>' : '');
+  }
   const span = isNum(T.low) && isNum(T.high);
-  const pts = [T.low, T.high, T.mean, price].filter(isNum);
+  const pts = [T.low, T.high, T.mean, price, mine].filter(isNum);
   const lo = Math.min(...pts), hi = Math.max(...pts);
   const pos = (v) => (hi > lo ? ((v - lo) / (hi - lo) * 100).toFixed(1) + '%' : '50%');
   const up = price ? T.mean / price - 1 : null;
   return '<h3 style="margin-top:14px">Koersdoel</h3>' +
     '<div class="tgt"><span class="tgt-rail"></span>' + (span ? '<span class="tgt-band" style="left:' + pos(T.low) + ';width:calc(' + pos(T.high) + ' - ' + pos(T.low) + ')"></span>' : '') +
       '<span class="tgt-mean" style="left:' + pos(T.mean) + '" data-tip="' + esc('Gemiddeld koersdoel ' + money(T.mean, cur)) + '"></span>' +
-      (price ? '<span class="tgt-now" style="left:' + pos(price) + '" data-tip="' + esc('Koers nu ' + money(price, cur)) + '"></span>' : '') + '</div>' +
+      (price ? '<span class="tgt-now" style="left:' + pos(price) + '" data-tip="' + esc('Koers nu ' + money(price, cur)) + '"></span>' : '') +
+      (isNum(mine) ? '<span class="tgt-mine" style="left:' + pos(mine) + '" data-tip="' + esc('Mijn koersdoel ' + money(mine, cur)) + '"></span>' : '') + '</div>' +
     (span ? '<div class="range-labels"><span>laagste ' + esc(money(T.low, cur)) + '</span><span>hoogste ' + esc(money(T.high, cur)) + '</span></div>' : '') +
     '<p class="sub" style="margin-top:6px">Gemiddeld koersdoel ' + esc(money(T.mean, cur)) + (isNum(up) ? ', ' + esc(spct1(up)) + ' ten opzichte van de koers nu' : '') +
-      '. Streep: gemiddelde, stip: koers nu' + (srcOf(R, 'target') === 'av' ? ' (Alpha Vantage, zonder hoogste en laagste)' : '') + '. Koersdoelen zijn meningen van analisten, geen voorspelling.</p>';
+      '. Streep: gemiddelde, stip: koers nu' + (isNum(mine) ? ', ruit: jouw koersdoel' : '') + (srcOf(R, 'target') === 'av' ? ' (Alpha Vantage, zonder hoogste en laagste)' : '') +
+      '. Koersdoelen zijn meningen van analisten, geen voorspelling.' + (mineTxt ? ' ' + esc(mineTxt) : '') + '</p>';
 }
 
 // Stemming in het nieuws (Finnhub, alleen Amerikaanse bedrijven)
@@ -304,11 +312,11 @@ function renderWatchDetail(sym) {
   if (mode === 'm') {
     return '<div class="md"><div class="m-dtop"><button type="button" class="m-back" data-act="back">‹ Terug</button><span class="t">' + esc(sym) + '</span><span></span></div>' +
       '<div class="m-hero"><div class="m-swipe">' + head + '</div>' + chart + '</div>' +
-      '<div class="m-body"><div class="m-stack">' + agenda + priceAlertTile(sym, p && p.price, (p && p.currency) || 'USD') + watchMetaTile(sym, p) + watchTradeTile(sym, p) + research.join('') + market.tiles.join('') + market.table + '<div style="padding:8px 0">' + remove + '</div></div></div></div>';
+      '<div class="m-body"><div class="m-stack">' + agenda + priceAlertTile(sym, p && p.price, (p && p.currency) || 'USD') + myTargetTile(sym) + watchMetaTile(sym, p) + watchTradeTile(sym, p) + research.join('') + market.tiles.join('') + market.table + '<div style="padding:8px 0">' + remove + '</div></div></div></div>';
   }
   return '<div class="band"><div class="d-top"><button type="button" class="btn dark" data-act="back">← Terug</button>' + remove + '</div>' +
     '<div class="hero-head"><div>' + head + '</div></div>' + chart + '</div>' +
-    '<div class="wrap"><div class="grid wide">' + agenda + priceAlertTile(sym, p && p.price, (p && p.currency) || 'USD') + watchMetaTile(sym, p) + watchTradeTile(sym, p) + market.tiles.join('') + '</div>' +
+    '<div class="wrap"><div class="grid wide">' + agenda + priceAlertTile(sym, p && p.price, (p && p.currency) || 'USD') + myTargetTile(sym) + watchMetaTile(sym, p) + watchTradeTile(sym, p) + market.tiles.join('') + '</div>' +
     '<div class="section-head"><h2>Nieuws, analisten en cijfers</h2></div><div class="grid wide">' + research.join('') + '</div>' +
     (market.table ? '<div style="margin-top:16px">' + market.table + '</div>' : '') + '</div>';
 }

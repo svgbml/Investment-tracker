@@ -158,7 +158,7 @@ function renderDetailDesktop(c, swapDir) {
     '</div>' +
     '<div class="wrap' + sw + '">' +
       '<div class="grid">' + I.kpis.join('') + '</div>' +
-      '<div class="grid wide" style="margin-top:16px">' + I.rangeTile + I.posTile + I.tradeTile + I.histTile + I.agendaTile + I.riskTile + valuationTile(c) + overlapTileC(c) + priceAlertTile(c.tk, c.priceNative, c.cur) + '</div>' +
+      '<div class="grid wide" style="margin-top:16px">' + I.rangeTile + I.posTile + I.tradeTile + lotsTile(c) + myTargetTile(c.tk) + diaryTile(c.tk) + I.histTile + I.agendaTile + I.riskTile + valuationTile(c) + overlapTileC(c) + priceAlertTile(c.tk, c.priceNative, c.cur) + '</div>' +
       '<div class="section-head"><h2>Nieuws, analisten en cijfers</h2></div>' +
       '<div class="grid wide">' + I.research.join('') + '</div>' +
       '<div class="section-head"><h2>Sector en vergelijkbare bedrijven</h2></div>' +
@@ -216,8 +216,7 @@ function renderMHome() {
 
 // ---------- Telefoon: Bedrijven als compacte tabel per sector, met grafiekjes en sorteerbare kolommen ----------
 const M_CHIPS = [['label', 'Toon'], ['filter', 'all', 'Alle'], ['filter', 'up', 'Gestegen'], ['filter', 'down', 'Gedaald'],
-  ['label', 'Periode'], ['span', 'today', 'Vandaag'], ['span', '1m', '30 dagen'], ['span', 'all', 'Alles'],
-  ['label', 'Indeling'], ['group', '1', 'Per sector'], ['group', '0', 'Eén lijst']];
+  ['label', 'Periode'], ['span', 'today', 'Vandaag'], ['span', '1m', '30 dagen'], ['span', 'all', 'Alles']];
 const PCT0 = nf({ style: 'percent', maximumFractionDigits: 0 });
 const listSectorOf = (c) => { const s = M.mk && M.mk.ok ? M.mk.sectorOf(c) : (isFundC(c) ? FUNDS : 'Onbekend'); return s === FUNDS ? 'Fondsen' : sectorNl(s); };
 function spanPct(c, pts) {
@@ -236,14 +235,14 @@ function renderMList() {
   const chips = $('m-chips');
   chips.innerHTML = M_CHIPS.map((ch) => {
     if (ch[0] === 'label') return '<span class="lbl">' + esc(ch[1]) + '</span>';
-    const on = ch[0] === 'filter' ? ui.listFilter === ch[1] : ch[0] === 'span' ? ui.listSpan === ch[1] : String(ui.listGroup ? 1 : 0) === ch[1];
+    const on = ch[0] === 'filter' ? ui.listFilter === ch[1] : ui.listSpan === ch[1];
     return '<button type="button" data-g="' + ch[0] + '" data-k="' + ch[1] + '" aria-pressed="' + on + '">' + esc(ch[2]) + '</button>';
-  }).join('');
+  }).join('') + posChipsHtml();
   chips.onclick = (e) => {
     const b = e.target.closest('button[data-g]');
     if (!b) return;
     const g = b.dataset.g, k = b.dataset.k;
-    if (g === 'filter') ui.listFilter = k; else if (g === 'span') ui.listSpan = k; else ui.listGroup = k === '1';
+    if (g === 'filter') ui.listFilter = k; else if (g === 'span') ui.listSpan = k; else setPosGroup(k);
     renderMList();
   };
   const items = filteredCompanies();
@@ -265,12 +264,10 @@ function renderMList() {
   };
   let body = [];
   if (!items.length) body = ['<p class="m-sub" style="padding:16px">Geen bedrijven gevonden' + (ui.listQuery ? ' voor “' + esc(ui.listQuery) + '”' : '') + '.</p>'];
-  else if (ui.listGroup) {
-    const groups = new Map();
-    items.forEach((c) => { const s = listSectorOf(c); if (!groups.has(s)) groups.set(s, []); groups.get(s).push(c); });
-    [...groups.entries()].map(([s, cs]) => ({ s, cs, v: sum(cs.map((c) => c.value)), d: sum(cs.map((c) => c.change || 0)) })).sort((a, b) => b.v - a.v).forEach((g) => {
-      body.push('<div class="m-tgroup"><span>' + esc(g.s.toUpperCase() + ' · ' + (M.totalValue ? PCT0.format(g.v / M.totalValue) : '–')) + '</span><span>' + esc(eur(g.v)) + ' · <b class="' + tone(g.d) + '">' + esc(g.v ? spct(g.d / (g.v - g.d)) : '–') + '</b></span></div>');
-      g.cs.forEach((c) => body.push(row(c)));
+  else if (posGroupBy() !== 'none') {
+    posGroups(items).forEach((g) => {
+      body.push(posGroupHeadM(g));
+      if (!posShut(g.k)) g.cs.forEach((c) => body.push(row(c)));
     });
   } else body = items.map(row);
   fill('m-list-rows', ['<div class="m-thead">' + head('name', 'Bedrijf', true) + '<span></span>' + head('value', 'Waarde') + head('move', midLabel) + head('result', 'Totaal') + '</div>'].concat(body));
@@ -377,7 +374,8 @@ function renderDetailMobile(c, swapDir) {
     '</div>' +
     '<div class="m-body' + sw + '">' +
       '<div class="m-grid2">' + I.kpis.join('') + '</div>' +
-      block('Je positie', I.posTile + I.tradeTile) +
+      block('Je positie', I.posTile + I.tradeTile + lotsTile(c)) +
+      block('Mijn koersdoel en dagboek', myTargetTile(c.tk) + diaryTile(c.tk)) +
       block('Koers en bereik', I.rangeTile) +
       block('Agenda', I.agendaTile) +
       block('Risico', I.riskTile) +

@@ -169,6 +169,7 @@
             <div class="group"><span class="lbl">Toon</span><div id="list-filter" class="seg light" role="group" aria-label="Filter"></div></div>
             <div class="group"><span class="lbl">Sorteer</span><div id="list-sort" class="seg light" role="group" aria-label="Sorteren"></div></div>
             <div class="group"><span class="lbl">Grafiek</span><div id="list-span" class="seg light" role="group" aria-label="Periode van de grafiek in de tegels"></div></div>
+            <div class="group"><span class="lbl">Indeling</span><div id="list-group" class="seg light" role="group" aria-label="Indeling van de lijst"></div></div>
           </div>
           <div id="list-grid" class="grid stagger"></div>
           <div class="section-head"><h2>Volglijst</h2><p class="muted small">Aandelen die je volgt zonder ze te hebben</p></div>
@@ -322,6 +323,14 @@
   <div id="detail" class="detail" role="dialog" aria-modal="true" aria-labelledby="d-title" hidden>
     <div id="detail-inner" class="detail-inner"></div>
   </div>
+
+  <dialog id="dlg-alarm" class="dlg-alarm" aria-labelledby="dlg-alarm-title">
+    <div class="dlg-alarm-top">
+      <h2 id="dlg-alarm-title">Koersalarm</h2>
+      <button type="button" class="set-close" data-alarm-close aria-label="Sluiten"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <div id="alarm-body"></div>
+  </dialog>
 
   <dialog id="dlg-settings" aria-labelledby="dlg-settings-title">
     <form method="dialog" id="form-settings" data-view="list">
@@ -499,6 +508,9 @@
   <script src="js/17-markt.js?v=57"></script>
   <script src="js/18-gemak.js?v=57"></script>
   <script src="js/20-handel.js?v=57"></script>
+  <script src="js/26-posities.js?v=57"></script>
+  <script src="js/27-volglijst.js?v=57"></script>
+  <script src="js/28-tickerkaart.js?v=57"></script>
   <script src="js/21-overzicht.js?v=57"></script>
   <script src="js/21-handig.js?v=57"></script>
   <script src="js/19-start.js?v=57"></script>
