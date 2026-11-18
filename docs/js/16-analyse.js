@@ -562,7 +562,8 @@ function wrappedTile() {
     card('Beste aandeel', W.top ? W.top.tk : '–', W.top ? seur(W.top.p) : 'alleen voor dit jaar', W.top ? tone(W.top.p) : '') +
     card('Dividend ontvangen', eur(W.divs), '') + card('Langste reeks inleggen', W.streak + (W.streak === 1 ? ' maand' : ' maanden') + ' op rij', 'gestort: ' + eur(W.deposited)) +
     card('Beste dag', W.best ? spct(W.best.r) : '–', W.best ? fDM.format(W.best.t) : '', 'gain') + card('Slechtste dag', W.worst ? spct(W.worst.r) : '–', W.worst ? fDM.format(W.worst.t) : '', 'loss') +
-    card('Aan- en verkopen', String(W.trades), '') + '</div>' +
+    card('Aan- en verkopen', String(W.trades), '') +
+    (typeof plxWrapCards === 'function' ? plxWrapCards(Y) : '') + '</div>' +
     '<div class="exp" style="margin-top:10px"><button type="button" class="btn ghost" data-wrapped-png="' + Y + '">Als afbeelding opslaan</button><label class="check small"><input type="checkbox" data-wrapped-hide' + (hideAmounts ? ' checked' : '') + '> Zonder bedragen</label></div></section>';
 }
 function paintWrapped(W, hide) {

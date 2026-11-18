@@ -37,6 +37,8 @@ const demoSettings = () => {
       fireCosts: 1800,
     };
   }
+  // Voorbeeldvoorkeuren uit 14-demo.js aanvullen (alleen wat nog niet is ingesteld)
+  if (data && data.demoPrefs) o.prefs = Object.assign({}, data.demoPrefs, o.prefs);
   return o;
 };
 const plan = { mode: null, draft: null, amount: 100, years: 10, monthly: null, goal: null, status: '', year: null };
@@ -152,7 +154,9 @@ function projection() {
     return { label, r, color, pts, end: v, reached };
   });
   const dep = []; for (let k = 0; k <= n; k++) dep.push({ t: tAt(k), v: start + monthly * k });
-  return { start, monthly, goal, years, sets, dep };
+  const P = { start, monthly, goal, years, sets, dep };
+  // Bedragen in euro's van vandaag als die knop aanstaat (js/21-plannen2.js)
+  return typeof planRealView === 'function' ? planRealView(P) : P;
 }
 
 function forecastTile() {
@@ -169,8 +173,10 @@ function forecastTile() {
       '<div><span class="k"><i style="background:' + x.color + '"></i>' + esc(x.label) + ' (' + esc(P1.format(x.r)) + ' per jaar)</span><b>' + esc(eur(x.end)) + '</b>' +
       (P.goal ? '<span class="sub">' + esc(x.reached ? 'doel in ' + fY(x.reached) : 'doel niet binnen 60 jaar') + '</span>' : '') + '</div>').join('') +
       '<div><span class="k"><i class="dash"></i>Alleen inleg</span><b>' + esc(eur(P.dep[P.dep.length - 1].v)) + '</b></div></div>' +
+    (typeof plxRealToggle === 'function' ? plxRealToggle() : '') +
     '<p class="sub" style="margin-top:10px">Start: je accountwaarde nu (' + esc(eur(P.start)) + '). ' + (isNum(M.settings.monthly) || isNum(plan.monthly) ? '' : 'De maandinleg is geschat uit je stortingen van de laatste drie maanden. ') +
-      'De drie rendementen zijn voorbeelden, geen verwachting: werkelijke rendementen schommelen sterk per jaar en kunnen ook negatief zijn. Kosten, belasting en inflatie zijn niet meegenomen.</p></section>';
+      'De drie rendementen zijn voorbeelden, geen verwachting: werkelijke rendementen schommelen sterk per jaar en kunnen ook negatief zijn. ' +
+      esc(typeof plxRealNote === 'function' ? plxRealNote(P) : 'Kosten, belasting en inflatie zijn niet meegenomen.') + '</p></section>';
 }
 
 function drawForecast(root) {
@@ -305,8 +311,10 @@ function renderPlan() {
     sec('Kosten en aankopen', 'Wisselkosten, fondskosten en je aankoopdagboek', [costTile(), terTile(), journalTile()]) +
     sec('Spreiding en rekeningen', 'Overlap met je fondsen en je andere rekeningen', [overlapTile(), exposureTile(), accountsTile()]) +
     sec('Delen en exporteren', '', [weekShareTile(), exportTile()]) +
-    planExtraSections().map((x) => sec(x.title, x.sub, x.tiles)).join('');
+    planExtraSections().map((x) => sec(x.title, x.sub, x.tiles)).join('') +
+    planExtraSections2().map((x) => sec(x.title, x.sub, x.tiles)).join('');
   drawPlanExtra(host);
+  drawPlanExtra2(host);
   drawForecast(host);
   drawWhatIf(host);
   drawWeekShare(host);

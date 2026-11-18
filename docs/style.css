@@ -1757,3 +1757,38 @@ html[data-motion="off"] .mile-dots { display: none; }
   .term { padding: 0; border: 0; background: none; color: inherit; font: inherit; }
   .corr-detail:empty, .wi-res { break-inside: avoid; }
 }
+
+/* ===== Plannen, deel 2: vergelijken, inflatie, gebeurtenissen, kansen, afvinklijst,
+   dividendinkomen, box 3 per jaar, spaargeld, netto vermogen, potjes en terugrekenen (js/21-plannen2.js) ===== */
+.plx-real { margin-top: 10px; }
+.plx-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); gap: 12px 24px; margin: 10px 0 6px; }
+.plx-cols > div { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 12px; border-radius: 14px; background: var(--empty); }
+.plx-cols .seg { margin: 0; }
+.plx-dot { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+.plx-inl { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--ink-2); }
+.plx-dots { display: grid; grid-template-columns: repeat(20, 1fr); gap: 3px; margin: 12px 0 8px; max-width: 420px; }
+.plx-dots i { aspect-ratio: 1; border-radius: 3px; background: var(--empty); }
+.plx-dots i.on { background: var(--gain); }
+.plx-uitleg { display: flex; flex-direction: column; gap: 8px; padding: 4px 0 8px; }
+.plx-steps { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; }
+.plx-steps li { border-top: 1px solid var(--rule); }
+.plx-steps li .check { align-items: flex-start; padding: 8px 2px; width: 100%; }
+.plx-steps li.done { opacity: .6; }
+.plx-steps li.done b { text-decoration: line-through; }
+.plx-steps .sub { display: block; }
+.plx-months { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); gap: 0 24px; margin-top: 12px; }
+.plx-mlist { list-style: none; margin: 0; padding: 0; }
+.plx-mlist li { display: grid; grid-template-columns: 1fr auto; gap: 0 10px; align-items: baseline; padding: 6px 2px; border-top: 1px solid var(--rule); }
+.plx-mlist li .muted { grid-column: 1 / -1; }
+.plx-ev-rows, .plx-bank-rows { display: flex; flex-direction: column; gap: 6px; }
+.plx-ev-row { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) 0 44px; }
+.plx-bank-row { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr) 44px; }
+.plx-bank-row select, .plx-bucket select { min-height: 44px; padding: 0 10px; border: 1px solid #C9CED6; border-radius: 10px; background: var(--surface); color: var(--ink); font: inherit; min-width: 0; max-width: 100%; }
+.plx-bucket td select { width: 100%; }
+@media (max-width: 700px) {
+  .plx-ev-row, .plx-bank-row { grid-template-columns: 1fr 1fr 44px; }
+  .plx-ev-row input[data-e="name"], .plx-bank-row input[data-b="name"] { grid-column: 1 / -1; }
+  .plx-dots { grid-template-columns: repeat(10, 1fr); max-width: 260px; }
+}
+:root[data-theme="dark"] .plx-bank-row select, :root[data-theme="dark"] .plx-bucket select { background: #10141A; border-color: #3A4250; color: var(--ink); }
+:root[data-theme="dark"] .plx-cols > div { background: rgba(255, 255, 255, .04); }
