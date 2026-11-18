@@ -1,0 +1,90 @@
+name: Voorvertoning
+
+# Van elke pull request een versie van de website die je kunt bekijken voordat hij samengevoegd wordt.
+#
+# Twee manieren, zonder dat er ooit een sleutel in de repository hoeft te staan:
+#  1. Altijd: de map docs/ wordt als bestand bewaard (Artifacts). Downloaden, uitpakken, en openen met
+#     `npx serve` (of `python3 -m http.server`) en dan /index.html?demo. Werkt zonder enige instelling.
+#  2. Optioneel: staat er in de repository een Cloudflare-token (CLOUDFLARE_API_TOKEN en
+#     CLOUDFLARE_ACCOUNT_ID bij Settings → Secrets), dan wordt de tak ook naar Cloudflare Pages gezet
+#     en krijg je een adres per tak. Zonder die geheimen wordt die stap overgeslagen.
+#
+# De voorvertoning draait met voorbeeldgegevens: er zit geen toegangscode en geen eigen portefeuille in.
+# docs/config.js bevat alleen het openbare adres van de Worker, dat zonder code niets teruggeeft.
+on:
+  pull_request:
+    paths: ['docs/**', '.github/workflows/preview.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  voorvertoning:
+    runs-on: ubuntu-latest
+    # De geheimen komen hier in env te staan, zodat de stap hieronder kan kijken of ze bestaan
+    # (in een `if` van een stap is de secrets-context niet te gebruiken).
+    env:
+      CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Geen sleutels in de voorvertoning
+        run: |
+          # Zekerheidscontrole: alleen de bestanden van de site gaan mee, nooit een .dev.vars of .env
+          test ! -e docs/.dev.vars && test ! -e docs/.env || (echo 'Er staat een sleutelbestand in docs/'; exit 1)
+          ! grep -rInE '(api[_-]?key|secret|token)[\"'"'"']?\s*[:=]\s*[\"'"'"'][A-Za-z0-9_-]{16,}' docs/ --include='*.js' --include='*.html' \
+            || (echo 'Er lijkt een sleutel in docs/ te staan; de voorvertoning gaat niet online.'; exit 1)
+
+      - name: Site bewaren om te bekijken
+        uses: actions/upload-artifact@v4
+        with:
+          name: site-pr-${{ github.event.pull_request.number }}
+          path: docs
+          if-no-files-found: error
+
+      - name: Naar Cloudflare Pages (alleen als er een token is ingesteld)
+        id: cf
+        if: ${{ env.CF_TOKEN != '' && env.CF_ACCOUNT != '' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          npx --yes wrangler@4 pages deploy docs \
+            --project-name=investment-tracker-preview \
+            --branch="${{ github.head_ref }}" \
+            --commit-dirty=true | tee cf.txt
+          echo "url=$(grep -oE 'https://[a-z0-9.-]+\.pages\.dev' cf.txt | tail -1)" >> $GITHUB_OUTPUT
+
+      - name: Reactie bij de pull request
+        continue-on-error: true
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const url = '${{ steps.cf.outputs.url }}';
+            const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = [
+              '<!-- voorvertoning -->',
+              '### Voorvertoning van deze tak',
+              '',
+              url ? `🔗 **[${url}/index.html?demo](${url}/index.html?demo)** — en de galerij: [${url}/index.html?gallery](${url}/index.html?gallery)`
+                  : `📦 De site staat als bestand bij [deze werkstroom](${run}) (onder *Artifacts*, \`site-pr-${context.issue.number}\`).`,
+              '',
+              url ? '' : [
+                'Zelf bekijken:',
+                '```bash',
+                'unzip site-pr-' + context.issue.number + '.zip -d site && npx serve site',
+                '```',
+                'Open daarna `/index.html?demo` (of `?gallery` voor de componentengalerij).',
+                '',
+                '_Een adres per tak kan ook: zet `CLOUDFLARE_API_TOKEN` en `CLOUDFLARE_ACCOUNT_ID` bij Settings → Secrets; dan zet deze werkstroom de tak op Cloudflare Pages._',
+              ].join('\n'),
+              '',
+              '_De voorvertoning werkt met voorbeeldgegevens; er zit geen toegangscode of eigen portefeuille in._',
+            ].join('\n');
+            const { data: comments } = await github.rest.issues.listComments({ ...context.repo, issue_number: context.issue.number });
+            const oud = comments.find((c) => c.body && c.body.includes('<!-- voorvertoning -->'));
+            if (oud) await github.rest.issues.updateComment({ ...context.repo, comment_id: oud.id, body });
+            else await github.rest.issues.createComment({ ...context.repo, issue_number: context.issue.number, body });

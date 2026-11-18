@@ -1,0 +1,7 @@
+# Niet opnieuw opmaken: vendorcode, en de bestaande site- en Workercode (bewust dicht opgeschreven).
+docs/vendor/
+docs/js/
+docs/index.html
+docs/style.css
+worker/src/
+apps-script/

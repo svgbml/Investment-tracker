@@ -1,0 +1,12 @@
+{
+  "//": "Opmaak voor nieuwe bestanden. De bestaande code is bewust dicht opgeschreven en wordt niet opnieuw opgemaakt: draai Prettier alleen op een bestand dat je zelf nieuw maakt (npx prettier --write <bestand>).",
+  "printWidth": 200,
+  "singleQuote": true,
+  "semi": true,
+  "tabWidth": 2,
+  "useTabs": false,
+  "arrowParens": "always",
+  "bracketSpacing": true,
+  "endOfLine": "lf",
+  "trailingComma": "es5"
+}

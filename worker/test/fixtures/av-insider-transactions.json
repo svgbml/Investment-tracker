@@ -1,0 +1,6 @@
+{ "data": [
+  { "transaction_date": "2026-10-16", "ticker": "AAPL", "executive": "A. Voorbeeld", "executive_title": "SVP",
+    "security_type": "Common Stock", "acquisition_or_disposal": "D", "shares": "2000", "share_price": "229.5" },
+  { "transaction_date": "2026-09-10", "ticker": "AAPL", "executive": "B. Fictief", "executive_title": "CFO",
+    "security_type": "Common Stock", "acquisition_or_disposal": "A", "shares": "400", "share_price": "212.25" }
+] }

@@ -1,0 +1,18 @@
+[
+  {
+    "instrument": { "ticker": "AAPL_US_EQ", "name": "Apple Inc", "currency": "USD", "isin": "US0378331005" },
+    "quantity": 3,
+    "currentPrice": 232.4,
+    "averagePricePaid": 201.1,
+    "createdAt": "2026-02-10T10:15:00Z",
+    "walletImpact": { "currentValue": 642.5, "unrealizedProfitLoss": 86.5, "totalCost": 556, "fxImpact": -4.2 }
+  },
+  {
+    "instrument": { "ticker": "VUAGl_EQ", "name": "Vanguard S&P 500 UCITS ETF (Acc)", "currency": "GBX", "isin": "IE00BFMXXD54" },
+    "quantity": 4,
+    "currentPrice": 9120,
+    "averagePricePaid": 8650,
+    "createdAt": "2026-01-05T09:00:00Z",
+    "walletImpact": { "currentValue": 418.3, "unrealizedProfitLoss": 21.6, "totalCost": 396.7, "fxImpact": 1.1 }
+  }
+]

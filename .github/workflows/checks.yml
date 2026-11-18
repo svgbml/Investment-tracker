@@ -1,7 +1,9 @@
 name: Controles
 
 # Bij elke push en pull request: syntaxis en namen van de website, typecontrole (geen nieuwe typefouten),
-# en de Worker-tests met nep-API's.
+# de Worker-tests met nep-API's en de contracttests van de bronnen. Daarnaast draait de site in een echte
+# browser met voorbeeldgegevens: elke pagina openen, het rekenwerk en de opmaak nameten.
+# De publicatie van de website wacht op deze werkstroom (zie pages.yml).
 on:
   push:
   pull_request:
@@ -24,3 +26,32 @@ jobs:
         run: node tools/check-types.mjs
       - name: Worker
         run: node worker/test/run.mjs
+      - name: Bronnen (contracttests met bewaarde voorbeeldantwoorden)
+        run: node worker/test/contract.mjs
+      - name: Ongebruikte code (alleen ter informatie)
+        run: node tools/check-dood.mjs --worker
+      - name: Vertalingen (waarschuwing, blokkeert niet)
+        run: node tools/check-i18n.mjs
+      - name: CSS van gewijzigde regels
+        run: |
+          npm i --no-save --no-audit --no-fund stylelint@16
+          git fetch --no-tags --depth=1 origin main || true
+          node tools/check-stijl.mjs
+
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Playwright installeren
+        run: |
+          npm i --no-save --no-audit --no-fund playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Voorbeeldgegevens (geen lege tegels, geen NaN)
+        run: node tools/check-demo.mjs
+      - name: Alle pagina's openen (fouten in de console, overloop)
+        run: node tools/smoke.mjs
+      - name: Rekenwerk en opmaak
+        run: node tools/test-reken.mjs

@@ -123,6 +123,7 @@ Na de agenda zet de Worker elke ochtend taken klaar die hij buiten de meettijden
 - **Weekmail** (optioneel): zaterdag na de weeksnapshot, via Resend (`RESEND_KEY`, `MAIL_TO`, optioneel `MAIL_FROM`). Zonder eigen domein mailt Resend alleen naar het adres van je Resend-account. `settings.mailAmounts = false` stuurt alleen procenten.
 - **Opruimen**: op de eerste dagelijkse cron van elke maand verdwijnen uurregels ouder dan 400 dagen en koersen en sectordagen ouder dan 420 dagen. Dagregels, weken, posities en orders blijven.
 - **Tests**: `npm test` (of `node test/run.mjs`) test de Worker met nep-API's en een database in het geheugen; Cloudflare draait ze vóór elke deploy (`[build]` in `wrangler.toml`).
+- **Contracttests**: `node test/contract.mjs` voert de Worker bewaarde voorbeeldantwoorden van Trading 212, Finnhub, FMP en Alpha Vantage (`test/fixtures/`, verzonnen getallen, geen sleutels) en controleert of hij elk veld nog goed leest. Verandert een bron de naam van een veld, dan valt deze test om in plaats van dat de site stilletjes lege tegels toont.
 - **Volglijst**: symbolen uit `settings.watchlist` (maximaal 20) krijgen dezelfde gegevens als je posities: profiel, koersen, agenda en Finnhub/SEC.
 
 ## Agenda in Google Agenda

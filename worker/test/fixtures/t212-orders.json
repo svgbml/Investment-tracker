@@ -1,0 +1,11 @@
+{ "items": [
+  { "order": { "id": 9001, "side": "BUY", "createdAt": "2026-02-10T10:15:00Z", "ticker": "AAPL_US_EQ",
+      "instrument": { "ticker": "AAPL_US_EQ", "name": "Apple Inc", "currency": "USD", "isin": "US0378331005" } },
+    "fill": { "id": 7001, "type": "MARKET", "quantity": 3, "price": 201.1, "filledAt": "2026-02-10T10:15:04Z",
+      "walletImpact": { "netValue": -604.14, "fxRate": 0.924, "realisedProfitLoss": 0,
+        "taxes": [ { "name": "CURRENCY_CONVERSION_FEE", "quantity": 0.84, "timeCharged": "2026-02-10T10:15:04Z" } ] } } },
+  { "order": { "id": 9002, "side": "BUY", "createdAt": "2026-01-05T09:00:00Z", "ticker": "VUAGl_EQ",
+      "instrument": { "ticker": "VUAGl_EQ", "name": "Vanguard S&P 500 UCITS ETF (Acc)", "currency": "GBX", "isin": "IE00BFMXXD54" } },
+    "fill": { "id": 7002, "type": "LIMIT", "quantity": 4, "price": 8650, "filledAt": "2026-01-05T09:02:00Z",
+      "walletImpact": { "netValue": -396.7, "fxRate": 0.872, "realisedProfitLoss": 0, "taxes": [] } } }
+], "nextPagePath": null }

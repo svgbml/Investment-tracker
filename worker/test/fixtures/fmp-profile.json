@@ -1,0 +1,7 @@
+[
+  { "symbol": "AAPL", "price": 232.4, "marketCap": 3480000000000, "beta": 1.18, "lastDividend": 1.02,
+    "range": "171.40-268.20", "changePercentage": 1.22, "companyName": "Apple Inc", "currency": "USD",
+    "cik": "0000320193", "isin": "US0378331005", "exchange": "NASDAQ", "industry": "Consumer Electronics",
+    "website": "https://example.com/", "sector": "Technology", "country": "US", "fullTimeEmployees": "164000",
+    "ipoDate": "1980-12-12", "isEtf": false, "isFund": false, "isActivelyTrading": true }
+]

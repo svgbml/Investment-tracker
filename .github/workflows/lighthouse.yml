@@ -2,6 +2,7 @@ name: Lighthouse
 
 # Snelheid, toegankelijkheid en grootte van de website (demo) binnen een budget; zie lighthouserc.json.
 # Los van de publicatie: een trage meting op de server van GitHub houdt de website niet tegen.
+# Bij een pull request wordt dezelfde meting ook op main gedaan en komt het verschil als reactie te staan.
 on:
   push:
     paths: ['docs/**', 'lighthouserc.json', '.github/workflows/lighthouse.yml']
@@ -11,21 +12,80 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
 
 jobs:
   lighthouse:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+
       - name: Lighthouse CI
+        id: lhci
+        continue-on-error: true
         run: npx --yes @lhci/cli@0.14.0 autorun
+
+      - name: Scores van deze tak
+        continue-on-error: true
+        run: node tools/lh-score.mjs --lees .lighthouseci-report > lh-nieuw.json
+
+      - name: Dezelfde meting op main
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        run: |
+          git worktree add ../main-versie origin/${{ github.base_ref }}
+          npx --yes @lhci/cli@0.14.0 collect --staticDistDir=../main-versie/docs --url="http://localhost/index.html?demo" --numberOfRuns=3 --settings.preset=desktop
+          npx --yes @lhci/cli@0.14.0 upload --target=filesystem --outputDir=./.lh-main
+          node tools/lh-score.mjs --lees .lh-main > lh-oud.json
+
+      - name: Verschil in een tabel
+        id: diff
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        run: node tools/lh-score.mjs --vergelijk lh-oud.json lh-nieuw.json
+
       - name: Rapport bewaren
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: lighthouse-rapport
-          path: .lighthouseci-report
+          path: |
+            .lighthouseci-report
+            lh-nieuw.json
+            lh-oud.json
           if-no-files-found: ignore
+
+      - name: Reactie bij de pull request
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const tabel = `${{ steps.diff.outputs.tabel }}`;
+            const gelukt = '${{ steps.lhci.outcome }}' === 'success';
+            const body = [
+              '<!-- lighthouse -->',
+              '### Lighthouse: wat verandert er?',
+              '',
+              tabel && tabel.trim() ? tabel : '_De vergelijking met `main` is niet gelukt; kijk in het rapport onder Artifacts._',
+              '',
+              gelukt ? '✅ Binnen het budget uit `lighthouserc.json`.' : '⚠️ Buiten het budget uit `lighthouserc.json` (deze controle blokkeert niets; zie het logboek).',
+              '',
+              '_Gemeten op de server van GitHub met voorbeeldgegevens (`?demo`); de getallen schommelen per meting._',
+            ].join('\n');
+            const { data: comments } = await github.rest.issues.listComments({ ...context.repo, issue_number: context.issue.number });
+            const oud = comments.find((c) => c.body && c.body.includes('<!-- lighthouse -->'));
+            if (oud) await github.rest.issues.updateComment({ ...context.repo, comment_id: oud.id, body });
+            else await github.rest.issues.createComment({ ...context.repo, issue_number: context.issue.number, body });
+
+      - name: Samenvatting bij een push naar main
+        if: github.event_name == 'push'
+        continue-on-error: true
+        run: |
+          echo '### Lighthouse' >> $GITHUB_STEP_SUMMARY
+          node -e "const s=require('./lh-nieuw.json')[0]||{};const n={performance:'Snelheid',accessibility:'Toegankelijkheid','best-practices':'Goede gewoonten',seo:'Vindbaarheid'};Object.entries(s.scores||{}).forEach(([k,v])=>console.log('- '+(n[k]||k)+': '+Math.round(v*100)));" >> $GITHUB_STEP_SUMMARY
