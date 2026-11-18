@@ -82,6 +82,10 @@ Zet ze aan op de website onder *Instellingen → Koppelingen en functies*. Sleut
   - **Plannen**: streefverdeling, inleg-assistent, vooruitblik, scenario's, dividendkalender, belastinghulp box 3, kostenoverzicht, aankoopdagboek, overlap met fondsen, werkelijke spreiding, andere rekeningen, weekoverzicht delen, export naar CSV.
   - **Instellingen**: thema, animaties (automatisch, aan of uit; "automatisch" volgt "minder beweging" van je apparaat), taal (Nederlands, Engels, Duits of Frans), leesbaarheid (compact, grotere tekst, kleurenblindvriendelijk), rondleiding en sneltoetsen, installeren als app en controleren op updates.
   - Eigen indeling op de telefoon, installeerbaar als app, en zonder verbinding de laatst geladen stand.
+- `tools/`: de controles die bij elke push draaien (syntaxis en namen, typen, de site in een echte browser met
+  voorbeeldgegevens, rekenwerk en opmaak, toegankelijkheid, schermafbeeldingen). Zie [tools/README.md](tools/README.md)
+  voor wat elk script doet en hoe je ze zelf draait. De componentengalerij op
+  [`?gallery`](https://svgbml.github.io/Investment-tracker/?gallery) laat elke tegel en knop met voorbeeldgetallen zien.
 - `apps-script/`: de oudere versie als Google Sheet (optioneel). Via de website kun je die geschiedenis eenmalig overnemen in de Worker.
 
 Er staan geen sleutels of portefeuillegegevens in deze repository. Alles staat in je eigen Cloudflare-account; de toegangscode voor de website alleen in je eigen browser.

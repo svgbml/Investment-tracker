@@ -114,7 +114,15 @@ document.addEventListener('click', async (e) => {
 });
 
 // ---------- Start ----------
-if (new URLSearchParams(location.search).has('demo')) demo = true;
+const startQuery = new URLSearchParams(location.search);
+if (startQuery.has('demo')) demo = true;
+// Componentengalerij (?gallery): net als de voorbeeldgegevens pas laden als erom gevraagd wordt,
+// zodat gewone bezoekers dit hulpmiddel niet hoeven te downloaden. Zie docs/js/21-galerij.js.
+if (startQuery.has('gallery')) {
+  const galScript = document.createElement('script');
+  galScript.src = 'js/21-galerij.js?v=' + VERSION.replace(/^v/, '');
+  document.head.appendChild(galScript);
+}
 applyMode();
 placeIndicators();
 load();
