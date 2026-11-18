@@ -77,6 +77,7 @@ export default {
         if (env.T212_KEY && env.T212_SECRET) { try { await refreshEvents(env); } catch (e) { await fail('events', e); } }
         try { await planMarket(env); } catch (e) { await fail('plan', e); }
         try { await cleanupOld(env, new Date(event.scheduledTime)); } catch (e) { await fail('opruimen', e); }
+        try { await dbWatch(env, true); } catch (e) { await fail('database', e); }
         try { await alertEarnings(env); } catch (e) { await fail('meldingen', e); }
         try { await r2Backup(env, new Date(event.scheduledTime)); } catch (e) { await fail('reservekopie', e); }
         await flushCalls(env);
@@ -159,6 +160,26 @@ export default {
       }
       if (url.pathname === '/api/status' && request.method === 'GET') {
         return json({ ok: true, status: await statusInfo(env, envIn) }, 200, cors);
+      }
+      if (url.pathname === '/api/health' && request.method === 'GET') {
+        return json({ ok: true, health: await healthInfo(env) }, 200, cors);
+      }
+      if (url.pathname === '/api/keytest' && request.method === 'POST') {
+        const b = await request.json().catch(() => ({}));
+        try { return json({ ok: true, result: await testKey(env, b && b.name, b && b.value) }, 200, cors); }
+        catch (e) { return json({ ok: false, error: String(e && e.message || e) }, 400, cors); }
+      }
+      if (url.pathname === '/api/r2') {
+        try {
+          if (request.method === 'GET') {
+            const key = url.searchParams.get('preview');
+            return json(Object.assign({ ok: true }, key ? await r2Preview(env, key) : await r2Info(env)), 200, cors);
+          }
+          if (request.method === 'POST') {
+            const day = await r2Backup(env, new Date(), true);
+            return json({ ok: true, made: day, list: (await r2Info(env)).copies }, 200, cors);
+          }
+        } catch (e) { return json({ ok: false, error: String(e && e.message || e) }, 400, cors); }
       }
       if (url.pathname === '/api/backup' && request.method === 'GET') {
         return json(Object.assign({ ok: true }, await backupPart(env, url.searchParams.get('table'), url.searchParams.get('offset'))), 200, cors);
@@ -447,19 +468,56 @@ async function featureStatus(env, raw) {
 
 // ---------- Bronstatus: na herhaalde fouten of een limiet tijdelijk naar een reservebron ----------
 // kv 'src_health' = { bron: { fails, until (ms), msg, at, backup, backupAt } }
+// kv 'src_hist'   = { bron: { days: { 'JJJJ-MM-DD': [in orde, limiet, fout] }, lastOk, lastLimit: {at,msg}, lastErr: {at,msg} } }
+const SRC_HIST_DAYS = 30;
+// Oplopende pauze per bron (idee 147): de eerste fout nog niet, daarna 15 minuten, 1 uur, 4 uur, 12 uur en
+// ten hoogste 24 uur. Een geweigerde bron wordt dus nooit in een lus opnieuw gevraagd.
+const SRC_BACKOFF_MIN = [15, 60, 240, 720, 1440];
+function srcPause(fails) {
+  if (!(fails >= 2)) return 0;
+  return SRC_BACKOFF_MIN[Math.min(fails - 2, SRC_BACKOFF_MIN.length - 1)] * 60e3;
+}
 async function srcState(env) { try { return JSON.parse((await getKv(env, 'src_health')) || '{}'); } catch (e) { return {}; } }
 async function srcDown(env, src) { const o = (await srcState(env))[src]; return !!(o && o.until && o.until > Date.now()); }
-// Een limiet: tot middernacht (UTC) uit; andere fouten: na 3 keer 6 uur uit
+async function srcHistState(env) { try { return JSON.parse((await getKv(env, 'src_hist')) || '{}'); } catch (e) { return {}; } }
+// Een goede dag wordt per bron één keer per aanroep van de Worker vastgelegd: de statuspagina toont
+// dagen in orde, geen aantallen, en zo kost het hoogstens één schrijfactie per bron.
+const SRC_OK_SEEN = new Set();
+async function srcNote(env, src, kind, msg) {
+  const day = parts(new Date()).day;
+  if (kind === 'ok') {
+    if (SRC_OK_SEEN.has(src + '|' + day)) return;
+    SRC_OK_SEEN.add(src + '|' + day);
+  }
+  const st = await srcHistState(env);
+  const o = st[src] || { days: {} };
+  o.days = o.days || {};
+  const d = o.days[day] || [0, 0, 0];
+  d[kind === 'ok' ? 0 : kind === 'limit' ? 1 : 2]++;
+  o.days[day] = d;
+  const at = isoLocal(Date.now());
+  const text = String(msg || '').slice(0, 160);
+  if (kind === 'ok') o.lastOk = at;
+  else if (kind === 'limit') o.lastLimit = { at, msg: text };
+  else o.lastErr = { at, msg: text };
+  Object.keys(o.days).sort().slice(0, -SRC_HIST_DAYS).forEach((k) => { delete o.days[k]; });
+  st[src] = o;
+  await setKv(env, 'src_hist', JSON.stringify(st));
+}
+// Een limiet: tot net na middernacht (UTC) uit; andere fouten: een oplopende pauze
 async function srcFail(env, src, msg, limit) {
   const st = await srcState(env);
   const o = st[src] || { fails: 0 };
   o.fails = (o.fails || 0) + 1; o.msg = String(msg || '').slice(0, 160); o.at = isoLocal(Date.now());
   if (limit) { const d = new Date(); d.setUTCHours(24, 5, 0, 0); o.until = d.getTime(); }
-  else if (o.fails >= 3) o.until = Date.now() + 6 * HOUR_MS;
+  else { const pause = srcPause(o.fails); if (pause) o.until = Date.now() + pause; }
+  o.next = o.until ? isoLocal(o.until) : null;
   st[src] = o;
   await setKv(env, 'src_health', JSON.stringify(st));
+  await srcNote(env, src, limit ? 'limit' : 'err', msg);
 }
 async function srcOk(env, src) {
+  await srcNote(env, src, 'ok');
   const st = await srcState(env);
   if (!st[src]) return;
   delete st[src];
@@ -626,6 +684,32 @@ function parts(d) {
 const dayOf = (ms) => parts(new Date(ms)).day;
 const hourStart = (ms) => Math.floor(ms / HOUR_MS) * HOUR_MS; // Amsterdam wijkt hele uren af van UTC
 
+// ---------- Handelsdag (idee 154) ----------
+// Eén plek die bepaalt bij welke dag een tijdstip hoort. dayOf geeft de Amsterdamse kalenderdag
+// (zomer- en wintertijd komen uit de tijdzone zelf, niet uit een eigen berekening); tradingDay geeft
+// de handelsdag: in het weekend de vrijdag ervoor. De site rekent met dezelfde regels (js/15-bronnen.js).
+function shiftDay(day, n) {
+  const d = new Date(String(day).slice(0, 10) + 'T12:00:00Z');
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+function weekdayOf(day) {
+  const n = new Date(String(day).slice(0, 10) + 'T12:00:00Z').getUTCDay();
+  return n === 0 ? 7 : n;
+}
+function tradingDay(ms) {
+  const day = dayOf(ms);
+  const wd = weekdayOf(day);
+  return wd <= 5 ? day : shiftDay(day, wd === 6 ? -1 : -2);
+}
+// Laatste afgesloten Amerikaanse handelsdag: voor 22:30 Amsterdamse tijd is de beurs van vandaag nog open
+function usTradingDay(ms) {
+  const p = parts(new Date(ms));
+  let day = p.hm < '22:30' ? shiftDay(p.day, -1) : p.day;
+  while (weekdayOf(day) > 5) day = shiftDay(day, -1);
+  return day;
+}
+
 function isLive(d) {
   const p = parts(d);
   return LIVE_WEEKDAYS.includes(p.weekday) && p.hm >= LIVE_START && p.hm <= LIVE_END;
@@ -695,27 +779,47 @@ async function tick(env, now, force) {
   if (force || isLive(now)) {
     const positions = await t212(env, '/api/v0/equity/positions');
     const ts = Math.floor(now.getTime() / 60000) * 60000;
-    const rows = positions.map((p) => ({
+    let prevExtra = {};
+    try { prevExtra = JSON.parse((await getKv(env, 'pos_extra')) || '{}'); } catch (e) { prevExtra = {}; }
+    // Splitsingen en nieuwe tickers (idee 149): eerst de geschiedenis bijwerken, daarna de controle
+    let acts = { splits: [], renames: [] };
+    try { acts = await corporateActions(env, positions, prevExtra); } catch (e) { console.error('splitsing', e); }
+    if (acts.renames.length) prevExtra = renamedExtra(prevExtra, acts.renames);
+    if (acts.splits.length) prevExtra = splitExtra(prevExtra, acts.splits);
+    const actText = actionsText(acts);
+    if (actText) msgs.push(actText);
+    const measured = positions.map((p) => ({
       ticker: shortTicker(p.instrument.ticker), name: p.instrument.name,
       value: r2(num(p.walletImpact.currentValue)), unrealized: r2(num(p.walletImpact.unrealizedProfitLoss)),
       price: num(p.currentPrice), qty: num(p.quantity),
     }));
-    const total = rows.reduce((s, r) => s + r.value, 0);
-    const totalUnreal = rows.reduce((s, r) => s + r.unrealized, 0);
-    rows.push({ ticker: TOTAL, name: 'Totaal beleggingen', value: r2(total), unrealized: r2(totalUnreal), price: null, qty: null });
-    const stmt = env.DB.prepare('INSERT OR REPLACE INTO intraday (ts, ticker, name, value, unrealized, price, qty) VALUES (?,?,?,?,?,?,?)');
-    await env.DB.batch(rows.map((r) => stmt.bind(ts, r.ticker, r.name, r.value, r.unrealized, r.price, r.qty)));
-    await setKv(env, 'pos_extra', JSON.stringify(posExtra(positions)));
-    msgs.push(`${positions.length} posities gemeten (totaal €${total.toFixed(2)}).`);
-    // Vrij saldo bij elke meting (anders alleen in de weeksnapshot, en dan klopt de accountwaarde niet na een aankoop)
-    try {
-      const sum = await t212(env, '/api/v0/equity/account/summary');
-      const cash = num(sum.cash && sum.cash.availableToTrade) + num(sum.cash && sum.cash.inPies) + num(sum.cash && sum.cash.reservedForOrders);
-      await setKv(env, 'cash_now', JSON.stringify({ cash: r2(cash), at: isoLocal(ts) }));
-    } catch (e) { console.error('saldo', e); }
-    try { const m = await alertMoves(env, rows, now); if (m) msgs.push(m); } catch (e) { console.error('meldingen', e); }
-    try { const m = await checkPriceAlerts(env, rows); if (m) msgs.push(m); } catch (e) { console.error('koersalarm', e); }
-    try { const m = await depositReminder(env, now); if (m) msgs.push(m); } catch (e) { console.error('inleg', e); }
+    // Onmogelijke waarden weigeren en vastleggen (idee 148)
+    const chk = checkPositions(measured, prevExtra);
+    if (chk.bad.length) { await logRejects(env, chk.bad); msgs.push(chk.bad.length + ' afwijkende waarde(n) tegengehouden.'); }
+    const rows = chk.rows;
+    if (!rows.length && positions.length) {
+      msgs.push('Geen bruikbare koersen ontvangen; deze meting is overgeslagen.');
+    } else {
+      const total = rows.reduce((s, r) => s + r.value, 0);
+      const totalUnreal = rows.reduce((s, r) => s + r.unrealized, 0);
+      rows.push({ ticker: TOTAL, name: 'Totaal beleggingen', value: r2(total), unrealized: r2(totalUnreal), price: null, qty: null });
+      const stmt = env.DB.prepare('INSERT OR REPLACE INTO intraday (ts, ticker, name, value, unrealized, price, qty) VALUES (?,?,?,?,?,?,?)');
+      await env.DB.batch(rows.map((r) => stmt.bind(ts, r.ticker, r.name, r.value, r.unrealized, r.price, r.qty)));
+      // Een geweigerde positie houdt zijn vorige gegevens, zodat een foute koers geen nieuwe maatstaf wordt
+      const extra = posExtra(positions);
+      chk.bad.forEach((b) => { if (prevExtra[b.ticker]) extra[b.ticker] = prevExtra[b.ticker]; else delete extra[b.ticker]; });
+      await setKv(env, 'pos_extra', JSON.stringify(extra));
+      msgs.push(`${rows.length - 1} posities gemeten (totaal €${total.toFixed(2)}).`);
+      // Vrij saldo bij elke meting (anders alleen in de weeksnapshot, en dan klopt de accountwaarde niet na een aankoop)
+      try {
+        const sum = await t212(env, '/api/v0/equity/account/summary');
+        const cash = num(sum.cash && sum.cash.availableToTrade) + num(sum.cash && sum.cash.inPies) + num(sum.cash && sum.cash.reservedForOrders);
+        await setKv(env, 'cash_now', JSON.stringify({ cash: r2(cash), at: isoLocal(ts) }));
+      } catch (e) { console.error('saldo', e); }
+      try { const m = await alertMoves(env, rows, now); if (m) msgs.push(m); } catch (e) { console.error('meldingen', e); }
+      try { const m = await checkPriceAlerts(env, rows); if (m) msgs.push(m); } catch (e) { console.error('koersalarm', e); }
+      try { const m = await depositReminder(env, now); if (m) msgs.push(m); } catch (e) { console.error('inleg', e); }
+    }
   }
 
   const p = parts(now);
@@ -749,12 +853,157 @@ function posExtra(positions) {
   const out = {};
   positions.forEach((p) => {
     out[shortTicker(p.instrument.ticker)] = {
-      avg: numOrNull(p.averagePricePaid), price: numOrNull(p.currentPrice), cur: p.instrument.currency || null,
+      avg: numOrNull(p.averagePricePaid), price: numOrNull(p.currentPrice), qty: numOrNull(p.quantity), cur: p.instrument.currency || null,
       fx: numOrNull(p.walletImpact && p.walletImpact.fxImpact), cost: numOrNull(p.walletImpact && p.walletImpact.totalCost),
       isin: p.instrument.isin || null, since: p.createdAt || null, t212: p.instrument.ticker || null,
     };
   });
   return out;
+}
+
+// ---------- Controle op onmogelijke waarden (idee 148) ----------
+// Een koers van 0, een negatief aantal of een koerssprong van meer dan 80% zonder splitsing is bijna
+// altijd een fout van de bron. Zulke regels gaan niet de database in; ze komen in kv 'data_rejects'
+// en op de bronnenpagina te staan. De vorige waarde blijft dan staan.
+const MAX_JUMP = 0.8;
+function checkPositions(rows, prev) {
+  const bad = [], ok = [];
+  const note = (r, why, kept) => bad.push({ ticker: r.ticker, name: r.name || '', why, kept: !!kept });
+  rows.forEach((r) => {
+    const p = prev && prev[r.ticker];
+    const pp = p ? numOrNull(p.price) : null;
+    if (!(r.qty >= 0) || !(r.value >= 0)) { note(r, 'aantal ' + r.qty + ' en waarde ' + r.value + ' kunnen niet'); return; }
+    if (r.price > 0 && pp > 0 && Math.abs(r.price / pp - 1) > MAX_JUMP) {
+      note(r, 'koerssprong van ' + pp + ' naar ' + r.price + ' (' + Math.round((r.price / pp - 1) * 100) + '%) zonder splitsing');
+      return;
+    }
+    // Alleen de koers ontbreekt: de waarde in euro's is er wel, die bewaren we (zonder koers)
+    if (!(r.price > 0)) { note(r, 'koers ' + (r.price == null ? 'ontbreekt' : r.price) + '; alleen de waarde is bewaard', true); ok.push(Object.assign({}, r, { price: null })); return; }
+    ok.push(r);
+  });
+  return { rows: ok, bad };
+}
+const REJECT_KEEP = 40;
+async function logRejects(env, bad) {
+  let list = [];
+  try { list = JSON.parse((await getKv(env, 'data_rejects')) || '[]'); } catch (e) { list = []; }
+  const at = isoLocal(Date.now());
+  bad.forEach((b) => list.push({ at, ticker: b.ticker, name: String(b.name || '').slice(0, 60), why: String(b.why).slice(0, 160), kept: !!b.kept }));
+  await setKv(env, 'data_rejects', JSON.stringify(list.slice(-REJECT_KEEP)));
+  return list.length;
+}
+
+// ---------- Splitsingen en nieuwe tickers (idee 149) ----------
+// Splitsing: het aantal stukken verandert terwijl de koers omgekeerd meebeweegt (2:1 -> twee keer zo veel
+// stukken voor de halve koers). Bij een aankoop blijft de koers gelijk, dus die wordt niet als splitsing gezien.
+const SPLIT_TOL = 0.2;
+function splitRatio(prevQty, prevPrice, qty, price) {
+  if (!(prevQty > 0 && qty > 0 && prevPrice > 0 && price > 0)) return null;
+  const q = qty / prevQty;
+  if (Math.abs(q - 1) < 0.02) return null;
+  const inv = prevPrice / price;
+  if (Math.abs(inv / q - 1) > SPLIT_TOL) return null;
+  // Op een ronde verhouding afronden (2:1, 3:1, 1:10); past die niet, dan is het geen splitsing
+  const r = q >= 1 ? Math.round(q * 20) / 20 : 1 / (Math.round((1 / q) * 20) / 20);
+  if (!(r > 0) || Math.abs(r / q - 1) > 0.05) return null;
+  return r;
+}
+// Koersen in de geschiedenis door de verhouding delen en de aantallen ermee vermenigvuldigen,
+// zodat grafieken doorlopen. De waarde in euro's verandert niet door een splitsing.
+async function applySplit(env, ticker, ratio) {
+  await env.DB.batch([
+    env.DB.prepare('UPDATE intraday SET price = price / ?, qty = qty * ? WHERE ticker = ? AND price IS NOT NULL').bind(ratio, ratio, ticker),
+    env.DB.prepare('UPDATE hours SET close_price = close_price / ? WHERE ticker = ? AND close_price IS NOT NULL').bind(ratio, ticker),
+    env.DB.prepare('UPDATE days SET close_price = close_price / ? WHERE ticker = ? AND close_price IS NOT NULL').bind(ratio, ticker),
+    env.DB.prepare('UPDATE positions SET qty = qty * ? WHERE ticker = ?').bind(ratio, ticker),
+  ]);
+  try { await env.DB.prepare('UPDATE ext_prices SET price = price / ? WHERE symbol = ?').bind(ratio, SYMBOL_MAP[ticker] || ticker).run(); } catch (e) { /* tabel bestaat nog niet */ }
+}
+// Naamswijziging: hetzelfde ISIN onder een nieuwe ticker, terwijl de oude ticker weg is
+async function renameTicker(env, from, to) {
+  const u = (sql) => env.DB.prepare(sql).bind(to, from);
+  await env.DB.batch([
+    u('UPDATE OR REPLACE intraday SET ticker = ? WHERE ticker = ?'),
+    u('UPDATE OR REPLACE hours SET ticker = ? WHERE ticker = ?'),
+    u('UPDATE OR REPLACE days SET ticker = ? WHERE ticker = ?'),
+    u('UPDATE OR REPLACE positions SET ticker = ? WHERE ticker = ?'),
+  ]);
+  try { await u('UPDATE OR REPLACE orders SET ticker = ? WHERE ticker = ?').run(); } catch (e) { /* geen orders */ }
+  try { await u('UPDATE OR REPLACE news_hist SET tk = ? WHERE tk = ?').run(); } catch (e) { /* geen nieuwsarchief */ }
+  // Onderzoek, cijfers en waardering mee verhuizen
+  for (const pre of ['rs_', 'fin_', 'val_']) {
+    const v = await getKv(env, pre + from);
+    if (v == null) continue;
+    await setKv(env, pre + to, v);
+    await env.DB.prepare('DELETE FROM kv WHERE key = ?').bind(pre + from).run();
+  }
+  let map = {};
+  try { map = JSON.parse((await getKv(env, 'ticker_map')) || '{}'); } catch (e) { map = {}; }
+  map[from] = { to, at: isoLocal(Date.now()) };
+  await setKv(env, 'ticker_map', JSON.stringify(map));
+}
+const ACTION_KEEP = 20;
+// Eén keer uitvoeren: elke splitsing en naamswijziging staat met dag en verhouding in kv 'corp_actions',
+// dus een tweede meting met dezelfde gegevens past niets opnieuw aan (idee 155).
+async function corporateActions(env, positions, prevExtra) {
+  const out = { splits: [], renames: [] };
+  let log = [];
+  try { log = JSON.parse((await getKv(env, 'corp_actions')) || '[]'); } catch (e) { log = []; }
+  const seen = (k) => log.some((x) => x.key === k);
+  const day = parts(new Date()).day;
+  const now = positions.map((p) => ({ tk: shortTicker(p.instrument.ticker), isin: p.instrument.isin || null, qty: num(p.quantity), price: num(p.currentPrice) }));
+  const nowSet = new Set(now.map((x) => x.tk));
+  // 1. Naamswijzigingen
+  const byIsin = new Map();
+  Object.entries(prevExtra || {}).forEach(([tk, o]) => { if (o && o.isin) byIsin.set(o.isin, tk); });
+  for (const x of now) {
+    if (!x.isin) continue;
+    const old = byIsin.get(x.isin);
+    if (!old || old === x.tk || nowSet.has(old)) continue;
+    const key = 'naam|' + old + '|' + x.tk;
+    if (seen(key)) continue;
+    await renameTicker(env, old, x.tk);
+    out.renames.push({ from: old, to: x.tk, isin: x.isin });
+    log.push({ key, kind: 'naam', from: old, to: x.tk, day, at: isoLocal(Date.now()) });
+  }
+  // 2. Splitsingen
+  for (const x of now) {
+    const was = (prevExtra || {})[x.tk] || (out.renames.find((r) => r.to === x.tk) ? (prevExtra || {})[out.renames.find((r) => r.to === x.tk).from] : null);
+    if (!was) continue;
+    const ratio = splitRatio(numOrNull(was.qty), numOrNull(was.price), x.qty, x.price);
+    if (!ratio) continue;
+    const key = 'split|' + x.tk + '|' + day + '|' + ratio;
+    if (seen(key)) continue;
+    await applySplit(env, x.tk, ratio);
+    out.splits.push({ ticker: x.tk, ratio });
+    log.push({ key, kind: 'split', ticker: x.tk, ratio, day, at: isoLocal(Date.now()) });
+  }
+  if (out.splits.length || out.renames.length) await setKv(env, 'corp_actions', JSON.stringify(log.slice(-ACTION_KEEP)));
+  return out;
+}
+function renamedExtra(prev, renames) {
+  const out = Object.assign({}, prev);
+  renames.forEach((r) => { if (out[r.from]) { out[r.to] = out[r.from]; delete out[r.from]; } });
+  return out;
+}
+function splitExtra(prev, splits) {
+  const out = Object.assign({}, prev);
+  splits.forEach((s) => {
+    const o = out[s.ticker];
+    if (!o) return;
+    out[s.ticker] = Object.assign({}, o, {
+      price: numOrNull(o.price) != null ? numOrNull(o.price) / s.ratio : o.price,
+      avg: numOrNull(o.avg) != null ? numOrNull(o.avg) / s.ratio : o.avg,
+      qty: numOrNull(o.qty) != null ? numOrNull(o.qty) * s.ratio : o.qty,
+    });
+  });
+  return out;
+}
+function actionsText(acts) {
+  const out = [];
+  acts.splits.forEach((s) => out.push('Splitsing ' + s.ticker + ' ' + (s.ratio >= 1 ? s.ratio + ':1' : '1:' + Math.round(1 / s.ratio)) + ' verwerkt in de geschiedenis.'));
+  acts.renames.forEach((r) => out.push('Ticker ' + r.from + ' heet nu ' + r.to + '; de geschiedenis is meeverhuisd.'));
+  return out.join(' ');
 }
 
 async function takePeildatum(env, year) {
@@ -1586,15 +1835,42 @@ async function externalTask(env, kind, arg) {
   if (kind === 'pies') return fetchPies(env);
   if (kind === 'instr') return fetchInstruments(env);
   if (kind === 'fhnews') {
-    // Algemeen marktnieuws van Finnhub (gratis sleutel), voor de nieuwspagina
-    if (!env.FINNHUB_KEY) return 0;
-    const r = await getJson(FINNHUB_BASE + '/news?category=general&token=' + encodeURIComponent(env.FINNHUB_KEY));
-    if (r.status === 401) { await noteExtError(env, 'finnhub', 'Finnhub-sleutel ongeldig (401).'); return 1; }
-    if (!r.ok) return 1;
-    const items = (Array.isArray(r.body) ? r.body : []).filter((n) => n.headline && /^https:\/\//.test(n.url || '')).sort((a, c) => c.datetime - a.datetime).slice(0, 30)
-      .map((n) => ({ t: n.datetime * 1000, headline: String(n.headline).slice(0, 220), summary: String(n.summary || '').slice(0, 300), source: n.source || '', url: n.url, related: String(n.related || '').slice(0, 60) }));
-    await setKv(env, 'market_news', JSON.stringify({ updated: isoLocal(Date.now()), items }));
-    return 1;
+    // Algemeen marktnieuws voor de nieuwspagina. Eerst Finnhub (gratis sleutel); lukt dat niet, dan de
+    // reserve: Alpha Vantage NEWS_SENTIMENT met de sleutel van de gebruiker (idee 153).
+    const store = async (items, source) => {
+      if (!items.length) return;
+      await setKv(env, 'market_news', JSON.stringify({ updated: isoLocal(Date.now()), source, items }));
+    };
+    let calls = 0;
+    if (env.FINNHUB_KEY && !(await srcDown(env, 'finnhub'))) {
+      calls++;
+      const r = await getJson(FINNHUB_BASE + '/news?category=general&token=' + encodeURIComponent(env.FINNHUB_KEY));
+      if (r.status === 401) { await noteExtError(env, 'finnhub', 'Finnhub-sleutel ongeldig (401).'); }
+      else if (r.status === 429) { await srcFail(env, 'finnhub', 'Finnhub-limiet (marktnieuws)', true); }
+      else if (r.ok) {
+        const items = (Array.isArray(r.body) ? r.body : []).filter((n) => n.headline && /^https:\/\//.test(n.url || '')).sort((a, c) => c.datetime - a.datetime).slice(0, 30)
+          .map((n) => ({ t: n.datetime * 1000, headline: String(n.headline).slice(0, 220), summary: String(n.summary || '').slice(0, 300), source: n.source || '', url: n.url, related: String(n.related || '').slice(0, 60) }));
+        if (items.length) { await store(items, 'Finnhub'); await noteExtError(env, 'marketnews', null); return calls; }
+      } else await srcFail(env, 'finnhub', 'Finnhub gaf ' + r.status + ' (marktnieuws)');
+    }
+    if (!env.ALPHAVANTAGE_KEY) { if (!env.FINNHUB_KEY) return calls; await noteExtError(env, 'marketnews', 'Finnhub gaf geen marktnieuws. Met een Alpha Vantage-sleutel gebruikt de Worker die als reserve.'); return calls; }
+    if ((await avCount(env, 0)) < 1) { await noteExtError(env, 'marketnews', 'Finnhub gaf geen marktnieuws en het dagbudget van Alpha Vantage is op.'); return calls; }
+    calls++;
+    await avCount(env, 1);
+    let b = {};
+    try { b = await av(env, 'NEWS_SENTIMENT', 'topics=financial_markets&sort=LATEST&limit=50'); }
+    catch (e) { await noteExtError(env, 'marketnews', 'Reservebron: ' + e.message); return calls; }
+    if (b.premium || !Array.isArray(b.feed)) { await noteExtError(env, 'marketnews', 'De reservebron gaf geen nieuws terug.'); return calls; }
+    const when = (x) => { const m = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})/.exec(x || ''); return m ? Date.UTC(+m[1], m[2] - 1, +m[3], +m[4], +m[5]) : null; };
+    const items = b.feed.map((a) => ({ t: when(a.time_published), a })).filter((x) => x.t && x.a.title && /^https?:\/\//.test(x.a.url || ''))
+      .sort((x, y) => y.t - x.t).slice(0, 30)
+      .map((x) => ({ t: x.t, headline: String(x.a.title).slice(0, 220), summary: String(x.a.summary || '').slice(0, 300), source: x.a.source || 'Alpha Vantage', url: x.a.url,
+        related: String((x.a.ticker_sentiment || []).map((y) => y.ticker).slice(0, 4).join(',')).slice(0, 60) }));
+    if (!items.length) { await noteExtError(env, 'marketnews', 'De reservebron gaf geen nieuws terug.'); return calls; }
+    await store(items, 'Alpha Vantage (reserve voor Finnhub)');
+    await srcBackup(env, 'finnhub', 'Alpha Vantage (marktnieuws)');
+    await noteExtError(env, 'marketnews', null);
+    return calls;
   }
   if (kind === 'companies') return refreshCompanies(env);
   if (kind === 'fh') return finnhubTask(env, arg);
@@ -1794,6 +2070,8 @@ async function newsHistTask(env, tk) {
   let cur = {};
   try { cur = JSON.parse((await getKv(env, 'news_hist_cur')) || '{}'); } catch (e) { cur = {}; }
   if (cur[tk] === 'klaar') return 0;
+  // Twee keer dezelfde taak kan geen dubbele berichten geven (INSERT OR IGNORE op tk + url) en de teller
+  // loopt alleen verder terug in de tijd, tot een jaar; daarna doet de taak niets meer (idee 155).
   const to = cur[tk] || ymdUTC(Date.now() - 9 * 864e5);
   const fromMs = Date.parse(to + 'T00:00:00Z') - 30 * 864e5;
   const from = ymdUTC(fromMs);
@@ -2004,14 +2282,9 @@ async function ensureMarketTables(env) {
   await setKv(env, 'market_schema', '1');
 }
 
-// Laatste afgesloten Amerikaanse handelsdag (feestdagen niet meegerekend)
+// Laatste afgesloten Amerikaanse handelsdag (feestdagen niet meegerekend); zie usTradingDay
 function lastUsDay(now) {
-  const p = parts(now);
-  const d = new Date(p.day + 'T12:00:00Z');
-  // Voor 22:30 Amsterdamse tijd is de beurs van vandaag nog niet dicht
-  if (p.hm < '22:30') d.setUTCDate(d.getUTCDate() - 1);
-  while (d.getUTCDay() === 0 || d.getUTCDay() === 6) d.setUTCDate(d.getUTCDate() - 1);
-  return d.toISOString().slice(0, 10);
+  return usTradingDay(now.getTime());
 }
 
 function prevWeekdays(day, n) {
@@ -2048,6 +2321,43 @@ async function extraStocks(env) {
   return list;
 }
 
+// ---------- Slimmer plannen (idee 146) ----------
+// Aandelen die je bezit krijgen elke ronde onderzoek; de volglijst hoogstens één keer per twee dagen,
+// want die kost hetzelfde budget zonder dat er een positie aan hangt. Rond kwartaalcijfers (van twee dagen
+// ervoor tot vijf dagen erna) gaat een aandeel vooraan in de rij, ook als het op de volglijst staat.
+const WATCH_EVERY_DAYS = 2;
+const EARN_BEFORE = 5, EARN_AFTER = 2;
+const dayGap = (a, b) => Math.round((Date.parse(String(a).slice(0, 10) + 'T12:00:00Z') - Date.parse(String(b).slice(0, 10) + 'T12:00:00Z')) / 864e5);
+function planResearch(held, watch, rsMap, events, today) {
+  const near = new Set();
+  const ok = (d) => /^\d{4}-\d{2}-\d{2}/.test(String(d || ''));
+  ((events && events.earnings) || []).forEach((e) => {
+    if (!ok(e.date)) return;
+    const g = dayGap(e.date, today);
+    if (g >= 0 && g <= EARN_BEFORE) near.add(e.ticker);
+  });
+  ((events && events.lastEarnings) || []).forEach((e) => {
+    if (!ok(e.date)) return;
+    const g = dayGap(today, e.date);
+    if (g >= 0 && g <= EARN_AFTER) near.add(e.ticker);
+  });
+  const age = (tk) => {
+    const u = ((rsMap && rsMap.get(tk)) || {}).updated || '';
+    return u ? Math.max(0, dayGap(today, u)) : 99;
+  };
+  const first = [], rest = [], skipped = [];
+  held.forEach((h) => (near.has(h.ticker) ? first : rest).push(h.ticker));
+  (watch || []).forEach((w) => {
+    if (near.has(w.ticker)) first.push(w.ticker);
+    else if (age(w.ticker) >= WATCH_EVERY_DAYS) rest.push(w.ticker);
+    else skipped.push(w.ticker);
+  });
+  return { order: [...new Set(first.concat(rest))], near: [...near], skipped };
+}
+
+// Dezelfde taak hoeft nooit twee keer in de rij te staan (idee 155)
+const uniqTasks = (list) => [...new Set(list)];
+
 // Zet de taken voor vandaag klaar (1x per dag na de agenda, of handmatig)
 async function planMarket(env) {
   await ensureMarketTables(env);
@@ -2062,8 +2372,19 @@ async function planMarket(env) {
   if (flags.fx) tasks.push('fx');
   if (flags.inflation) tasks.push('hicp');
   if (flags.indices) tasks.push('idx');
+  // Onderzoek: wat je bezit elke ronde, de volglijst minder vaak, en alles rond kwartaalcijfers vooraan (idee 146)
+  let rsMap = new Map();
+  try {
+    const { results: rs } = await env.DB.prepare("SELECT key, value FROM kv WHERE key LIKE 'rs\\_%' ESCAPE '\\'").all();
+    rsMap = new Map(rs.map((r) => { try { return [r.key.slice(3), JSON.parse(r.value)]; } catch (e) { return [r.key.slice(3), {}]; } }));
+  } catch (e) { rsMap = new Map(); }
+  let evts = null;
+  try { evts = JSON.parse((await getKv(env, 'events')) || 'null'); } catch (e) { evts = null; }
+  const research = planResearch(held, watch, rsMap, evts, parts(now).day);
+  // Marktnieuws: met Finnhub, en anders via de reserve (Alpha Vantage) (idee 153)
+  if (env.FINNHUB_KEY || env.ALPHAVANTAGE_KEY) tasks.push('fhnews');
   if (env.FINNHUB_KEY) {
-    tasks.push('fhnews'); all.forEach((h) => tasks.push('fh:' + h.ticker));
+    research.order.forEach((tk) => tasks.push('fh:' + tk));
     // Nieuwsarchief: per ronde voor hoogstens 12 aandelen een maand ouder nieuws, tot een jaar terug; oude berichten opruimen
     let cur = {};
     try { cur = JSON.parse((await getKv(env, 'news_hist_cur')) || '{}'); } catch (e) { cur = {}; }
@@ -2072,10 +2393,8 @@ async function planMarket(env) {
   }
   if (env.ALPHAVANTAGE_KEY) {
     // Reserve: aandelen waar Finnhub iets mist, langst niet aangevuld eerst; het dagbudget bepaalt hoeveel er lukken
-    const { results: rs } = await env.DB.prepare("SELECT key, value FROM kv WHERE key LIKE 'rs\\_%' ESCAPE '\\'").all();
-    const rsMap = new Map(rs.map((r) => { try { return [r.key.slice(3), JSON.parse(r.value)]; } catch (e) { return [r.key.slice(3), {}]; } }));
     const today = parts(now).day;
-    all.map((h) => ({ tk: h.ticker, prev: rsMap.get(h.ticker) || {} }))
+    all.filter((h) => research.order.includes(h.ticker)).map((h) => ({ tk: h.ticker, prev: rsMap.get(h.ticker) || {} }))
       .filter((x) => (x.prev.avAt || '').slice(0, 10) < today && avNeeds(x.prev, !!env.FINNHUB_KEY).length)
       .sort((a, b) => (a.prev.avAt || '').localeCompare(b.prev.avAt || ''))
       .forEach((x) => tasks.push('av:' + x.tk));
@@ -2127,9 +2446,10 @@ async function planMarket(env) {
         if (env.ALPHAVANTAGE_KEY && (nMap.get(h.symbol) || 0) < 20) tasks.push('eod:' + h.symbol);
       });
     }
-    await setKv(env, 'mkt_queue', JSON.stringify(tasks));
+    const q1 = uniqTasks(tasks);
+    await setKv(env, 'mkt_queue', JSON.stringify(q1));
     await setKv(env, 'mkt_planned', usDay);
-    return `Extern: ${tasks.length} taken klaargezet (zonder FMP).`;
+    return `Extern: ${q1.length} taken klaargezet (zonder FMP).`;
   }
   const { results: peerRows } = await env.DB.prepare('SELECT symbol, peers, updated FROM ext_peers').all();
   const peerMap = new Map(peerRows.map((r) => [r.symbol, r]));
@@ -2172,9 +2492,10 @@ async function planMarket(env) {
     if (!haveDays.has(d)) tasks.push('perf:' + d);
   }
   tasks.push(...later);
-  await setKv(env, 'mkt_queue', JSON.stringify(tasks));
+  const queue = uniqTasks(tasks);
+  await setKv(env, 'mkt_queue', JSON.stringify(queue));
   await setKv(env, 'mkt_planned', usDay);
-  return `Markt: ${tasks.length} taken klaargezet.`;
+  return `Markt: ${queue.length} taken klaargezet.`;
 }
 
 async function marketStep(env) {
@@ -2463,7 +2784,9 @@ function isDst(localIso) {
   return t >= start.getTime() + 2 * HOUR_MS && t < end.getTime() + 3 * HOUR_MS;
 }
 
-export const _test = { parts, isLive, shortTicker, isoLocal, isDst, hourStart, dayOf, newsHistTask, storeNews, noteOpinionDay };
+export const _test = { parts, isLive, shortTicker, isoLocal, isDst, hourStart, dayOf, newsHistTask, storeNews, noteOpinionDay,
+  tradingDay, usTradingDay, shiftDay, weekdayOf, srcPause, srcFail, srcOk, srcState, srcHistState, checkPositions, splitRatio,
+  planResearch, uniqTasks, dbWatch, testKey, r2Backup, r2Info, r2Preview, healthInfo, budgetInfo };
 
 
 // =====================================================================
@@ -2876,6 +3199,7 @@ async function statusInfo(env, raw) {
     sizes, devices: (await pushSubs(env)).length, companies: ((await getKv(env, 'companies_meta')) || '').slice(0, 200) || null,
     usage: JSON.parse((await getKv(env, 'api_calls')) || '{}'), siteErrors: JSON.parse((await getKv(env, 'site_errors')) || '[]'),
     tickHist: JSON.parse((await getKv(env, 'tick_hist')) || '{}'), r2: !!env.BACKUP, r2Last: await getKv(env, 'r2_last'),
+    hist: await srcHistState(env), budgets: await budgetInfo(env), db: await dbWatch(env, false),
     keys: Object.fromEntries(KEY_NAMES.map((k) => [k, !!(raw[k] || env[k])])),
   };
 }
@@ -3089,12 +3413,12 @@ async function morningPush(env, at) {
   return alertOnce(env, 'morning|' + p.day, { title: 'Nieuws over je aandelen', body: body.slice(0, 230), url: '#nieuws' });
 }
 
-// ---------- Reservekopie naar Cloudflare R2 (optioneel, wekelijks op zondag) ----------
-// Zet in wrangler.toml een R2-binding met de naam BACKUP (zie worker/README.md). Zonder binding gebeurt er niets.
-async function r2Backup(env, at) {
-  if (!env.BACKUP || parts(at).weekday !== 7) return null;
-  const day = parts(at).day;
-  if ((await getKv(env, 'r2_last')) === day) return null;
+// ---------- Reservekopie naar Cloudflare R2 (optioneel, elke dag) (idee 150) ----------
+// Zet in wrangler.toml een R2-binding met de naam BACKUP (zie worker/README.md). Zonder binding gebeurt er niets:
+// de rest van de Worker merkt er niets van. Bewaartermijn: 7 dagkopieën en 4 weekkopieën (zondag).
+const R2_KEEP_DAILY = 7, R2_KEEP_WEEKLY = 4;
+const R2_KEY_RE = /^(dag|week)\/\d{4}-\d{2}-\d{2}\.json$/;
+async function r2Dump(env) {
   const out = await backupPart(env, null, 0);
   out.data = {};
   for (const t of Object.keys(BACKUP_TABLES)) {
@@ -3105,14 +3429,236 @@ async function r2Backup(env, at) {
       if (part.rows.length < BACKUP_PAGE) break;
     }
   }
-  await env.BACKUP.put('backup-' + day + '.json', JSON.stringify(out), { httpMetadata: { contentType: 'application/json' } });
-  // Alleen de laatste 8 kopieën bewaren
-  const listed = await env.BACKUP.list({ prefix: 'backup-' });
-  const keys = ((listed && listed.objects) || []).map((o) => o.key).sort();
-  for (const k of keys.slice(0, Math.max(0, keys.length - 8))) await env.BACKUP.delete(k);
+  return out;
+}
+async function r2Backup(env, at, force) {
+  if (!env.BACKUP) return null;
+  const day = parts(at).day;
+  // Eén kopie per dag; dezelfde dag nog eens overschrijft dezelfde sleutel (idee 155)
+  if (!force && (await getKv(env, 'r2_last')) === day) return null;
+  const body = JSON.stringify(await r2Dump(env));
+  const meta = { httpMetadata: { contentType: 'application/json' } };
+  await env.BACKUP.put('dag/' + day + '.json', body, meta);
+  if (parts(at).weekday === 7) await env.BACKUP.put('week/' + day + '.json', body, meta);
+  await r2Prune(env);
   await setKv(env, 'r2_last', day);
   return day;
 }
+// Te veel kopieën weghalen; 'backup-' is de oude naamgeving (wekelijks), die wordt opgeruimd
+async function r2Prune(env) {
+  for (const [prefix, keep] of [['dag/', R2_KEEP_DAILY], ['week/', R2_KEEP_WEEKLY], ['backup-', 0]]) {
+    const listed = await env.BACKUP.list({ prefix });
+    const keys = ((listed && listed.objects) || []).map((o) => o.key).sort();
+    for (const k of keys.slice(0, Math.max(0, keys.length - keep))) await env.BACKUP.delete(k);
+  }
+}
+async function r2Info(env) {
+  if (!env.BACKUP) return { on: false, copies: [], keep: { daily: R2_KEEP_DAILY, weekly: R2_KEEP_WEEKLY } };
+  const copies = [];
+  for (const prefix of ['dag/', 'week/']) {
+    const listed = await env.BACKUP.list({ prefix });
+    ((listed && listed.objects) || []).forEach((o) => copies.push({ key: o.key, kind: prefix === 'dag/' ? 'dag' : 'week', bytes: o.size || null, at: o.uploaded ? new Date(o.uploaded).toISOString() : null }));
+  }
+  copies.sort((a, b) => b.key.localeCompare(a.key));
+  return { on: true, copies, keep: { daily: R2_KEEP_DAILY, weekly: R2_KEEP_WEEKLY }, last: await getKv(env, 'r2_last') };
+}
+// Voorbeeld vóór terugzetten: wat zit erin en wat verandert er tegenover wat er nu in de database staat.
+// Deze functie zet niets terug; terugzetten gaat via /api/restore met de regels uit de kopie.
+async function r2Preview(env, key) {
+  if (!env.BACKUP) throw new Error('Er is geen R2-bucket gekoppeld (binding BACKUP).');
+  if (!R2_KEY_RE.test(String(key || ''))) throw new Error('Onbekende reservekopie.');
+  const obj = await env.BACKUP.get(key);
+  if (!obj) throw new Error('Deze reservekopie staat er niet (meer).');
+  const txt = await obj.text();
+  let j = null;
+  try { j = JSON.parse(txt); } catch (e) { throw new Error('Deze reservekopie is onleesbaar.'); }
+  const data = (j && j.data) || {};
+  const nowCounts = (await backupPart(env, null, 0)).tables || {};
+  const tables = Object.keys(BACKUP_TABLES).map((t) => {
+    const n = Array.isArray(data[t]) ? data[t].length : 0;
+    return { table: t, inBackup: n, inDatabase: Number(nowCounts[t] || 0), diff: n - Number(nowCounts[t] || 0) };
+  });
+  const wk = Array.isArray(data.weeks) ? data.weeks.map((r) => String(r[0])).sort() : [];
+  return { preview: { key, created: (j && j.created) || null, bytes: txt.length, tables, weeksFrom: wk[0] || null, weeksTo: wk[wk.length - 1] || null } };
+}
+
+// =====================================================================
+// ---------- Bronnen: budgetten, databasegrootte, sleuteltests en de bronnenpagina ----------
+
+// ---------- Budget per bron (idee 152) ----------
+// 'own' is wat de Worker zelf per dag aanhoudt (lager dan de grens van de bron, als buffer).
+const SRC_BUDGETS = {
+  fmp: { name: 'Financial Modeling Prep', limit: 250, per: 'dag', own: FMP_DAY_BUDGET },
+  alphavantage: { name: 'Alpha Vantage', limit: 25, per: 'dag', own: AV_DAY_BUDGET },
+  twelvedata: { name: 'Twelve Data', limit: 800, per: 'dag' },
+  finnhub: { name: 'Finnhub', limit: 60, per: 'minuut' },
+  fred: { name: 'FRED', limit: 120, per: 'minuut' },
+  sec: { name: 'SEC EDGAR', limit: 10, per: 'seconde' },
+};
+async function budgetInfo(env) {
+  const day = parts(new Date()).day;
+  let usage = {}, fmpC = null, avC = null;
+  try { usage = JSON.parse((await getKv(env, 'api_calls')) || '{}'); } catch (e) { usage = {}; }
+  try { fmpC = JSON.parse((await getKv(env, 'fmp_calls')) || 'null'); } catch (e) { fmpC = null; }
+  try { avC = JSON.parse((await getKv(env, 'av_calls')) || 'null'); } catch (e) { avC = null; }
+  const today = usage[day] || {};
+  return { day, sources: Object.entries(SRC_BUDGETS).map(([src, b]) => {
+    let used = Number(today[src] || 0);
+    // De eigen teller is de waarheid voor de dagbudgetten: die telt ook verzoeken van vóór vandaag mee als de dag gelijk is
+    if (src === 'fmp' && fmpC && fmpC.day === day) used = Math.max(used, Number(fmpC.n) || 0);
+    if (src === 'alphavantage' && avC && avC.day === day) used = Math.max(used, Number(avC.n) || 0);
+    const cap = b.own || b.limit;
+    return { src, name: b.name, used, limit: b.limit, per: b.per, own: b.own || null, pct: b.per === 'dag' ? Math.min(1, used / cap) : null };
+  }) };
+}
+
+// ---------- Databasegrootte in de gaten houden (idee 151) ----------
+// D1 geeft geen grootte terug, dus de Worker schat: aantal regels maal een gemiddelde regel, plus de
+// werkelijke lengte van de kv- en nieuwsregels. Bij meer dan 70% ruimt hij het nieuwsarchief op, bij 85%
+// komt er een melding. De grens is die van het gratis plan (500 MB per database).
+const DB_LIMIT_BYTES = 500e6;
+const DB_CLEAN_AT = 0.7, DB_WARN_AT = 0.85;
+const NEWS_MAX_ROWS = 40000;
+const ROW_BYTES = { intraday: 70, hours: 110, days: 130, weeks: 70, positions: 70, orders: 150 };
+async function dbWatch(env, clean) {
+  const one = async (sql) => { try { const r = await env.DB.prepare(sql).first(); return r ? Number(r.n) || 0 : 0; } catch (e) { return 0; } };
+  const tables = {};
+  let bytes = 0;
+  for (const [t, b] of Object.entries(ROW_BYTES)) {
+    const n = await one('SELECT COUNT(*) AS n FROM ' + t);
+    tables[t] = { rows: n, bytes: n * b };
+    bytes += n * b;
+  }
+  const kvBytes = await one('SELECT SUM(LENGTH(key) + LENGTH(value)) AS n FROM kv');
+  tables.kv = { rows: await one('SELECT COUNT(*) AS n FROM kv'), bytes: kvBytes };
+  bytes += kvBytes;
+  const newsRows = await one('SELECT COUNT(*) AS n FROM news_hist');
+  const newsBytes = await one("SELECT SUM(LENGTH(tk) + LENGTH(headline) + LENGTH(IFNULL(source, '')) + LENGTH(url) + LENGTH(IFNULL(summary, '')) + 24) AS n FROM news_hist");
+  tables.news_hist = { rows: newsRows, bytes: newsBytes };
+  bytes += newsBytes;
+  const out = { checked: isoLocal(Date.now()), bytes, limit: DB_LIMIT_BYTES, pct: bytes / DB_LIMIT_BYTES, tables, newsKeep: NEWS_MAX_ROWS };
+  if (!clean) return out;
+  // Opruimen: eerst oud nieuws, dan het nieuwsarchief terug naar het maximum aantal regels
+  const removed = [];
+  const run = async (sql, arg, what) => {
+    try { const r = await env.DB.prepare(sql).bind(arg).run(); const n = r.meta && r.meta.changes; if (n) removed.push(n + ' ' + what); } catch (e) { /* tabel bestaat (nog) niet */ }
+  };
+  await run('DELETE FROM news_hist WHERE t < ?', Date.now() - NEWS_KEEP_DAYS * 864e5, 'oude nieuwsregels');
+  if (newsRows > NEWS_MAX_ROWS || out.pct > DB_CLEAN_AT) {
+    await run('DELETE FROM news_hist WHERE t < (SELECT t FROM news_hist ORDER BY t DESC LIMIT 1 OFFSET ?)', NEWS_MAX_ROWS, 'nieuwsregels boven het maximum');
+  }
+  out.cleaned = removed.join(', ') || null;
+  if (removed.length) {
+    const after = await dbWatch(env, false);
+    out.bytes = after.bytes; out.pct = after.pct; out.tables = after.tables;
+  }
+  if (out.pct > DB_WARN_AT && (await pushSubs(env)).length) {
+    await alertOnce(env, 'db|' + parts(new Date()).day.slice(0, 7), { title: 'Database raakt vol',
+      body: 'De database van je tracker is naar schatting ' + Math.round(out.pct * 100) + '% van 500 MB. Op de bronnenpagina staat waar de ruimte zit.', url: '#status', tag: 'db' });
+  }
+  await setKv(env, 'db_watch', JSON.stringify({ at: out.checked, bytes: out.bytes, pct: out.pct, cleaned: out.cleaned }));
+  return out;
+}
+
+// ---------- Sleutel testen zonder hem op te slaan (idee 62) ----------
+// De site stuurt de ingevulde sleutel (of niets, dan test de Worker de sleutel die er al staat). De Worker doet
+// één klein verzoek en geeft alleen een uitslag terug: de sleutel wordt niet bewaard en niet teruggestuurd.
+const KEY_TESTABLE = ['T212_KEY', 'T212_SECRET', 'FMP_KEY', 'FINNHUB_KEY', 'ALPHAVANTAGE_KEY', 'TWELVEDATA_KEY', 'FRED_KEY', 'SEC_CONTACT', 'RESEND_KEY'];
+async function testKey(env, name, value) {
+  if (!KEY_TESTABLE.includes(name)) throw new Error('Deze sleutel kan de Worker niet testen.');
+  const given = typeof value === 'string' ? value.trim() : '';
+  if (given.length > 300) throw new Error('Deze waarde is te lang.');
+  const e = Object.create(env);
+  if (given) e[name] = given;
+  const key = String(e[name] || '');
+  if (!key) return { state: 'leeg', message: 'Er is nog geen waarde ingevuld of opgeslagen.' };
+  // Nooit de sleutel zelf in de uitslag
+  const hide = (t) => String(t || '').split(key).join('…').slice(0, 200);
+  const nope = (status) => (status === 401 || status === 403 ? { state: 'fout', message: 'De bron weigert deze sleutel (' + status + ').' }
+    : status === 429 ? { state: 'limiet', message: 'De sleutel werkt, maar de bron zit aan zijn limiet (429).' }
+      : { state: 'onbekend', message: 'De bron gaf ' + status + '; dat zegt niets over de sleutel. Probeer het later nog eens.' });
+  try {
+    if (name === 'T212_KEY' || name === 'T212_SECRET') {
+      if (!e.T212_KEY || !e.T212_SECRET) return { state: 'leeg', message: 'Vul eerst beide in: de sleutel én het secret.' };
+      const res = await fetch((e.T212_BASE || 'https://live.trading212.com') + '/api/v0/equity/account/summary', { headers: { Authorization: 'Basic ' + btoa(e.T212_KEY + ':' + e.T212_SECRET) } });
+      if (res.status === 200) { const j = await res.json().catch(() => null); return { state: 'ok', message: 'Werkt' + (j && j.currency ? ' (rekening in ' + j.currency + ')' : '') + '.' }; }
+      if (res.status === 401) return { state: 'fout', message: 'Trading 212 weigert deze combinatie (401). Controleer sleutel en secret.' };
+      if (res.status === 403) return { state: 'fout', message: 'De sleutel mist het leesrecht voor je rekening (403).' };
+      return nope(res.status);
+    }
+    if (name === 'FMP_KEY') {
+      const res = await fetch(FMP_BASE + '/profile?symbol=AAPL&apikey=' + encodeURIComponent(key));
+      if (res.status === 200) {
+        const j = await res.json().catch(() => null);
+        if (Array.isArray(j) && j.length) return { state: 'ok', message: 'Werkt (proefvraag voor Apple gaf een profiel terug).' };
+        const msg = j && (j['Error Message'] || j.message);
+        if (msg && /limit/i.test(String(msg))) return { state: 'limiet', message: 'De sleutel werkt, maar het dagbudget is op.' };
+        return { state: 'fout', message: 'FMP gaf geen gegevens terug: ' + hide(msg || 'onbekende reden') };
+      }
+      return nope(res.status);
+    }
+    if (name === 'FINNHUB_KEY') {
+      const r = await getJson(FINNHUB_BASE + '/quote?symbol=AAPL&token=' + encodeURIComponent(key));
+      if (r.ok && r.body && Number(r.body.c) > 0) return { state: 'ok', message: 'Werkt (koers van Apple ontvangen).' };
+      if (r.ok) return { state: 'fout', message: 'Finnhub antwoordde wel, maar zonder koers. Controleer de sleutel.' };
+      return nope(r.status);
+    }
+    if (name === 'ALPHAVANTAGE_KEY') {
+      const r = await getJson(AV_BASE + '?function=GLOBAL_QUOTE&symbol=AAPL&apikey=' + encodeURIComponent(key));
+      const b = (r.ok && r.body) || {};
+      const msg = b.Information || b.Note || b['Error Message'];
+      if (b['Global Quote'] && Object.keys(b['Global Quote']).length) return { state: 'ok', message: 'Werkt (koers van Apple ontvangen).' };
+      if (msg && /rate limit|requests per/i.test(String(msg))) return { state: 'limiet', message: 'De sleutel werkt, maar het budget van vandaag (25 verzoeken) is op.' };
+      if (msg) return { state: 'fout', message: 'Alpha Vantage zegt: ' + hide(msg) };
+      return r.ok ? { state: 'onbekend', message: 'Alpha Vantage gaf een leeg antwoord.' } : nope(r.status);
+    }
+    if (name === 'TWELVEDATA_KEY') {
+      const r = await getJson('https://api.twelvedata.com/quote?symbol=AAPL&apikey=' + encodeURIComponent(key));
+      const b = (r.ok && r.body) || {};
+      if (b.close != null || b.symbol) return { state: 'ok', message: 'Werkt (koers van Apple ontvangen).' };
+      if (Number(b.code) === 429) return { state: 'limiet', message: 'De sleutel werkt, maar de limiet is bereikt.' };
+      if (b.message) return { state: 'fout', message: 'Twelve Data zegt: ' + hide(b.message) };
+      return nope(r.status);
+    }
+    if (name === 'FRED_KEY') {
+      const r = await getJson('https://api.stlouisfed.org/fred/series?series_id=SP500&file_type=json&api_key=' + encodeURIComponent(key));
+      if (r.ok && r.body && r.body.seriess) return { state: 'ok', message: 'Werkt (reeks S&P 500 gevonden).' };
+      if (r.status === 400) return { state: 'fout', message: 'FRED weigert deze sleutel (400). Een FRED-sleutel is 32 tekens.' };
+      return nope(r.status);
+    }
+    if (name === 'SEC_CONTACT') {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(key)) return { state: 'fout', message: 'Dit is geen e-mailadres; de SEC vraagt een contactadres.' };
+      const res = await fetch('https://data.sec.gov/api/xbrl/companyconcept/CIK0000320193/us-gaap/Revenues.json', { headers: { 'User-Agent': 'investment-tracker (' + key + ')', Accept: 'application/json' } });
+      if (res.status === 200) return { state: 'ok', message: 'Werkt (de SEC antwoordt met dit contactadres).' };
+      if (res.status === 403) return { state: 'fout', message: 'De SEC weigert het verzoek (403). Vul een echt e-mailadres in.' };
+      if (res.status === 404) return { state: 'ok', message: 'De SEC antwoordt met dit contactadres (de proefvraag bestaat niet meer, dat is hier geen probleem).' };
+      return nope(res.status);
+    }
+    if (name === 'RESEND_KEY') {
+      const r = await getJson('https://api.resend.com/domains', { Authorization: 'Bearer ' + key });
+      if (r.ok) return { state: 'ok', message: 'Werkt (Resend accepteert de sleutel).' };
+      return nope(r.status);
+    }
+  } catch (err) {
+    return { state: 'onbekend', message: 'De proefvraag lukte niet: ' + hide(err && err.message || err) };
+  }
+  return { state: 'onbekend', message: 'Geen proef beschikbaar.' };
+}
+
+// ---------- Alles voor de bronnenpagina (ideeën 61, 145, 147, 148, 149, 150, 151, 152) ----------
+async function healthInfo(env) {
+  let rejects = [], actions = [], map = {};
+  try { rejects = JSON.parse((await getKv(env, 'data_rejects')) || '[]'); } catch (e) { rejects = []; }
+  try { actions = JSON.parse((await getKv(env, 'corp_actions')) || '[]'); } catch (e) { actions = []; }
+  try { map = JSON.parse((await getKv(env, 'ticker_map')) || '{}'); } catch (e) { map = {}; }
+  return {
+    now: isoLocal(Date.now()), day: parts(new Date()).day, tradingDay: tradingDay(Date.now()), usDay: usTradingDay(Date.now()),
+    sources: await srcState(env), hist: await srcHistState(env), errors: JSON.parse((await getKv(env, 'ext_errors')) || '{}'),
+    budgets: await budgetInfo(env), db: await dbWatch(env, false), rejects: rejects.slice(-20).reverse(), actions: actions.slice(-10).reverse(), tickerMap: map,
+    r2: await r2Info(env), backoff: SRC_BACKOFF_MIN, keys: Object.fromEntries(KEY_TESTABLE.map((k) => [k, !!env[k]])),
+  };
+}
+
 
 // ---------- Deponeringen bij de SEC per bedrijf (jaar- en kwartaalverslagen, 8-K) ----------
 // CIK-nummers uit de bedrijvenlijst; per stap hoogstens 5 bedrijven, de langst niet bijgewerkte eerst.

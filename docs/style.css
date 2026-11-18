@@ -1399,3 +1399,29 @@ body.welcoming #mshell { padding-bottom: 0; }
 /* Het streepje onder het menu schuift via placeIndicators (Web Animations), niet via een CSS-overgang */
 .pill, :root[data-theme="dark"] .pill { transition: none; }
 .watch-add .ws-wrap .search { flex: 1 1 auto; max-width: none; }
+
+/* ---------- Bronnen: tijdlijn per bron, budgetten, databaseruimte en reservekopieën (js/15-bronnen.js) ---------- */
+.bron-list { display: grid; gap: 14px; margin-top: 6px; }
+.bron-row, .bron-bud { border-top: 1px solid var(--rule); padding-top: 10px; }
+.bron-list > .bron-row:first-child, .bron-list > .bron-bud:first-child { border-top: 0; padding-top: 0; }
+.bron-h { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.bron-h b { font-weight: 600; }
+.bron-h .muted { margin-left: auto; }
+.bron-row p, .bron-bud p { margin: 4px 0 0; }
+.bron-strip { display: flex; gap: 2px; margin: 6px 0 2px; }
+.bron-strip i { flex: 1 1 0; height: 14px; border-radius: 3px; background: var(--empty); }
+.bron-strip i.ok { background: var(--gain); opacity: .75; }
+.bron-strip i.limiet { background: #D08400; }
+.bron-strip i.fout { background: var(--loss); }
+.bron-row.uit .bron-h b { color: var(--loss); }
+.bron-meter { display: block; height: 8px; border-radius: 999px; background: var(--track); overflow: hidden; margin: 6px 0 2px; }
+.bron-meter.big { height: 12px; margin: 8px 0 10px; }
+.bron-meter i { display: block; height: 100%; border-radius: 999px; background: var(--accent); }
+.bron-meter i.warn { background: #D08400; }
+.bron-meter i.loss { background: var(--loss); }
+.bron-uitleg { margin-top: 10px; }
+.key-test { display: block; margin-top: 4px; }
+.key-test.gain { color: var(--gain); }
+.key-test.loss { color: var(--loss); }
+:root[data-theme="dark"] .bron-strip i.limiet, :root[data-theme="dark"] .bron-meter i.warn { background: #E2A33A; }
+:root[data-theme="dark"] .bron-strip i.ok { opacity: .9; }

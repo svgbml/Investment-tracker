@@ -52,7 +52,11 @@ Zet ze aan op de website onder *Instellingen → Koppelingen en functies*. Sleut
 | Alle transacties in één lijst, export naar Excel (.xlsx) en JSON, uitleg van begrippen, pagina's aanpassen, snel zoeken (Ctrl+K) en sneltoetsen, vegen en omlaag trekken op de telefoon, teller op het app-icoon, compact, grotere tekst en kleurenblindvriendelijk, rondleiding, Duits en Frans, inzoomen in grafieken | de site zelf | niets extra |
 | Statuspagina met verbruik per bron, meetgeschiedenis van 30 dagen en fouten van de website | je eigen Worker | niets extra |
 | Kopen en verkopen vanuit de app (markt- en limietorders, openstaande orders annuleren), standaard uit, met een grens per order en per dag | Trading 212 | een sleutel met het recht om orders te plaatsen; aanzetten bij Koppelingen |
-| Wekelijkse reservekopie buiten de database | [Cloudflare R2](https://developers.cloudflare.com/r2/) | een R2-bucket met binding `BACKUP` (zie worker/README.md) |
+| Dagelijkse reservekopie buiten de database (7 dagkopieën en 4 weekkopieën, met een voorbeeld vóór terugzetten) | [Cloudflare R2](https://developers.cloudflare.com/r2/) | een R2-bucket met binding `BACKUP` (zie worker/README.md); zonder bucket werkt de rest gewoon |
+| Bronnenpagina: per bron een tijdlijn van 30 dagen (in orde, limiet, fout), wanneer een bron weer wordt geprobeerd, het budget per bron van vandaag en de geschatte ruimte in de database | je eigen Worker | niets extra |
+| Sleutel testen met één proefvraag aan de bron (*Testen* bij Koppelingen); de sleutel wordt niet opgeslagen en niet getoond | je eigen Worker | de bron waarvoor je test |
+| Controle op onmogelijke waarden (koers 0, negatief aantal, koerssprong boven 80% zonder splitsing) en het verwerken van splitsingen en nieuwe tickers in je geschiedenis | Trading 212 | niets extra |
+| Reserve voor het marktnieuws op de nieuwspagina als Finnhub niets geeft | Alpha Vantage (NEWS_SENTIMENT) | gratis sleutel (`ALPHAVANTAGE_KEY`), optioneel |
 | Waardering: koers-winstverhouding en dividendrendement tegenover de eigen geschiedenis en de sector | Financial Modeling Prep | gratis sleutel (`FMP_KEY`); zonder waarderingsdata rekent de site de K/W uit SEC-cijfers |
 | Nieuwspagina met marktnieuws, analisten per bedrijf, betrouwbaarheid van analisten en suggesties, insiderhandel | Finnhub | gratis sleutel (`FINNHUB_KEY`) |
 | Risicopagina: bedrijven van je volglijst die je spreiding verbreden (andere sector of anders bewegend) en waar analisten en nieuws positief over zijn | Finnhub, FMP | gratis sleutels (`FINNHUB_KEY`, `FMP_KEY`) |
