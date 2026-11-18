@@ -792,7 +792,7 @@ async function tick(env, now, force) {
       await setKv(env, 'cash_now', JSON.stringify({ cash: r2(cash), at: isoLocal(ts) }));
     } catch (e) { console.error('saldo', e); }
     try { const m = await alertMoves(env, rows, now); if (m) msgs.push(m); } catch (e) { console.error('meldingen', e); }
-    try { const m = await checkPriceAlerts(env, rows); if (m) msgs.push(m); } catch (e) { console.error('koersalarm', e); }
+    try { const m = await checkPriceAlerts(env, rows, now); if (m) msgs.push(m); } catch (e) { console.error('koersalarm', e); }
     try { const m = await depositReminder(env, now); if (m) msgs.push(m); } catch (e) { console.error('inleg', e); }
   }
 
@@ -2633,13 +2633,15 @@ async function sendPush(env, msg) {
 const ALERT_DEFAULTS = { move: 5, earnings: true, insider: true, drift: 5, quietFrom: 0, quietTo: 0, digest: false, digestHour: 18 };
 async function alertRules(env) { const s = await getSettings(env); return Object.assign({}, ALERT_DEFAULTS, (s && s.alerts) || {}); }
 
-// Eén keer per sleutel (bijvoorbeeld "move|2026-11-17|AAPL"); de laatste 400 sleutels worden onthouden
-async function alertOnce(env, key, msg) {
+// Eén keer per sleutel (bijvoorbeeld "move|2026-11-17|AAPL"); de laatste 400 sleutels worden onthouden.
+// 'at' is het moment van de meting: stille uren en de dagbundel worden daaraan afgemeten, niet aan de klok
+// op het moment dat deze functie toevallig draait (die lopen in de cron gelijk, maar in tests niet).
+async function alertOnce(env, key, msg, at) {
   let sent = {};
   try { sent = JSON.parse((await getKv(env, 'alerts_sent')) || '{}'); } catch (e) { sent = {}; }
   if (sent[key]) return false;
   const rules = await alertRules(env);
-  const now = new Date();
+  const now = at ? new Date(at) : new Date();
   // Stille uren en de dagbundel gelden voor alle meldingen, ook de dringende: anders is "stil" niet stil.
   // Wat wacht, gaat als één melding uit zodra het weer mag (flushAlerts).
   const quiet = inQuiet(rules, now);
@@ -2679,7 +2681,7 @@ async function alertMoves(env, rows, now) {
       title: (tot ? 'Je portefeuille' : h.r.ticker) + ' ' + pct + ' vandaag',
       body: tot ? 'Je beleggingen bewegen vandaag meer dan gewoonlijk.' : (h.r.name || h.r.ticker) + ' ' + (h.ch > 0 ? 'stijgt' : 'daalt') + ' ' + pct + ' sinds het slot van de vorige handelsdag.',
       url: tot ? '#overzicht' : '#bedrijf/' + encodeURIComponent(h.r.ticker), tag: 'move-' + h.r.ticker, urgent: Math.abs(h.ch) >= lim * 2 / 100,
-    });
+    }, now);
   }
   return hits.length ? hits.length + ' meldingen over koersbewegingen.' : '';
 }
@@ -3190,7 +3192,7 @@ async function tickFailed(env, at, err) {
   await setKv(env, 'tick_fail', String(n));
   if (n >= 3 && isLive(at)) {
     const msg = String(err && err.message || err).slice(0, 160);
-    await alertOnce(env, 'watchdog|' + parts(at).day, { title: 'Je tracker meet niet meer', body: 'Al ' + n + ' metingen op rij mislukt: ' + msg + (/401|403|sleutel/i.test(msg) ? ' Controleer je Trading 212-sleutel bij Koppelingen.' : ''), url: '#status', tag: 'watchdog', urgent: true });
+    await alertOnce(env, 'watchdog|' + parts(at).day, { title: 'Je tracker meet niet meer', body: 'Al ' + n + ' metingen op rij mislukt: ' + msg + (/401|403|sleutel/i.test(msg) ? ' Controleer je Trading 212-sleutel bij Koppelingen.' : ''), url: '#status', tag: 'watchdog', urgent: true }, at);
   }
 }
 async function tickOk(env) { if ((await getKv(env, 'tick_fail')) !== '0') await setKv(env, 'tick_fail', '0'); await tickHist(env, true); }
@@ -3211,7 +3213,7 @@ async function tickHist(env, ok) {
 // =====================================================================
 // ---------- Koersalarmen per aandeel ----------
 // settings.priceAlerts = [{ id, sym, op: 'below' | 'above', price, on, hit }]; koers in de munt van het aandeel.
-async function checkPriceAlerts(env, rows) {
+async function checkPriceAlerts(env, rows, now) {
   const s = await getSettings(env);
   const list = Array.isArray(s.priceAlerts) ? s.priceAlerts : [];
   const active = list.filter((a) => a.on && isFinite(a.price));
@@ -3237,7 +3239,7 @@ async function checkPriceAlerts(env, rows) {
     hits++;
     a.on = false; a.hit = isoLocal(Date.now()); a.hitPrice = p;
     await alertOnce(env, 'price|' + a.id + '|' + a.hit.slice(0, 10), { title: a.sym + (a.op === 'below' ? ' onder ' : ' boven ') + String(a.price).replace('.', ','),
-      body: 'Koers nu ' + String(Math.round(p * 100) / 100).replace('.', ',') + '. Het alarm staat nu uit; zet het opnieuw aan op de pagina van het aandeel.', url: held.has(a.sym) ? '#bedrijf/' + encodeURIComponent(a.sym) : '#volg/' + encodeURIComponent(a.sym), tag: 'price-' + a.sym, urgent: true });
+      body: 'Koers nu ' + String(Math.round(p * 100) / 100).replace('.', ',') + '. Het alarm staat nu uit; zet het opnieuw aan op de pagina van het aandeel.', url: held.has(a.sym) ? '#bedrijf/' + encodeURIComponent(a.sym) : '#volg/' + encodeURIComponent(a.sym), tag: 'price-' + a.sym, urgent: true }, now);
   }
   if (hits) { const cur = await getSettings(env); cur.priceAlerts = list; await setKv(env, 'settings', JSON.stringify(cur)); }
   return hits ? hits + ' koersalarmen.' : '';
@@ -3260,7 +3262,7 @@ async function depositReminder(env, now) {
   if (!(s.monthly > 0) || s.depositReminder === false || !(await pushSubs(env)).length) return '';
   const D = await depositsThisMonth(env, now);
   if (!D.known || D.deposited >= s.monthly * 0.9) return '';
-  await alertOnce(env, 'deposit|' + D.month, { title: 'Inleg deze maand', body: 'Tot nu toe ' + nlEur(D.deposited) + ' van de ' + nlEur(s.monthly) + ' die je per maand wilt inleggen (stand weekmeting ' + (D.asOf || '') + ').', url: '#plannen', tag: 'deposit' });
+  await alertOnce(env, 'deposit|' + D.month, { title: 'Inleg deze maand', body: 'Tot nu toe ' + nlEur(D.deposited) + ' van de ' + nlEur(s.monthly) + ' die je per maand wilt inleggen (stand weekmeting ' + (D.asOf || '') + ').', url: '#plannen', tag: 'deposit' }, now);
   return 'Herinnering inleg verstuurd.';
 }
 
