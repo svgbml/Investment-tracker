@@ -82,6 +82,26 @@ function countedEnv(env) {
 // Cloudflare-tellingen per UTC-dag (daar rekent Cloudflare de gratis limieten mee)
 const CF_KEYS = ['d1_read', 'd1_write', 'worker_req'];
 const D1_READ_LIMIT = 5e6, D1_WRITE_LIMIT = 1e5;
+const CF_HIST_DAYS = 14;
+// Trend van de gelezen rijen: groei per dag (rechte lijn door de laatste 7 volle dagen) en wanneer je bij deze groei
+// aan de daglimiet zit. Null als er te weinig dagen zijn of het gebruik niet groeit.
+function cfTrend(c) {
+  const hist = (c && c.hist) || {};
+  const days = Object.keys(hist).sort().map((d) => ({ day: d, d1_read: Number(hist[d].d1_read) || 0, d1_write: Number(hist[d].d1_write) || 0, worker_req: Number(hist[d].worker_req) || 0 }));
+  const last7 = days.slice(-7);
+  let growth = null, daysToLimit = null, avg = null;
+  if (last7.length) avg = last7.reduce((a, x) => a + x.d1_read, 0) / last7.length;
+  if (last7.length >= 4) {
+    const n = last7.length, xs = last7.map((_, i) => i), ys = last7.map((x) => x.d1_read);
+    const mx = (n - 1) / 2, my = ys.reduce((a, y) => a + y, 0) / n;
+    let sxy = 0, sxx = 0;
+    xs.forEach((x, i) => { sxy += (x - mx) * (ys[i] - my); sxx += (x - mx) ** 2; });
+    growth = sxx ? sxy / sxx : 0;
+    const lastFit = my + growth * (n - 1 - mx);
+    if (growth > 0) daysToLimit = Math.max(0, Math.ceil((D1_READ_LIMIT - lastFit) / growth));
+  }
+  return { days, avg, growth, daysToLimit };
+}
 const D1_WARN_AT = 0.7, D1_SAVE_AT = 0.85;
 const SAVE_BUILD_MS = 30 * 60e3;   // in de spaarstand het overzicht hoogstens eens per half uur opbouwen
 // Hoe ver de database vandaag (UTC) is: het hoogste van gelezen en geschreven rijen tegenover hun limiet
@@ -105,7 +125,12 @@ async function flushCalls(env) {
       const day = new Date().toISOString().slice(0, 10);
       let c = {};
       try { c = JSON.parse((await getKv(env, 'cf_usage')) || '{}'); } catch (e) { c = {}; }
-      if (c.day !== day) c = { day };
+      if (c.day !== day) {
+        const hist = Object.assign({}, c.hist || {});
+        if (c.day) hist[c.day] = { d1_read: c.d1_read || 0, d1_write: c.d1_write || 0, worker_req: c.worker_req || 0 };
+        Object.keys(hist).sort().slice(0, -CF_HIST_DAYS).forEach((k) => { delete hist[k]; });
+        c = { day, hist };
+      }
       CF_KEYS.forEach((k) => { if (cf[k]) c[k] = (c[k] || 0) + cf[k]; });
       // Eén keer per dag melden bij 70% en bij het ingaan van de spaarstand (85%)
       const share = cfShare(c);
@@ -1142,6 +1167,7 @@ function splitRatio(prevQty, prevPrice, qty, price) {
 // Koersen in de geschiedenis door de verhouding delen en de aantallen ermee vermenigvuldigen,
 // zodat grafieken doorlopen. De waarde in euro's verandert niet door een splitsing.
 async function applySplit(env, ticker, ratio) {
+  await invalidateSeries(env);
   await env.DB.batch([
     env.DB.prepare('UPDATE intraday SET price = price / ?, qty = qty * ? WHERE ticker = ? AND price IS NOT NULL').bind(ratio, ratio, ticker),
     env.DB.prepare('UPDATE hours SET close_price = close_price / ? WHERE ticker = ? AND close_price IS NOT NULL').bind(ratio, ticker),
@@ -1153,6 +1179,7 @@ async function applySplit(env, ticker, ratio) {
 }
 // Naamswijziging: hetzelfde ISIN onder een nieuwe ticker, terwijl de oude ticker weg is
 async function renameTicker(env, from, to) {
+  await invalidateSeries(env);
   const u = (sql) => env.DB.prepare(sql).bind(to, from);
   await env.DB.batch([
     u('UPDATE OR REPLACE intraday SET ticker = ? WHERE ticker = ?'),
@@ -1326,6 +1353,7 @@ async function housekeeping(env, now) {
   if (cutoff > 0) {
     const res = await env.DB.prepare('DELETE FROM intraday WHERE ts < ?').bind(cutoff).run();
     const changes = res.meta && res.meta.changes;
+    if (changes) await invalidateSeries(env);
     if (changes) msgs.push(changes + ' oude metingen verwijderd.');
   }
   return msgs.join(' ');
@@ -1334,18 +1362,22 @@ async function housekeeping(env, now) {
 // Eén keer per maand: oude uurregels, koersen van vergelijkbare bedrijven en sectordagen opruimen.
 // Dagregels, weken, posities en orders blijven altijd bewaard (daar draaien grafieken en jaaroverzichten op).
 // Na 3 dagen worden metingen per 10 minuten uren; uren blijven 180 dagen, daarna alleen de dagregels
-const KEEP_HOURS_DAYS = 180, KEEP_EXT_DAYS = 420;
+// Uren worden elke dag samengevat in de dagtabel en de site gebruikt ze alleen voor de laatste 31 dagen;
+// de koershistorie leest marketData tot 380 dagen terug. Kleinere tabellen = minder gelezen rijen (D1-daglimiet).
+const KEEP_HOURS_DAYS = 60, KEEP_EXT_DAYS = 390;
 async function cleanupOld(env, now) {
-  const month = parts(now).day.slice(0, 7);
-  if ((await getKv(env, 'cleanup_month')) === month) return '';
+  // Elke dag (was: elke maand): met de indexen op hour en day leest het verwijderen alleen de rijen die weg moeten
+  const today = parts(now).day;
+  if ((await getKv(env, 'cleanup_day')) === today) return '';
   const day = (n) => new Date(now.getTime() - n * 864e5).toISOString().slice(0, 10);
   const out = [];
   const run = async (sql, arg, what) => { try { const r = await env.DB.prepare(sql).bind(arg).run(); const n = r.meta && r.meta.changes; if (n) out.push(n + ' ' + what); } catch (e) { /* tabel bestaat (nog) niet */ } };
   await run('DELETE FROM hours WHERE hour < ?', now.getTime() - KEEP_HOURS_DAYS * 864e5, 'uurregels');
+  await invalidateSeries(env);
   await run('DELETE FROM ext_prices WHERE day < ?', day(KEEP_EXT_DAYS), 'koersen');
   await bumpMarket(env);
   await run('DELETE FROM ext_perf WHERE day < ?', day(KEEP_EXT_DAYS), 'sectordagen');
-  await setKv(env, 'cleanup_month', month);
+  await setKv(env, 'cleanup_day', today);
   return out.length ? 'Opgeruimd: ' + out.join(', ') + '.' : '';
 }
 
@@ -1438,14 +1470,33 @@ async function setKv(env, key, value) {
 
 // ---------- Gegevens voor de website ----------
 
+// ---------- Reeksen voor de opbouw, zuinig gelezen ----------
+// De opbouw gebeurt elke 10 minuten, maar uren en dagen veranderen hooguit eens per uur (housekeeping) en metingen
+// van vóór de vorige opbouw veranderen niet meer. Die staan daarom in een cache in kv; elke 10 minuten leest de Worker
+// alleen de metingen die er sindsdien bij kwamen. Elke schrijver van intraday/hours/days roept invalidateSeries aan.
+const SERIES_CACHE_MAX = 1.5e6;   // tekens per cacheregel (D1 staat tot 2 MB per rij toe)
+async function invalidateSeries(env) { try { await setKv(env, 'series_ver', String(Date.now())); } catch (e) { /* niet erg */ } }
+async function seriesRows(env, now) {
+  const hk = [(await getKv(env, 'last_hour')) || '', (await getKv(env, 'last_day')) || '', (await getKv(env, 'series_ver')) || ''].join('|');
+  let c = null;
+  try { c = JSON.parse((await getKv(env, 'series_cache')) || 'null'); } catch (e) { c = null; }
+  if (!c || c.v !== 1 || c.hk !== hk || now - c.at > 6 * 3600e3) {
+    const intra = (await env.DB.prepare('SELECT ts, ticker, name, value, unrealized, qty, price FROM intraday WHERE ts < ? ORDER BY ts').bind(now).all()).results;
+    const hrs = (await env.DB.prepare('SELECT hour, ticker, open, close, low, high, avg FROM hours WHERE hour >= ? ORDER BY hour').bind(now - 32 * 864e5).all()).results;
+    const dys = (await env.DB.prepare('SELECT day, ticker, open, close, low, high, avg, range, range_pct FROM days ORDER BY day').all()).results;
+    c = { v: 1, hk, at: now, until: now, intra, hrs, dys };
+    const txt = JSON.stringify(c);
+    if (txt.length <= SERIES_CACHE_MAX) { try { await setKv(env, 'series_cache', txt); } catch (e) { console.error('reekscache', e); } }
+    else { try { await setKv(env, 'series_cache', ''); } catch (e) { /* niet erg */ } }
+  }
+  const fresh = (await env.DB.prepare('SELECT ts, ticker, name, value, unrealized, qty, price FROM intraday WHERE ts >= ? ORDER BY ts').bind(c.until).all()).results;
+  return { intra: c.intra.concat(fresh), hrs: c.hrs.filter((h) => h.hour >= now - 31 * 864e5), dys: c.dys };
+}
+
 async function buildData(env) {
   const now = Date.now();
-  // De dagtabel één keer per opbouw lezen (werd drie keer gelezen)
-  let daysCache = null;
-  const allDays = async () => {
-    if (!daysCache) daysCache = (await env.DB.prepare('SELECT day, ticker, open, close, low, high, avg, range, range_pct FROM days ORDER BY day').all()).results;
-    return daysCache;
-  };
+  const S = await seriesRows(env, now);
+  const allDays = async () => S.dys;
 
   const { results: wk } = await env.DB.prepare('SELECT * FROM weeks ORDER BY date').all();
   const weeks = [];
@@ -1467,9 +1518,7 @@ async function buildData(env) {
     });
   });
 
-  const { results: intra } = await env.DB.prepare(
-    'SELECT ts, ticker, name, value, unrealized, qty, price FROM intraday ORDER BY ts'
-  ).all();
+  const intra = S.intra;
 
   // Posities: laatste meting, anders laatste weeksnapshot
   let positions = [], positionsDate = null;
@@ -1517,9 +1566,15 @@ async function buildData(env) {
       if (isFinite(a.hi) && isFinite(a.lo)) histD.push({ ticker, hi: a.hi, lo: a.lo });
       ranges.push({ ticker, ar: a.nr ? a.r / a.nr : null, arp: a.nrp ? a.rp / a.nrp : null, n: a.n });
     });
-    const { results: histH } = await env.DB.prepare(
-      'SELECT ticker, MAX(high) AS hi, MIN(low) AS lo FROM hours WHERE hour >= ? GROUP BY ticker'
-    ).bind(sinceHour).all();
+    // Uit de uren in de reekscache (de laatste 31 dagen), niet opnieuw uit de database
+    const hAgg = new Map();
+    S.hrs.forEach((h) => {
+      if (h.hour < sinceHour) return;
+      const a = hAgg.get(h.ticker);
+      if (!a) hAgg.set(h.ticker, { ticker: h.ticker, hi: h.high, lo: h.low });
+      else { if (h.high != null) a.hi = a.hi == null ? h.high : Math.max(a.hi, h.high); if (h.low != null) a.lo = a.lo == null ? h.low : Math.min(a.lo, h.low); }
+    });
+    const histH = [...hAgg.values()];
     const histMap = new Map();
     [...histD, ...histH].forEach((h) => {
       const o = histMap.get(h.ticker);
@@ -1542,9 +1597,7 @@ async function buildData(env) {
     today.sort((a, b) => (a.ticker === TOTAL ? -1 : b.ticker === TOTAL ? 1 : a.ticker.localeCompare(b.ticker)));
   }
 
-  const { results: hrs } = await env.DB.prepare(
-    'SELECT hour, ticker, open, close, low, high, avg FROM hours WHERE hour >= ? ORDER BY hour'
-  ).bind(now - 31 * 864e5).all();
+  const hrs = S.hrs;
   const dys = await allDays();
 
   let events = null;
@@ -3040,6 +3093,7 @@ async function marketData(env) {
 const numOrNull = (x) => (x === null || x === undefined || x === '' || !isFinite(Number(x)) ? null : Number(x));
 
 async function importFromSheet(env, url, token) {
+  await invalidateSeries(env);
   if (!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(url || '')) {
     throw new Error('Geef het adres van de Apps Script web-app (…/exec).');
   }
@@ -3086,7 +3140,7 @@ function isDst(localIso) {
 
 export const _test = { parts, isLive, shortTicker, isoLocal, isDst, hourStart, dayOf, newsHistTask, storeNews, noteOpinionDay,
   tradingDay, usTradingDay, shiftDay, weekdayOf, srcPause, srcFail, srcOk, srcState, srcHistState, checkPositions, splitRatio,
-  planResearch, uniqTasks, dbWatch, testKey, r2Backup, r2Info, r2Preview, healthInfo, budgetInfo, buildData, bumpMarket, ensureMarketTables, ensureIndexes, countingDb, flushCalls, srcFail, searchCompanies, checkPriceAlerts, saveMode, buildAllowed };
+  planResearch, uniqTasks, dbWatch, testKey, r2Backup, r2Info, r2Preview, healthInfo, budgetInfo, buildData, bumpMarket, ensureMarketTables, ensureIndexes, countingDb, flushCalls, srcFail, searchCompanies, checkPriceAlerts, saveMode, buildAllowed, seriesRows, invalidateSeries, cfTrend };
 
 
 // =====================================================================
@@ -3801,6 +3855,7 @@ async function restorePart(env, body) {
   const ok = table === 'kv' ? rows.filter((r) => BACKUP_KV.test(String(r[0])) && typeof r[1] === 'string' && r[1].length < 3e6) : rows;
   const st = env.DB.prepare('INSERT OR REPLACE INTO ' + table + ' (' + cols.join(', ') + ') VALUES (' + cols.map(() => '?').join(',') + ')');
   await batchChunks(env, ok.map((r) => st.bind(...r.map((v) => (v === undefined ? null : v)))));
+  if (['intraday', 'hours', 'days'].includes(table)) await invalidateSeries(env);
   if (body.done) await saveDataCache(env, await buildData(env));
   return { table, restored: ok.length, skipped: rows.length - ok.length };
 }
@@ -4089,7 +4144,7 @@ async function budgetInfo(env) {
     const used = Number(cfNow[src] || 0);
     return { src, name: b.name, used, limit: b.limit, per: 'dag', utc: true, cloudflare: true, pct: Math.min(1, used / b.limit), note: b.note };
   });
-  return { day, cfDay, cloudflare: cloud, saveMode: cfShare(cfNow) >= D1_SAVE_AT, sources: Object.entries(SRC_BUDGETS).map(([src, b]) => {
+  return { day, cfDay, cloudflare: cloud, saveMode: cfShare(cfNow) >= D1_SAVE_AT, trend: cfTrend(cf), sources: Object.entries(SRC_BUDGETS).map(([src, b]) => {
     let used = Number(today[src] || 0);
     // De eigen teller is de waarheid voor de dagbudgetten: die telt ook verzoeken van vóór vandaag mee als de dag gelijk is
     if (src === 'fmp' && fmpC && fmpC.day === day) used = Math.max(used, Number(fmpC.n) || 0);

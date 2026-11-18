@@ -258,6 +258,18 @@ function backupRow(F) {
     rows + '</div>';
 }
 
+// Gelezen rijen per dag (14 dagen) en wanneer je bij deze groei aan de limiet zit
+function cfTrendHtml(T) {
+  if (!T || !T.days || T.days.length < 2) return '<p class="small muted">De trend verschijnt na een paar dagen: de Worker bewaart het gebruik van de laatste 14 dagen.</p>';
+  const fD2 = new Intl.DateTimeFormat(LOCALE, { day: 'numeric', month: 'short' });
+  const list = T.days.map((d) => ({ v: d.d1_read, tip: fD2.format(new Date(d.day + 'T12:00:00Z')) + ': ' + NI.format(d.d1_read) + ' gelezen rijen' }));
+  const avg = isNum(T.avg) ? NI.format(Math.round(T.avg)) + ' per dag (' + PCT0.format(T.avg / 5e6) + ' van de limiet)' : '';
+  const fc = isNum(T.daysToLimit)
+    ? (T.daysToLimit <= 30 ? 'Bij deze groei zit je over ongeveer ' + T.daysToLimit + (T.daysToLimit === 1 ? ' dag' : ' dagen') + ' aan de daglimiet.' : 'Het gebruik groeit langzaam; bij deze groei duurt het nog ruim een maand voor je aan de limiet zit.')
+    : 'Het gebruik groeit niet.';
+  return '<p class="small" style="margin:10px 0 2px"><b>Gelezen rijen, laatste ' + T.days.length + ' dagen</b></p>' + bars(list) +
+    '<p class="small ' + (isNum(T.daysToLimit) && T.daysToLimit <= 14 ? 'loss' : 'muted') + '">' + esc((avg ? 'Gemiddeld ' + avg + '. ' : '') + fc) + '</p>';
+}
 function cloudflareRow(B) {
   const list = (B && B.cloudflare) || [];
   if (!list.length) return '';
@@ -265,7 +277,7 @@ function cloudflareRow(B) {
   const st = worst >= 0.9 ? '<span class="tag loss">Bijna op</span>' : worst >= 0.7 ? '<span class="tag">Let op</span>' : '<span class="tag gain">Ruim</span>';
   return '<div class="link-row" data-link="cloudflare"><div class="link-h"><b>Cloudflare (je Worker en database)</b><span class="muted small">gratis abonnement</span>' + (B.saveMode ? '<span class="tag loss">Spaarstand</span>' : st) + '</div>' +
     '<p class="small muted">De Worker en zijn database hebben eigen daglimieten, los van de bronnen hieronder. Ze tellen per dag in UTC: om 01:00 (in de zomer 02:00) begint een nieuwe dag. Bij 70% krijg je een melding; vanaf 85% gaat de Worker in de spaarstand: hij blijft meten, maar bouwt het overzicht hoogstens eens per half uur op, laat de marktgegevens tot na middernacht wachten en de site ververst minder vaak.</p>' +
-    (B.saveMode ? '<p class="small loss">De spaarstand staat nu aan, tot middernacht UTC.</p>' : '') +
+    (B.saveMode ? '<p class="small loss">De spaarstand staat nu aan, tot middernacht UTC.</p>' : '') + cfTrendHtml(B.trend) +
     list.map((b) => '<p class="small" style="margin:8px 0 2px"><b>' + esc(b.name) + '</b></p>' + budgetMeter(b) + (b.note && (b.pct || 0) >= 0.7 ? '<p class="small muted">' + esc(b.note) + '</p>' : '')).join('') +
     '</div>';
 }
@@ -561,8 +573,25 @@ function loadDemoScript() {
   });
 }
 
+// Automatisch verversen alleen als de tracker in beeld is: op de achtergrond (ander tabblad, app weggezet) wacht hij
+// tot je terugkomt. Dat scheelt verzoeken aan je Worker en gelezen rijen in zijn database.
+let refreshPending = false, lastLoadAt = 0;
+function autoRefresh() {
+  if (document.hidden) { refreshPending = true; return; }
+  load();
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden || !refreshPending) return;
+  refreshPending = false;
+  // Kort weg geweest (minder dan een minuut na de vorige keer): niet meteen opnieuw
+  if (Date.now() - lastLoadAt > 60000) load();
+  else { clearTimeout(refreshTimer); refreshTimer = setTimeout(autoRefresh, 60000); }
+});
+
 async function load() {
   clearTimeout(refreshTimer);
+  refreshPending = false;
+  lastLoadAt = Date.now();
   showError('');
   fromSwCache = false;
   if (sharedView) {
@@ -576,7 +605,7 @@ async function load() {
       if (!json.shared || !json.shared.amounts) { hideAmounts = true; syncHideButtons(); }
       $('share-banner').hidden = false;
       render();
-      refreshTimer = setTimeout(load, 15 * 60000);
+      refreshTimer = setTimeout(autoRefresh, 15 * 60000);
     } catch (err) { showError(foutTekst('Deze gedeelde weergave kon niet worden geladen', err, 'Vraag de eigenaar om een nieuwe link: een deellink vervalt zodra die vernieuwd wordt.')); }
     finally { $$('.btn-refresh').forEach((b) => b.classList.remove('busy')); }
     return;
@@ -629,13 +658,13 @@ async function load() {
       $$('.updated').forEach((e) => { e.textContent = (mode === 'm' ? '' : 'Bijgewerkt ') + fDT.format(new Date()); });
     }
     // In de spaarstand van de Worker drie keer zo lang wachten (tot middernacht UTC, daarna weer normaal)
-    refreshTimer = setTimeout(load, (Number(CFG.refreshMinutes) || 5) * 60000 * (serverSave ? 3 : 1));
+    refreshTimer = setTimeout(autoRefresh, (Number(CFG.refreshMinutes) || 5) * 60000 * (serverSave ? 3 : 1));
   } catch (err) {
     const offline = !navigator.onLine || err instanceof TypeError;
     if (data && offline) {
       if (typeof noteOffline === 'function') noteOffline();   // melding met de ouderdom van de stand (zie js/21-pwa.js)
       else showError('Geen verbinding, dus er kwamen geen nieuwe metingen binnen. Je ziet de laatst geladen stand van ' + fDT.format(new Date(data.generated)) + '. Zodra je weer online bent, haalt de tracker de nieuwe stand zelf op.');
-      refreshTimer = setTimeout(load, 60000);
+      refreshTimer = setTimeout(autoRefresh, 60000);
     } else {
       showError(foutTekst('De gegevens konden niet worden geladen', err, 'Controleer bij Instellingen je toegangscode en het adres van je Worker, en probeer het daarna opnieuw.'));
     }

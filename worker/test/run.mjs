@@ -11,12 +11,28 @@ const WM = await import('../src/index.js');
 const W = WM.default;
 
 // ---------- D1-stand-in ----------
+const MEASURE = { on: false };
+function measureMeta(st, n) {
+  if (!MEASURE.on) return {};
+  let read = 0;
+  try {
+    const plan = st.db.prepare('EXPLAIN QUERY PLAN ' + st.sql).all(...st.args);
+    for (const p of plan) {
+      const m = /^(SCAN|SEARCH) (\w+)/.exec(p.detail || '');
+      if (!m) continue;
+      if (m[1] === 'SCAN') read += Number(st.db.prepare('SELECT COUNT(*) AS n FROM ' + m[2]).get().n) || 0;
+      else read += Math.max(1, n);
+    }
+  } catch (e) { /* geen plan (bijvoorbeeld CREATE) */ }
+  if (MEASURE.log) MEASURE.log.push([read, st.sql.replace(/\s+/g, ' ').slice(0, 90)]);
+  return { rows_read: read, rows_written: /^\s*(INSERT|UPDATE|DELETE|REPLACE)/i.test(st.sql) ? n : 0 };
+}
 class Stmt {
   constructor(db, sql, args) { this.db = db; this.sql = sql; this.args = args || []; }
   bind(...a) { return new Stmt(this.db, this.sql, a.map((v) => (v === undefined ? null : typeof v === 'boolean' ? (v ? 1 : 0) : v))); }
   async first(col) { const r = this.db.prepare(this.sql).get(...this.args); return r === undefined ? null : col ? r[col] : { ...r }; }
-  async all() { return { success: true, results: this.db.prepare(this.sql).all(...this.args).map((r) => ({ ...r })) }; }
-  async run() { const r = this.db.prepare(this.sql).run(...this.args); return { success: true, meta: { changes: Number(r.changes) } }; }
+  async all() { const results = this.db.prepare(this.sql).all(...this.args).map((r) => ({ ...r })); return { success: true, results, meta: measureMeta(this, results.length) }; }
+  async run() { const r = this.db.prepare(this.sql).run(...this.args); return { success: true, meta: Object.assign({ changes: Number(r.changes) }, measureMeta(this, Number(r.changes))) }; }
 }
 class D1 {
   constructor() { this.db = new DatabaseSync(':memory:'); }
@@ -277,14 +293,18 @@ await test('weekmail staat standaard uit; test via Resend; bij een fout als meld
   assert.match(pushes[0].title, /Weekoverzicht/);
 });
 
-await test('maandelijkse opruiming van oude uurregels', async () => {
-  const old = Date.now() - 500 * 864e5;
-  DB.db.prepare('INSERT OR REPLACE INTO hours (hour, ticker, name, open, close, low, high, avg, n, close_price) VALUES (?,?,?,?,?,?,?,?,?,?)').run(old, 'AAPL', 'Apple', 1, 1, 1, 1, 1, 6, 1);
-  setKv('cleanup_month', '');
+await test('dagelijkse opruiming: uurregels ouder dan 60 dagen weg, recente blijven', async () => {
+  const old = Date.now() - 61 * 864e5, recent = Date.now() - 40 * 864e5;
+  const ins = DB.db.prepare('INSERT OR REPLACE INTO hours (hour, ticker, name, open, close, low, high, avg, n, close_price) VALUES (?,?,?,?,?,?,?,?,?,?)');
+  ins.run(old, 'AAPL', 'Apple', 1, 1, 1, 1, 1, 6, 1);
+  ins.run(recent, 'AAPL', 'Apple', 1, 1, 1, 1, 1, 6, 1);
+  setKv('cleanup_day', '');
   routes = t212Routes();
   await W.scheduled({ cron: '17 5 * * *', scheduledTime: Date.now() }, env, { waitUntil: async (p) => p });
   await new Promise((r) => setTimeout(r, 50));
   assert.equal(DB.db.prepare('SELECT COUNT(*) AS n FROM hours WHERE hour = ?').get(old).n, 0);
+  assert.equal(DB.db.prepare('SELECT COUNT(*) AS n FROM hours WHERE hour = ?').get(recent).n, 1, '40 dagen oud blijft staan');
+  DB.db.prepare('DELETE FROM hours WHERE hour = ?').run(recent);
 });
 
 await test('reeksen los: core zonder reeksen, oude core met reeksen, alleen nieuwe regels', async () => {
@@ -1343,6 +1363,140 @@ await test('spaarstand bij de D1-daglimiet en antwoorden zonder de gegevens te l
   assert.equal(r2.status, 304);
   const dataReads = seen.filter((q) => /SELECT value FROM kv/.test(q)).length;
   assert.ok(dataReads <= 3, 'hooguit vingerafdrukken, spaarstand en schema gelezen (' + dataReads + ')');
+  setKv('cf_usage', {});
+});
+
+await test('trend van het D1-gebruik: 14 dagen bewaard, groei en dagen tot de limiet', async () => {
+  const T = WM._test;
+  const hist = {};
+  for (let i = 0; i < 7; i++) hist['2026-11-0' + (i + 1)] = { d1_read: 1e6 + i * 5e5, d1_write: 100, worker_req: 50 };
+  const t = T.cfTrend({ hist });
+  assert.equal(t.days.length, 7);
+  assert.equal(Math.round(t.growth), 5e5, 'groei per dag');
+  assert.equal(t.daysToLimit, 2, '4 miljoen nu, 500.000 erbij per dag: over 2 dagen aan de 5 miljoen');
+  const flat = T.cfTrend({ hist: Object.fromEntries(Object.keys(hist).map((k) => [k, { d1_read: 2e6 }])) });
+  assert.equal(flat.daysToLimit, null, 'geen groei, geen voorspelling');
+  // Een nieuwe UTC-dag: de vorige dag schuift in de geschiedenis, hoogstens 14 dagen
+  const old = {}; for (let i = 1; i <= 20; i++) old['2026-10-' + String(i).padStart(2, '0')] = { d1_read: i };
+  setKv('cf_usage', { day: '2026-10-21', d1_read: 777, hist: old });
+  const fake = { prepare: () => ({ bind() { return this; }, all: async () => ({ results: [], meta: { rows_read: 1 } }), run: async () => ({ meta: {} }) }), batch: async () => [] };
+  await T.countingDb(fake).prepare('x').all();
+  await T.flushCalls(env);
+  const u = JSON.parse(kv('cf_usage'));
+  assert.equal(u.day, new Date().toISOString().slice(0, 10));
+  assert.equal(u.hist['2026-10-21'].d1_read, 777, 'vorige dag bewaard');
+  assert.equal(Object.keys(u.hist).length, 14, 'hoogstens 14 dagen');
+  const b = await T.budgetInfo(env);
+  assert.ok(b.trend && b.trend.days.length === 14, 'trend in het budget voor de site');
+  setKv('cf_usage', {});
+});
+
+// ---------- Volle tabelscans (D1 telt elke doorlopen rij mee voor de daglimiet) ----------
+// Elke vaste query in de Worker gaat door de query-planner van SQLite. Leest hij een hele groeiende tabel, dan
+// faalt deze test, tenzij de query hieronder staat met de reden waarom dat geen kwaad kan (zelden, of een kleine tabel).
+const BIG_TABLES = ['intraday', 'hours', 'days', 'ext_prices', 'ext_perf', 'news_hist'];
+const SCAN_OK = {
+  'SELECT day, ticker, open, close, low, high, avg, range, range_pct FROM days ORDER BY day': 'reekscache: hooguit eens per uur opnieuw (seriesRows)',
+  'SELECT symbol, COUNT(*) AS n FROM ext_prices GROUP BY symbol': 'planMarket: eens per dag, en maar één keer per planning',
+  "SELECT DISTINCT day FROM ext_perf WHERE kind = 'sector'": 'planMarket: eens per dag; ext_perf heeft een tiental rijen per dag',
+  "SELECT day, kind, name, exchange, change FROM ext_perf WHERE name != '-' ORDER BY day": 'marketData: alleen bij nieuwe marktgegevens (marketDataCached)',
+  'SELECT COUNT(*) AS n FROM news_hist': 'dbWatch: eens per dag (de status- en bronnenpagina gebruiken de bewaarde telling)',
+  "SELECT SUM(LENGTH(tk) + LENGTH(headline) + LENGTH(IFNULL(source, '')) + LENGTH(url) + LENGTH(IFNULL(summary, '')) + 24) AS n FROM news_hist": 'dbWatch: eens per dag',
+  'DELETE FROM news_hist WHERE t < (SELECT t FROM news_hist ORDER BY t DESC LIMIT 1 OFFSET ?)': 'dbWatch: eens per dag, alleen boven het maximum',
+};
+await test('geen volle tabelscans op groeiende tabellen (behalve de bekende, zeldzame)', async () => {
+  const src = (await import('node:fs')).readFileSync(new URL('../src/index.js', import.meta.url), 'utf8');
+  const sqls = new Set();
+  // Elke tekst in de broncode die met SELECT, DELETE of UPDATE begint (ook als hij via een hulpfunctie naar prepare gaat)
+  for (const m of src.matchAll(/(['"`])((?:SELECT|DELETE|UPDATE) (?:\\.|(?!\1)[^\n])*?)\1/g)) {
+    const q = m[2].replace(/\\\\/g, '\\').replace(/\\'/g, "'");
+    if (!q.includes('${') && /\b(FROM|SET)\b/.test(q)) sqls.add(q.replace(/\s+/g, ' ').trim());
+  }
+  assert.ok(sqls.size > 40, 'genoeg queries gevonden: ' + sqls.size);
+  const bad = [], skipped = [];
+  for (const q of sqls) {
+    const args = (q.match(/\?/g) || []).map(() => null);
+    let plan;
+    try { plan = DB.db.prepare('EXPLAIN QUERY PLAN ' + q).all(...args); } catch (e) { skipped.push(q.slice(0, 60) + ' (' + e.message + ')'); continue; }
+    const scans = plan.map((p) => /^SCAN (\w+)/.exec(p.detail || '')).filter(Boolean).map((m) => m[1]).filter((t) => BIG_TABLES.includes(t));
+    if (scans.length && !SCAN_OK[q]) bad.push('[' + scans.join(', ') + '] ' + q);
+  }
+  // De testhulp toont maar vier regels van een fout: de volledige lijst daarom hier
+  if (bad.length) console.log('       volle scans:\n         ' + bad.join('\n         '));
+  if (process.env.SCAN_DEBUG) console.log('       queries: ' + sqls.size + ', overgeslagen: ' + skipped.length);
+  if (skipped.length && process.env.SCAN_DEBUG) console.log('       overgeslagen:\n         ' + skipped.join('\n         '));
+  assert.equal(bad.length, 0, 'volle tabelscan(s); voeg een index toe of zet de query met een reden in SCAN_OK:\n         ' + bad.join('\n         '));
+});
+
+// ---------- Een jaar aan gegevens: hoeveel rijen leest de Worker per ronde? ----------
+// Met een bijna lege database valt een dure query niet op. Deze test vult de database zoals na een jaar gebruik en
+// meet (via rows_read, zoals D1 telt) wat een gewone ronde, een ronde met samenvatten en een ververs-vraag kosten.
+const ROUND_MAX = 3000;          // gewone ronde van 10 minuten
+const HOURLY_MAX = 60000;        // ronde waarin het afgelopen uur wordt samengevat
+const DAY_BUDGET = 1.5e6;        // geschat per dag: 30% van de gratis 5 miljoen
+await test('een jaar aan gegevens: een ronde van 10 minuten blijft ruim binnen de D1-daglimiet', async () => {
+  const T = WM._test;
+  const HOUR = 3600e3, DAYMS = 864e5;
+  const now = Date.now();
+  const tks = Array.from({ length: 15 }, (_, i) => 'TK' + i);
+  const day = (ms) => new Date(ms).toISOString().slice(0, 10);
+  DB.db.exec('BEGIN');
+  const dIns = DB.db.prepare('INSERT OR REPLACE INTO days (day, ticker, name, open, close, low, high, avg, range, range_pct) VALUES (?,?,?,?,?,?,?,?,?,?)');
+  for (let d = 1; d <= 365; d++) { const t = now - d * DAYMS; const wd = new Date(t).getUTCDay(); if (wd === 0 || wd === 6) continue; tks.forEach((tk) => dIns.run(day(t), tk, tk, 100, 101, 99, 102, 100, 3, 0.03)); }
+  const hIns = DB.db.prepare('INSERT OR REPLACE INTO hours (hour, ticker, name, open, close, low, high, avg, n, close_price) VALUES (?,?,?,?,?,?,?,?,?,?)');
+  for (let d = 1; d <= 60; d++) for (let h = 8; h <= 21; h++) { const t = Math.floor((now - d * DAYMS) / HOUR) * HOUR - (new Date(now).getUTCHours() - h) * HOUR; tks.forEach((tk) => hIns.run(t, tk, tk, 1, 1, 1, 1, 1, 6, 1)); }
+  const iIns = DB.db.prepare('INSERT OR REPLACE INTO intraday (ts, ticker, name, value, unrealized, price, qty) VALUES (?,?,?,?,?,?,?)');
+  for (let k = 1; k <= 3 * 87; k++) { const t = Math.floor((now - k * 10 * 60e3) / 60000) * 60000; tks.forEach((tk) => iIns.run(t, tk, tk, 100, 1, 10, 10)); }
+  await T.ensureMarketTables(env);
+  const pIns = DB.db.prepare('INSERT OR REPLACE INTO ext_prices (symbol, day, price) VALUES (?,?,?)');
+  for (let n = 0; n < 80; n++) for (let d = 1; d <= 380; d++) pIns.run('SYM' + n, day(now - d * DAYMS), 50);
+  const fIns = DB.db.prepare('INSERT OR REPLACE INTO ext_perf (day, kind, name, exchange, change) VALUES (?,?,?,?,?)');
+  for (let d = 1; d <= 380; d++) for (let n = 0; n < 11; n++) fIns.run(day(now - d * DAYMS), 'sector', 'Sector ' + n, 'NYSE', 0.1);
+  try {
+    const nIns = DB.db.prepare('INSERT OR IGNORE INTO news_hist (tk, t, headline, source, url, summary) VALUES (?,?,?,?,?,?)');
+    for (let k = 0; k < 20000; k++) nIns.run(tks[k % 15], now - k * 1200e3, 'Kop ' + k, 'Test', 'https://nieuws.test/' + k, '');
+  } catch (e) { /* geen nieuwsarchief in deze database */ }
+  DB.db.exec('COMMIT');
+
+  const measure = async (fn) => {
+    setKv('cf_usage', {});
+    MEASURE.on = true;
+    try { await fn(); } finally { MEASURE.on = false; }
+    await WM._test.flushCalls(env);
+    return Number(JSON.parse(kv('cf_usage') || '{}').d1_read) || 0;
+  };
+  // Een tijdstip binnen de meettijden, zo dicht mogelijk bij nu
+  let at = Math.floor(now / 600e3) * 600e3;
+  // (met ruimte voor de rondes erna: alle vier binnen de meettijden)
+  for (let i = 0; i < 1000 && !(T.isLive(new Date(at)) && T.isLive(new Date(at + 5 * 60e3))); i++) at -= 600e3;
+  assert.ok(T.isLive(new Date(at)), 'meettijd gevonden');
+  const round = async (t, hourly) => {
+    setKv('hk_hour', hourly ? '' : String(T.hourStart(t)));
+    const pending = [];
+    await W.scheduled({ cron: '*/10 * * * *', scheduledTime: t }, env, { waitUntil: (p) => { pending.push(p); } });
+    await Promise.all(pending);
+  };
+  routes = t212Routes();
+  await round(at, false);                                   // eerste ronde: vult de caches
+  const normal = await measure(() => round(at + 60e3, false));
+  // Ronde waarin uren worden samengevat en de reekscache opnieuw wordt opgebouwd (hooguit eens per uur)
+  const hourly = await measure(async () => { await WM._test.invalidateSeries(env); await round(at + 120e3, true); });
+  if (process.env.LOAD_DEBUG) { MEASURE.log = []; MEASURE.on = true; await WM._test.invalidateSeries(env); await round(at + 180e3, true); MEASURE.on = false; console.log(MEASURE.log.sort((a, b) => b[0] - a[0]).slice(0, 15).map((x) => '         ' + x[0] + '  ' + x[1]).join('\n')); MEASURE.log = null; }
+  // Ververs-vraag van de site: niets veranderd (If-None-Match) en "wat is er nieuw sinds"
+  const r1 = await req('/api/data?part=core&split=1');
+  const tag = r1.headers.get('ETag');
+  const ser = await jsonOf(await req('/api/data?part=series'));
+  const poll = await measure(async () => {
+    await req('/api/data?part=core&split=1', { headers: { 'If-None-Match': tag } });
+    await req('/api/data?part=series&since=' + ser.seriesTs);
+  });
+  // Per dag: 144 rondes, waarvan 24 met samenvatten, plus twee apparaten die elke 5 minuten verversen
+  const perDay = 120 * normal + 24 * hourly + 2 * 288 * poll;
+  console.log('       gelezen rijen: gewone ronde ' + normal + ', met samenvatten ' + hourly + ', ververs-vraag ' + poll + '; geschat per dag ' + Math.round(perDay));
+  assert.ok(normal <= ROUND_MAX, 'gewone ronde las ' + normal + ' rijen (grens ' + ROUND_MAX + ')');
+  assert.ok(hourly <= HOURLY_MAX, 'ronde met samenvatten las ' + hourly + ' rijen (grens ' + HOURLY_MAX + ')');
+  assert.ok(perDay <= DAY_BUDGET, 'geschat per dag ' + Math.round(perDay) + ' rijen (grens ' + DAY_BUDGET + ')');
+  routes = [];
   setKv('cf_usage', {});
 });
 

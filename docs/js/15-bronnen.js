@@ -43,7 +43,11 @@ function demoHealth() {
       twelvedata: { days: mk([22, 27]), lastErr: { at: new Date(now - 26 * HOUR).toISOString(), msg: 'Twelve Data-limiet' } },
       frankfurter: { days: mk([]), lastOk: new Date(now - 2 * HOUR).toISOString() } },
     errors: {},
-    budgets: { day: nlDay(), cloudflare: [
+    budgets: { day: nlDay(), trend: (() => {
+      // Voorbeeld: langzaam groeiend gebruik over 14 dagen
+      const days = Array.from({ length: 14 }, (_, i) => ({ day: new Date(now - (14 - i) * 24 * HOUR).toISOString().slice(0, 10), d1_read: Math.round(300000 + i * 9000 + (i % 3) * 15000) }));
+      return { days, avg: days.slice(-7).reduce((a, d) => a + d.d1_read, 0) / 7, growth: 9000, daysToLimit: 512 };
+    })(), cloudflare: [
       { src: 'd1_read', name: 'Database (D1): gelezen rijen', used: 1840000, limit: 5e6, per: 'dag', utc: true, pct: 0.368, note: '' },
       { src: 'd1_write', name: 'Database (D1): geschreven rijen', used: 6200, limit: 1e5, per: 'dag', utc: true, pct: 0.062, note: '' },
       { src: 'worker_req', name: 'Worker: verzoeken van de site', used: 410, limit: 1e5, per: 'dag', utc: true, pct: 0.0041, note: '' },
@@ -131,6 +135,7 @@ function bronnenTile(H) {
 // ---------- Budget per bron (idee 152) ----------
 function budgetTile(H) {
   const B = ((H.budgets && H.budgets.cloudflare) || []).concat((H.budgets && H.budgets.sources) || []);
+  const trend = H.budgets && H.budgets.trend && typeof cfTrendHtml === 'function' ? cfTrendHtml(H.budgets.trend) : '';
   if (!B.length) return '<section class="tile pad"><h3>Budget per bron</h3><p class="muted">Nog geen tellingen van vandaag.</p></section>';
   const meter = (pct, cls) => '<span class="bron-meter"><i class="' + cls + '" style="width:' + Math.round(Math.min(1, Math.max(0, pct)) * 100) + '%"></i></span>';
   const rows = B.map((b) => {
@@ -143,7 +148,7 @@ function budgetTile(H) {
         (b.own && b.own !== b.limit ? ' (de Worker houdt ' + NI.format(b.own) + ' aan van de ' + NI.format(b.limit) + ' die de bron toestaat)' : '')) + '</p>'
         : '<p class="small muted">' + esc('Geen dagbudget, maar een grens van ' + b.limit + ' per ' + b.per + '; de Worker verdeelt zijn verzoeken daarom over de dag.') + '</p>') + '</div>';
   }).join('');
-  return '<section class="tile pad"><h3>Budget per bron</h3><div class="bron-list">' + rows + '</div>' +
+  return '<section class="tile pad"><h3>Budget per bron</h3>' + trend + '<div class="bron-list">' + rows + '</div>' +
     '<p class="sub" style="margin-top:8px">Verzoeken van vandaag (' + esc((H.budgets && H.budgets.day) || '') + '). Raakt een dagbudget op, dan stopt de Worker met die bron en gaat hij morgen verder; wat al binnen is blijft staan.</p></section>';
 }
 

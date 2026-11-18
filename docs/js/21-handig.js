@@ -11,6 +11,10 @@ const WHATS_NEW = {
   v64: [
     'Spaarstand: raakt de database van je Worker 85% van zijn gratis daglimiet, dan blijft hij meten maar ververst hij minder vaak tot middernacht (UTC). Bij 70% krijg je een melding.',
     'Als er niets nieuws is, leest de Worker nu één rij in plaats van het hele overzicht.',
+    'De Worker bewaart wat zelden verandert en leest elke 10 minuten alleen de nieuwste metingen: met een jaar aan gegevens ongeveer 8% van de daglimiet.',
+    'Instellingen > Koppelingen: het databasegebruik van de laatste 14 dagen, met hoe lang het bij deze groei duurt tot de limiet.',
+    'Op de achtergrond ververst de tracker niet meer; zodra je hem weer opent wel. Meldingen komen gewoon door.',
+    'Uurgegevens worden na 60 dagen opgeruimd (ze staan dan al in de dagtabel).',
   ],
   v63: [
     'De Worker leest veel minder uit zijn database, zodat de gratis daglimiet van Cloudflare niet meer opraakt.',
