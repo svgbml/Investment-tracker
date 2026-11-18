@@ -50,6 +50,7 @@ Zet ze aan op de website onder *Instellingen → Koppelingen en functies*. Sleut
 | Trading 212-pies met rendement per pie | Trading 212 | de sleutel moet de pies mogen lezen |
 | Volglijst met labels, notitie en koopzone; nieuws met gedempte bronnen en een ochtendmelding | je eigen Worker | niets extra |
 | Alle transacties in één lijst, export naar Excel (.xlsx) en JSON, uitleg van begrippen, pagina's aanpassen, snel zoeken (Ctrl+K) en sneltoetsen, vegen en omlaag trekken op de telefoon, teller op het app-icoon, compact, grotere tekst en kleurenblindvriendelijk, rondleiding, Duits en Frans, inzoomen in grafieken | de site zelf | niets extra |
+| Toegankelijkheid: alles met het toetsenbord (pijltjes in keuzeknoppen, rijen met Enter), elke grafiek ook als tabel en als samenvatting in woorden, meldingen voor schermlezers, eenvoudige taal, dyslexievriendelijke weergave, leermodus met uitleg en een quiz, en steun voor hoog contrast van Windows | de site zelf | niets extra |
 | Statuspagina met verbruik per bron, meetgeschiedenis van 30 dagen en fouten van de website | je eigen Worker | niets extra |
 | Kopen en verkopen vanuit de app (markt- en limietorders, openstaande orders annuleren), standaard uit, met een grens per order en per dag | Trading 212 | een sleutel met het recht om orders te plaatsen; aanzetten bij Koppelingen |
 | Wekelijkse reservekopie buiten de database | [Cloudflare R2](https://developers.cloudflare.com/r2/) | een R2-bucket met binding `BACKUP` (zie worker/README.md) |
@@ -80,8 +81,9 @@ Zet ze aan op de website onder *Instellingen → Koppelingen en functies*. Sleut
   - **Nieuws**: nieuws over je posities, volglijst en de markt, analisten per bedrijf met betrouwbaarheid, suggesties volgens analisten en insiderhandel.
   - **Analyse** (`#analyse`; op de telefoon het tabblad Analyse): rendement en risico, marktoverzicht, economische agenda, screener, ETF-zoeker, SEC-deponeringen, 13F, alle transacties en begrippen.
   - **Plannen**: streefverdeling, inleg-assistent, vooruitblik, scenario's, dividendkalender, belastinghulp box 3, kostenoverzicht, aankoopdagboek, overlap met fondsen, werkelijke spreiding, andere rekeningen, weekoverzicht delen, export naar CSV.
-  - **Instellingen**: thema, animaties (automatisch, aan of uit; "automatisch" volgt "minder beweging" van je apparaat), taal (Nederlands, Engels, Duits of Frans), leesbaarheid (compact, grotere tekst, kleurenblindvriendelijk), rondleiding en sneltoetsen, installeren als app en controleren op updates.
+  - **Instellingen**: thema, animaties (automatisch, aan of uit; "automatisch" volgt "minder beweging" van je apparaat), taal (Nederlands, Engels, Duits of Frans), leesbaarheid (compact, grotere tekst, kleurenblindvriendelijk, eenvoudige taal, dyslexievriendelijk en leermodus), rondleiding en sneltoetsen, installeren als app en controleren op updates.
   - Eigen indeling op de telefoon, installeerbaar als app, en zonder verbinding de laatst geladen stand.
+  - **Toegankelijkheid**: alles is met het toetsenbord te bedienen (pijltjes in keuzeknoppen, Enter op een rij, Escape sluit een venster), elke lijngrafiek heeft een samenvatting in woorden en een knop *Tabel*, de focus gaat na een paginawissel naar de kop en blijft in een dialoogvenster, en de site werkt met hoog contrast van Windows. Zie *Instellingen, Weergave* voor eenvoudige taal, de dyslexievriendelijke weergave en de leermodus.
 - `apps-script/`: de oudere versie als Google Sheet (optioneel). Via de website kun je die geschiedenis eenmalig overnemen in de Worker.
 
 Er staan geen sleutels of portefeuillegegevens in deze repository. Alles staat in je eigen Cloudflare-account; de toegangscode voor de website alleen in je eigen browser.

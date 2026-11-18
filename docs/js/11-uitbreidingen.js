@@ -440,7 +440,7 @@ function renderCompareView() {
   const pickers = '<section class="tile pad full"><h3>Kies twee aandelen</h3><div class="cmp-pick">' + sel('cmpA', xs.cmpA) + sel('cmpB', xs.cmpB) + '</div></section>';
   const chart = '<section class="tile pad full"><h3>Koers, laatste jaar</h3><div class="chart" data-chart="cmp" style="height:220px"></div><div class="xlabels" data-x="cmp"></div>' +
     '<div class="legend chart-legend" data-legend="cmp" style="margin-top:8px"></div><p class="sub" style="margin-top:8px">Groei vanaf dezelfde startdag. Posities in euro (met valuta-effect), volgaandelen in hun eigen munt.</p></section>';
-  const table = '<section class="tile pad full"><h3>Naast elkaar</h3><div class="tbl-wrap"><table class="tbl cmp-tbl"><thead><tr><th></th><th class="num">' + esc(A.tk) + '</th><th class="num">' + esc(B.tk) + '</th></tr></thead><tbody>' +
+  const table = '<section class="tile pad full"><h3>Naast elkaar</h3><div class="tbl-wrap"><table class="tbl cmp-tbl"><thead><tr><th><span class="sr-only">Kenmerk</span></th><th class="num">' + esc(A.tk) + '</th><th class="num">' + esc(B.tk) + '</th></tr></thead><tbody>' +
     fa.map((r, i) => '<tr><td>' + esc(r[0]) + '</td><td class="num ' + (r[2] || '') + '">' + esc(r[1]) + '</td><td class="num ' + (fb[i][2] || '') + '">' + esc(fb[i][1]) + '</td></tr>').join('') +
     '</tbody></table></div><p class="sub" style="margin-top:8px">Bronnen: Trading 212, FMP (sector, beta, waardering), SEC (cijfers) en Finnhub (analisten). Een streepje: gegevens ontbreken.</p></section>';
   return pseudoPage('Vergelijken', pseudoHead('Vergelijken', A.tk + ' en ' + B.tk, A.name + ' tegenover ' + B.name), [[pickers], [chart], [table]], [pickers, chart, table]);

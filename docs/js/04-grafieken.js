@@ -86,6 +86,7 @@ function lineChart(host, sets, o) {
   if (main.length < 2) {
     host.innerHTML = '<p class="chart-empty">' + esc(o.empty || 'Nog te weinig metingen voor deze periode.') + '</p>';
     if (o.xl) o.xl.innerHTML = '';
+    chartAltText(host, o.empty || 'Nog te weinig metingen voor deze periode.');
     return;
   }
   const n = main.length;
@@ -169,6 +170,86 @@ function lineChart(host, sets, o) {
     for (let j = 0; j < k; j++) labs.push('<span>' + esc(o.xfmt(main[Math.round((j * (n - 1)) / (k - 1))].t)) + '</span>');
     o.xl.innerHTML = labs.join('');
   }
+  chartAlt(host, sets, o, main, ser);
+}
+
+/* ---------- Grafiek in woorden en als tabel ----------
+ * Elke lijngrafiek krijgt een samenvatting als aria-label (voor wie de grafiek niet ziet) en een knop
+ * die dezelfde cijfers als tabel toont. Bedragen lopen door eur of de eigen fmt, dus "bedragen verbergen" geldt ook hier.
+ * Geen tabel: lineChart(..., { table: false }). */
+const chartAltOpen = new WeakSet();
+// De vaste omschrijving uit index.html bewaren, zodat de samenvatting ervoor kan worden gezet
+function chartAltBase(host) {
+  if (host.dataset.altBase == null) {
+    host.dataset.altBase = host.getAttribute('aria-label') || '';
+    // De omhullende zelf krijgt geen role="img": daarin staan knoppen (tabel, zoom terug) en die mogen niet in een afbeelding zitten
+    host.removeAttribute('aria-label');
+    host.removeAttribute('role');
+  }
+  return host.dataset.altBase;
+}
+// De samenvatting hoort bij de tekening zelf (de svg), of bij de omhullende als er niets te tekenen is
+function chartAltText(host, text) {
+  const base = chartAltBase(host);
+  const el = host.querySelector('svg') || host;
+  el.setAttribute('role', 'img');
+  el.setAttribute('aria-label', (base ? base + '. ' : '') + text);
+  el.removeAttribute('aria-hidden');
+}
+// "Accountwaarde steeg van € 10.200 naar € 11.050 in 30 dagen (laagste …, hoogste …, 42 metingen)"
+function chartAltSummary(sets, o, main, ser) {
+  const span = main[main.length - 1].t - main[0].t;
+  const period = span >= 2 * DAY ? ' in ' + days(Math.round(span / DAY))
+    : span >= 2 * HOUR ? ' in ' + Math.round(span / HOUR) + ' uur' : '';
+  const when = (o.tfmt || tFmt(null, main));
+  const parts = sets.map((s, k) => {
+    const idx = [...ser[k].keys()].sort((a, b) => a - b);
+    if (idx.length < 2) return null;
+    const f = s.fmt || o.fmt || eur;
+    const a = ser[k].get(idx[0]), b = ser[k].get(idx[idx.length - 1]);
+    const vals = idx.map((i) => ser[k].get(i));
+    const lo = Math.min(...vals), hi = Math.max(...vals);
+    const word = b > a ? 'steeg' : b < a ? 'daalde' : 'bleef gelijk';
+    return (s.label ? s.label + ' ' : k === 0 ? 'waarde ' : '') + word + ' van ' + f(a) + ' naar ' + f(b) +
+      (k === 0 ? period + ' (laagste ' + f(lo) + ', hoogste ' + f(hi) + ', ' + idx.length + ' metingen)' : '');
+  }).filter(Boolean);
+  const head = 'Lijngrafiek van ' + when(main[0].t) + ' tot ' + when(main[main.length - 1].t) + ': ';
+  return head + (parts.length ? parts.join('; ') + '.' : 'nog geen reeks met twee metingen.');
+}
+function chartAltTable(sets, o, main, ser) {
+  const when = (o.tfmt || tFmt(null, main));
+  const rows = thin(main.map((p, i) => i), 60);
+  const cols = sets.map((s, k) => ({ s, k, f: s.fmt || o.fmt || eur }));
+  return '<table class="tbl alt-tbl"><caption>' + esc(chartAltSummary(sets, o, main, ser)) + '</caption><thead><tr><th scope="col">Moment</th>' +
+    cols.map((c) => '<th scope="col" class="num">' + esc(c.s.label || 'Waarde') + '</th>').join('') + '</tr></thead><tbody>' +
+    rows.map((i) => '<tr><th scope="row">' + esc(when(main[i].t)) + '</th>' +
+      cols.map((c) => '<td class="num">' + esc(isNum(ser[c.k].get(i)) ? c.f(ser[c.k].get(i)) : '–') + '</td>').join('') + '</tr>').join('') +
+    '</tbody></table>' + (rows.length < main.length ? '<p class="sub">' + rows.length + ' van ' + main.length + ' metingen, gelijkmatig verdeeld.</p>' : '');
+}
+function chartAlt(host, sets, o, main, ser) {
+  chartAltText(host, chartAltSummary(sets, o, main, ser));
+  if (o.table === false) return;
+  const open = chartAltOpen.has(host);
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'chart-alt-btn';
+  b.textContent = open ? 'Grafiek' : 'Tabel';
+  b.title = open ? 'Terug naar de grafiek' : 'Dezelfde cijfers als tabel';
+  b.setAttribute('aria-expanded', String(open));
+  b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (open) chartAltOpen.delete(host); else chartAltOpen.add(host);
+    const L = host._lc;
+    lineChart(host, (L && L.sets) || sets, (L && L.o) || o);
+    const again = host.querySelector('.chart-alt-btn');
+    if (again) /** @type {HTMLElement} */ (again).focus({ preventScroll: true });
+  });
+  host.appendChild(b);
+  if (!open) return;
+  const t = document.createElement('div');
+  t.className = 'chart-alt-tbl';
+  t.innerHTML = chartAltTable(sets, o, main, ser);
+  host.appendChild(t);
 }
 
 // Knijpen (twee vingers), Ctrl + scrollen of knijpen op het touchpad om in te zoomen; dubbelklik of de knop om terug te gaan
