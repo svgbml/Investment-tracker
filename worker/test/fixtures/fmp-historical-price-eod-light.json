@@ -1,0 +1,5 @@
+[
+  { "symbol": "AAPL", "date": "2026-11-14", "price": 232.4, "volume": 42000000 },
+  { "symbol": "AAPL", "date": "2026-11-13", "price": 229.6, "volume": 39500000 },
+  { "symbol": "AAPL", "date": "2026-11-12", "price": 231.1, "volume": 41000000 }
+]

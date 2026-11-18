@@ -1,0 +1,4 @@
+{ "data": [
+  { "name": "A. Voorbeeld", "share": 12000, "change": -2000, "filingDate": "2026-10-20", "transactionDate": "2026-10-16", "transactionCode": "S", "transactionPrice": 229.5, "symbol": "AAPL" },
+  { "name": "B. Fictief", "share": 5400, "change": 400, "filingDate": "2026-09-12", "transactionDate": "2026-09-10", "transactionCode": "P", "transactionPrice": 212.25, "symbol": "AAPL" }
+], "symbol": "AAPL" }

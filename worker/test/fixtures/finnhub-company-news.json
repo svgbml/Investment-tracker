@@ -1,0 +1,4 @@
+[
+  { "category": "company", "datetime": 1795000000, "headline": "Voorbeeldbedrijf opent nieuwe fabriek", "id": 1001, "image": "", "related": "AAPL", "source": "Voorbeeldkrant", "summary": "Een verzonnen bericht voor de test.", "url": "https://example.com/nieuws/1" },
+  { "category": "company", "datetime": 1794900000, "headline": "Analistendag aangekondigd", "id": 1002, "image": "", "related": "AAPL", "source": "Voorbeeldkrant", "summary": "Nog een verzonnen bericht.", "url": "https://example.com/nieuws/2" }
+]

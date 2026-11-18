@@ -1,0 +1,4 @@
+[
+  { "symbol": "AAPL", "date": "2026-12-18", "epsActual": null, "epsEstimated": 2.71, "revenueActual": null, "revenueEstimated": 139000000000 },
+  { "symbol": "AAPL", "date": "2026-09-25", "epsActual": 2.41, "epsEstimated": 2.33, "revenueActual": 121000000000, "revenueEstimated": 119500000000 }
+]

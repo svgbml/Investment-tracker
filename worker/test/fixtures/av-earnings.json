@@ -1,0 +1,5 @@
+{ "symbol": "AAPL", "annualEarnings": [ { "fiscalDateEnding": "2026-09-30", "reportedEPS": "8.12" } ],
+  "quarterlyEarnings": [
+    { "fiscalDateEnding": "2026-09-30", "reportedDate": "2026-10-30", "reportedEPS": "2.41", "estimatedEPS": "2.33", "surprise": "0.08", "surprisePercentage": "3.43" },
+    { "fiscalDateEnding": "2026-06-30", "reportedDate": "2026-07-31", "reportedEPS": "1.98", "estimatedEPS": "2.01", "surprise": "-0.03", "surprisePercentage": "-1.49" }
+  ] }

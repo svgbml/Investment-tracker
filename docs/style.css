@@ -562,9 +562,6 @@ button.m-stat.clickable:active { background: var(--bg); }
 .fc-res .k i.dash { height: 0; width: 12px; border-top: 2px dashed var(--ink-2); border-radius: 0; }
 .fc-res b { font-size: 18px; }
 .fc-res .sub { font-size: 12px; color: var(--ink-2); }
-.peil { padding: 6px 0 10px; }
-.peil-h { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
-.peil-h .v.big { font-size: 24px; font-weight: 700; }
 .exp { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .advice .legend-row b { white-space: nowrap; }
 @media (max-width: 700px) {
@@ -2291,3 +2288,23 @@ h1:focus, h2:focus, #m-title:focus { outline: none; }
   .leer-card { border: 1px solid CanvasText; }
   :focus-visible { outline: 3px solid CanvasText; outline-offset: 2px; }
 }
+
+/* ===================== Gereedschap en tests: galerij (?gallery) =====================
+ * Alleen zichtbaar in de galerij (docs/js/21-galerij.js); de gewone site raakt dit niet aan. */
+body.gal-on > #notices, body.gal-on > #shell, body.gal-on > #mshell, body.gal-on > #detail { display: none !important; }
+.gal { padding: 16px; max-width: 1400px; margin: 0 auto; }
+.gal-top { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+  padding: 10px 12px; margin: -16px -16px 12px; background: var(--surface); border-bottom: 1px solid var(--rule); }
+.gal-top > b { font-size: 17px; }
+.gal-top .search { max-width: 240px; }
+.gal-top > a { margin-left: auto; }
+.gal-note { margin: 0 0 14px; }
+.gal-h { font-size: 15px; margin: 18px 0 8px; color: var(--ink-2); text-transform: uppercase; letter-spacing: .06em; }
+.gal-grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); align-items: start; }
+.gal-item { border: 1px solid var(--rule); border-radius: 14px; overflow: hidden; background: var(--bg); }
+.gal-name { display: block; padding: 6px 10px; font: 500 12px/1.4 ui-monospace, monospace; color: var(--ink-2);
+  background: color-mix(in srgb, var(--ink) 6%, transparent); border-bottom: 1px solid var(--rule); }
+.gal-box { padding: 10px; }
+.gal-box > .tile, .gal-box > section.tile { box-shadow: none; }
+.gal-err { color: var(--loss); font-size: 13px; margin: 0; }
+@media (max-width: 700px) { .gal-grid { grid-template-columns: 1fr; } }

@@ -126,6 +126,10 @@ Zet ze aan op de website onder *Instellingen → Koppelingen en functies*. Sleut
   - **Instellingen**: thema, animaties (automatisch, aan of uit; "automatisch" volgt "minder beweging" van je apparaat), taal (Nederlands, Engels, Duits of Frans), leesbaarheid (compact, grotere tekst, kleurenblindvriendelijk, eenvoudige taal, dyslexievriendelijk en leermodus), rondleiding en sneltoetsen, installeren als app en controleren op updates.
   - Eigen indeling op de telefoon, installeerbaar als app, en zonder verbinding de laatst geladen stand.
   - **Toegankelijkheid**: alles is met het toetsenbord te bedienen (pijltjes in keuzeknoppen, Enter op een rij, Escape sluit een venster), elke lijngrafiek heeft een samenvatting in woorden en een knop *Tabel*, de focus gaat na een paginawissel naar de kop en blijft in een dialoogvenster, en de site werkt met hoog contrast van Windows. Zie *Instellingen, Weergave* voor eenvoudige taal, de dyslexievriendelijke weergave en de leermodus.
+- `tools/`: de controles die bij elke push draaien (syntaxis en namen, typen, de site in een echte browser met
+  voorbeeldgegevens, rekenwerk en opmaak, toegankelijkheid, schermafbeeldingen). Zie [tools/README.md](tools/README.md)
+  voor wat elk script doet en hoe je ze zelf draait. De componentengalerij op
+  [`?gallery`](https://svgbml.github.io/Investment-tracker/?gallery) laat elke tegel en knop met voorbeeldgetallen zien.
 - `apps-script/`: de oudere versie als Google Sheet (optioneel). Via de website kun je die geschiedenis eenmalig overnemen in de Worker.
 
 Er staan geen sleutels of portefeuillegegevens in deze repository. Alles staat in je eigen Cloudflare-account; de toegangscode voor de website alleen in je eigen browser.

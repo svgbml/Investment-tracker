@@ -1,0 +1,5 @@
+{ "items": [
+  { "type": "DEPOSIT", "amount": 750, "dateTime": "2026-01-05T08:30:00Z", "reference": "d-1" },
+  { "type": "DEPOSIT", "amount": 250, "dateTime": "2026-06-01T08:30:00Z", "reference": "d-2" },
+  { "type": "WITHDRAW", "amount": -100, "dateTime": "2026-09-14T08:30:00Z", "reference": "w-1" }
+], "nextPagePath": null }

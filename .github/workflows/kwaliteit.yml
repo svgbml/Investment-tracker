@@ -1,0 +1,97 @@
+name: Kwaliteit (toegankelijkheid en beeld)
+
+# Niet blokkerend: deze werkstroom houdt de publicatie nooit tegen (pages.yml roept alleen checks.yml aan).
+# Twee dingen bij elke pull request:
+#  - axe-core op alle pagina's van de voorbeeldweergave, licht en donker, bureaublad en telefoon;
+#  - schermafbeeldingen van deze tak naast die van main, met het aantal veranderde beeldpunten.
+# De uitkomst komt als reactie bij de pull request en als te downloaden bestanden.
+on:
+  pull_request:
+    paths: ['docs/**', 'tools/**', '.github/workflows/kwaliteit.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  kwaliteit:
+    # Zie checks.yml: vaste Ubuntu-versie voor Playwright en voor gelijke schermafbeeldingen.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Playwright en hulpprogramma's installeren
+        run: |
+          npm i --no-save --no-audit --no-fund playwright@1.65.1 axe-core@4.11.0 pixelmatch@7.1.0 pngjs@7.0.0
+          npx playwright install --with-deps chromium || npx playwright install chromium
+
+      - name: Toegankelijkheid (axe-core)
+        id: a11y
+        continue-on-error: true
+        run: |
+          node tools/a11y.mjs --json a11y.json | tee a11y.txt
+          echo 'samenvatting<<EOF' >> $GITHUB_OUTPUT
+          tail -n 40 a11y.txt >> $GITHUB_OUTPUT
+          echo 'EOF' >> $GITHUB_OUTPUT
+
+      - name: Schermafbeeldingen van deze tak
+        continue-on-error: true
+        run: node tools/visual.mjs --uit beeld-nieuw
+
+      - name: Schermafbeeldingen van main
+        continue-on-error: true
+        run: |
+          git worktree add ../main-versie origin/${{ github.base_ref }}
+          node tools/visual.mjs --docs ../main-versie/docs --uit beeld-oud
+
+      - name: Verschillen tellen
+        id: beeld
+        continue-on-error: true
+        run: node tools/visual.mjs --vergelijk beeld-oud beeld-nieuw --diff beeld-verschil | tee beeld.txt
+
+      - name: Afbeeldingen en rapport bewaren
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kwaliteit-${{ github.event.pull_request.number }}
+          path: |
+            beeld-nieuw
+            beeld-oud
+            beeld-verschil
+            a11y.json
+            a11y.txt
+          if-no-files-found: ignore
+
+      - name: Reactie bij de pull request
+        if: always()
+        continue-on-error: true
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const lees = (f) => { try { return fs.readFileSync(f, 'utf8').trim(); } catch (e) { return '(niet gelukt)'; } };
+            const body = [
+              '<!-- kwaliteit -->',
+              '### Toegankelijkheid en beeld',
+              '',
+              '**axe-core (WCAG 2.1 A en AA, voorbeeldweergave)**',
+              '```',
+              lees('a11y.txt').split('\n').slice(0, 40).join('\n'),
+              '```',
+              '**Schermafbeeldingen naast `main`**',
+              '```',
+              lees('beeld.txt').split('\n').slice(0, 30).join('\n'),
+              '```',
+              'De afbeeldingen zelf (ook het verschilbeeld) staan onder *Artifacts* bij deze werkstroom.',
+              '',
+              '_Deze controle blokkeert niets; ze is er om te zien wat er verandert._',
+            ].join('\n');
+            const { data: comments } = await github.rest.issues.listComments({ ...context.repo, issue_number: context.issue.number });
+            const oud = comments.find((c) => c.body && c.body.includes('<!-- kwaliteit -->'));
+            if (oud) await github.rest.issues.updateComment({ ...context.repo, comment_id: oud.id, body });
+            else await github.rest.issues.createComment({ ...context.repo, issue_number: context.issue.number, body });

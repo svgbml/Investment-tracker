@@ -1,0 +1,4 @@
+[
+  { "actual": 2.41, "estimate": 2.33, "period": "2026-09-30", "quarter": 3, "surprise": 0.08, "surprisePercent": 3.43, "symbol": "AAPL", "year": 2026 },
+  { "actual": 1.98, "estimate": 2.01, "period": "2026-06-30", "quarter": 2, "surprise": -0.03, "surprisePercent": -1.49, "symbol": "AAPL", "year": 2026 }
+]

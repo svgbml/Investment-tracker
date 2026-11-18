@@ -1,0 +1,4 @@
+{ "Symbol": "AAPL", "Name": "Apple Inc", "Currency": "USD", "Sector": "TECHNOLOGY", "Industry": "ELECTRONIC COMPUTERS",
+  "MarketCapitalization": "3480000000000", "PERatio": "31.4", "DividendYield": "0.0044", "Beta": "1.18",
+  "52WeekHigh": "268.2", "52WeekLow": "171.4", "AnalystTargetPrice": "254.5",
+  "AnalystRatingStrongBuy": "12", "AnalystRatingBuy": "24", "AnalystRatingHold": "10", "AnalystRatingSell": "2", "AnalystRatingStrongSell": "1" }

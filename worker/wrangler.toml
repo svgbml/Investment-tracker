@@ -28,4 +28,4 @@ ALLOWED_ORIGIN = "https://svgbml.github.io"
 # Tests (nep-API's en een database in het geheugen) draaien vóór elke deploy; faalt er een, dan gaat de deploy niet door.
 # Zonder node:sqlite (Node ouder dan 22.13) worden ze overgeslagen.
 [build]
-command = "node test/run.mjs"
+command = "node test/run.mjs && node test/contract.mjs"

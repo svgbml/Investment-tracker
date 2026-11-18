@@ -1,0 +1,4 @@
+[
+  { "buy": 24, "hold": 10, "period": "2026-11-01", "sell": 2, "strongBuy": 12, "strongSell": 1, "symbol": "AAPL" },
+  { "buy": 22, "hold": 11, "period": "2026-10-01", "sell": 3, "strongBuy": 11, "strongSell": 1, "symbol": "AAPL" }
+]

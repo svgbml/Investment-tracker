@@ -1,0 +1,8 @@
+{ "items": "2", "sentiment_score_definition": "x", "relevance_score_definition": "y", "feed": [
+  { "title": "Voorbeeldbericht over het fonds", "url": "https://example.com/av/1", "time_published": "20261114T131500",
+    "source": "Voorbeeldbron", "overall_sentiment_score": 0.21, "overall_sentiment_label": "Somewhat-Bullish",
+    "ticker_sentiment": [ { "ticker": "AAPL", "relevance_score": "0.45", "ticker_sentiment_score": "0.33", "ticker_sentiment_label": "Somewhat-Bullish" } ] },
+  { "title": "Tweede voorbeeldbericht", "url": "https://example.com/av/2", "time_published": "20261112T090000",
+    "source": "Voorbeeldbron", "overall_sentiment_score": -0.18, "overall_sentiment_label": "Somewhat-Bearish",
+    "ticker_sentiment": [ { "ticker": "AAPL", "relevance_score": "0.52", "ticker_sentiment_score": "-0.25", "ticker_sentiment_label": "Somewhat-Bearish" } ] }
+] }
