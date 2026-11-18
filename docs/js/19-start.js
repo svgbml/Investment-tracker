@@ -110,7 +110,8 @@ document.addEventListener('click', async (e) => {
   const b = t.closest && t.closest('[data-install-copy]');
   if (!b) return;
   if (!installCheckText) await installCheck();
-  try { await navigator.clipboard.writeText(installCheckText); b.textContent = 'Gekopieerd'; } catch (err) { b.textContent = 'Kopiëren lukte niet'; }
+  try { await navigator.clipboard.writeText(installCheckText); b.textContent = 'Gekopieerd'; toastOk('De controle staat op je klembord.'); }
+  catch (err) { b.textContent = 'Kopiëren lukte niet'; toastErr('Kopiëren lukte niet: deze browser geeft de site geen toegang tot het klembord. Selecteer de regels hierboven en kopieer ze zelf.'); }
 });
 
 // ---------- Start ----------

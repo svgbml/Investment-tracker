@@ -279,7 +279,7 @@ document.addEventListener('click', async (e) => {
   const o = { tags: v('tags').split(',').map((x) => x.trim()).filter(Boolean).slice(0, 6).map((x) => x.slice(0, 20)), note: v('note').slice(0, 300), lo: n(v('lo')), hi: n(v('hi')) };
   if (!o.tags.length && !o.note && o.lo == null && o.hi == null) delete meta[sym]; else meta[sym] = o;
   try { await savePrefs({ watchMeta: meta }); if (st) { st.textContent = 'Bewaard.'; st.className = 'small plan-status gain'; } renderWatch(); }
-  catch (err) { if (st) { st.textContent = 'Opslaan is mislukt: ' + err.message + '.'; st.className = 'small plan-status loss'; } }
+  catch (err) { const t = foutTekst('De maatstaf kon niet worden opgeslagen', err); if (st) { st.textContent = t; st.className = 'small plan-status loss'; } toastErr(t); }
 });
 
 // ---------- Nieuws: bronnen dempen en ochtendmelding ----------

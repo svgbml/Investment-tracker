@@ -373,7 +373,9 @@ function applyDisplay() { DISP.forEach(([k]) => { if (dispOn(k)) document.docume
   const div = document.createElement('div');
   div.className = 'disp-opts';
   div.innerHTML = '<h3 style="margin-top:14px">Leesbaarheid</h3>' + DISP.map(([k, l]) => '<label class="check"><input type="checkbox" data-disp="' + k + '"' + (dispOn(k) ? ' checked' : '') + '> ' + esc(l) + '</label>').join('') +
-    '<h3 style="margin-top:14px">Hulp</h3><div class="exp"><button type="button" class="btn ghost" data-tour-start>Rondleiding opnieuw</button><button type="button" class="btn ghost" data-keys>Sneltoetsen</button></div>';
+    numFmtOptions() +
+    '<h3 style="margin-top:14px">Hulp</h3><div class="exp"><button type="button" class="btn ghost" data-tour-start>Rondleiding opnieuw</button><button type="button" class="btn ghost" data-keys>Sneltoetsen</button>' +
+      '<button type="button" class="btn ghost" data-onb-on>Startchecklist terugzetten</button></div>';
   const lang = box.querySelector('[data-lang-pick]');
   const h = lang ? lang.closest('.seg').previousElementSibling : null;
   if (h) h.before(div); else box.appendChild(div);

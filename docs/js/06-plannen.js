@@ -27,7 +27,7 @@ async function saveSettings(patch) {
     method: 'POST', headers: { Authorization: 'Bearer ' + getToken(), 'Content-Type': 'application/json' }, body: JSON.stringify(next),
   });
   const j = await res.json().catch(() => null);
-  if (!res.ok || !j || !j.ok) throw new Error((j && j.error) || 'de Worker gaf status ' + res.status);
+  if (!res.ok || !j || !j.ok) throw new Error((j && j.error) || 'de Worker antwoordde met status ' + res.status);
   data.settings = j.settings; M.settings = Object.assign({}, j.settings);
   return j.settings;
 }
@@ -315,7 +315,7 @@ function planEvents(host) {
         : { monthly: isNum(plan.monthly) ? plan.monthly : projection().monthly, goal: isNum(plan.goal) ? plan.goal : (M.settings.goal || 0) };
       plan.status = 'Bezig met opslaan…'; renderPlan();
       try { await saveSettings(patch); plan.status = act.dataset.plan === 'save' ? 'Doelen opgeslagen' + (demo ? ' (in deze browser).' : '; ze gelden ook op je andere apparaten.') : 'Inleg en doel opgeslagen.'; }
-      catch (err) { plan.status = 'Opslaan is mislukt: ' + err.message + '.'; }
+      catch (err) { plan.status = foutTekst('Opslaan is niet gelukt', err, 'Je plan staat in je Worker; controleer bij Instellingen je toegangscode en probeer het opnieuw.'); }
       renderPlan();
     }
   });
@@ -333,10 +333,10 @@ function planEvents(host) {
         method: 'POST', headers: { Authorization: 'Bearer ' + getToken(), 'Content-Type': 'application/json' }, body: JSON.stringify({ key: el.dataset.etf, csv }),
       });
       const j = await res.json().catch(() => null);
-      if (!res.ok || !j || !j.ok) throw new Error((j && j.error) || 'de Worker gaf status ' + res.status);
+      if (!res.ok || !j || !j.ok) throw new Error((j && j.error) || 'de Worker antwoordde met status ' + res.status);
       say(j.message + ' De gegevens worden opnieuw geladen.', 'gain');
       load();
-    } catch (err) { say('Inlezen is mislukt: ' + err.message, 'loss'); }
+    } catch (err) { say(foutTekst('Het fondsbestand kon niet worden ingelezen', err, 'Gebruik het CSV-bestand met de samenstelling van de aanbieder zelf, zonder het eerst in Excel op te slaan.'), 'loss'); }
   });
   host.addEventListener('input', (e) => {
     const el = e.target;

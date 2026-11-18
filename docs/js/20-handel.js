@@ -220,7 +220,7 @@ document.addEventListener('click', async (e) => {
   if (!confirm('Order ' + c.dataset.orderCancel + ' annuleren?')) return;
   c.disabled = true;
   try { if (!demo) await workerCall('/api/trade/cancel', { method: 'POST', body: JSON.stringify({ id: c.dataset.orderCancel }) }); tradeState.open = null; refresh('analyse'); }
-  catch (err) { c.disabled = false; tradeState.err = 'Annuleren lukte niet: ' + err.message; refresh('analyse'); }
+  catch (err) { c.disabled = false; tradeState.err = foutTekst('De order kon niet worden geannuleerd', err, 'Kijk in de Trading 212-app of de order er nog staat; mogelijk is hij al uitgevoerd.'); refresh('analyse'); }
 });
 
 // ---------- Grenzen bij Koppelingen ----------
@@ -237,6 +237,6 @@ document.addEventListener('click', async (e) => {
   const v = (k) => Number(/** @type {HTMLInputElement} */ (box.querySelector('[data-tl="' + k + '"]')).value);
   b.disabled = true;
   try { await saveSettings({ tradeLimits: { perOrder: v('perOrder'), perDay: v('perDay') } }); b.textContent = 'Opgeslagen'; }
-  catch (err) { b.textContent = 'Mislukt: ' + err.message; }
+  catch (err) { b.textContent = foutTekst('De order is niet geplaatst', err, 'Er is niets gekocht of verkocht. Controleer je saldo en of je sleutel orders mag plaatsen.'); }
   b.disabled = false;
 });
