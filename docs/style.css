@@ -1399,3 +1399,56 @@ body.welcoming #mshell { padding-bottom: 0; }
 /* Het streepje onder het menu schuift via placeIndicators (Web Animations), niet via een CSS-overgang */
 .pill, :root[data-theme="dark"] .pill { transition: none; }
 .watch-add .ws-wrap .search { flex: 1 1 auto; max-width: none; }
+
+
+/* ===================== Prestaties (ideeën 102–113) ===================== */
+
+/* Snelle start: zolang de bewaarde tekening nog een tussenstand is, vangt hij geen kliks
+   (de gegevens zijn er dan nog niet, dus een klik zou niets kunnen openen). Scrollen kan wel. */
+#page-home[data-snap], #m-home[data-snap] { pointer-events: none; }
+/* En hij komt niet binnenwandelen: de tegels van de vorige keer staan er meteen, zonder entree-animatie */
+#page-home[data-snap] .stagger > *, #m-home[data-snap] .stagger > * { animation: none; }
+
+/* Idee 106: wat buiten het beeld valt, hoeft de browser niet neer te zetten.
+   Alleen op lijstregels en tegels zonder grafiek of tabel: in een overgeslagen stuk heeft niets een maat,
+   en dan meten foldAll(), fitChart() en de grafieken nul. De beginpagina (page-home, m-home, m-stats)
+   blijft er dus buiten, want daar klapt foldAll() tegels in op gemeten hoogte. */
+.news .news-i { content-visibility: auto; contain-intrinsic-size: auto 104px; }
+.gloss > div { content-visibility: auto; contain-intrinsic-size: auto 72px; }
+#plan-body .plan-grid > .tile:not(:has(.chart, svg, canvas, .bars, .donut, .hbars, .corr, .fin-bars, table)),
+#m-plan-body .plan-grid > .tile:not(:has(.chart, svg, canvas, .bars, .donut, .hbars, .corr, .fin-bars, table)),
+#analyse-body .plan-grid > .tile:not(:has(.chart, svg, canvas, .bars, .donut, .hbars, .corr, .fin-bars, table)),
+#m-analyse-body .plan-grid > .tile:not(:has(.chart, svg, canvas, .bars, .donut, .hbars, .corr, .fin-bars, table)) {
+  content-visibility: auto; contain-intrinsic-size: auto 320px;
+}
+
+/* Idee 104: het nieuwsarchief tekent 30 koppen en vult aan zodra dit streepje in de buurt komt */
+.news-tail { height: 1px; }
+
+/* Idee 112: zware berekening (samenhang tussen posities) loopt naast de pagina; tot die klaar is een wachtregel */
+.calc-wait { display: flex; align-items: center; gap: 8px; color: var(--ink-2); font-size: 13px; }
+.calc-wait::before {
+  content: ''; width: 12px; height: 12px; border-radius: 50%;
+  border: 2px solid var(--track); border-top-color: var(--accent); animation: calc-spin 900ms linear infinite;
+}
+@keyframes calc-spin { to { transform: rotate(360deg); } }
+html[data-motion="off"] .calc-wait::before { animation: none; }
+
+/* Idee 113: meetpaneel, alleen met ?perf in het adres */
+.perf-panel {
+  position: fixed; right: 12px; bottom: 12px; z-index: 60; width: min(360px, calc(100vw - 24px));
+  max-height: 70vh; overflow: auto; padding: 10px 12px; border-radius: 14px;
+  background: var(--surface); color: var(--ink); border: 1px solid var(--rule);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, .18); font-size: 12px; font-variant-numeric: tabular-nums;
+}
+.perf-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+.perf-head b { font-size: 13px; }
+.perf-head span { color: var(--ink-2); margin-right: auto; }
+.perf-panel table { width: 100%; border-collapse: collapse; }
+.perf-panel th, .perf-panel td { padding: 2px 4px; text-align: left; border-bottom: 1px solid var(--rule); }
+.perf-panel th.num, .perf-panel td.num { text-align: right; }
+.perf-kv { margin: 6px 0 0; display: grid; gap: 2px; }
+.perf-kv > div { display: flex; justify-content: space-between; gap: 8px; }
+.perf-kv dt, .perf-kv dd { margin: 0; }
+.perf-kv dt { color: var(--ink-2); }
+.perf-note { margin-top: 6px; color: var(--ink-2); }

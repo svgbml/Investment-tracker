@@ -594,3 +594,24 @@ function drawMacro(root) {
       { top: 0.1, bottom: 0.1, xl: root.querySelector('[data-x="hicp"]'), xcount: 3, xfmt: (t) => fMonY.format(t), tfmt: (t) => fMonY.format(t) });
   }
 }
+
+// ---------- Onderzoek van één aandeel los bijhalen ----------
+// Het hele 'extra'-deel van de Worker (markt, onderzoek, koersen) is groot. Mist het onderzoek van een
+// bedrijf dat je opent – bijvoorbeeld een naam die net op je volglijst kwam – dan halen we alleen dat
+// ene aandeel op: /api/data?part=research&tk=… Mislukt het, dan blijft de pagina gewoon werken.
+const researchAsked = new Set();
+async function ensureResearch(tk) {
+  const sym = String(tk || '').replace(/^~/, '').toUpperCase();
+  if (!sym || sym.startsWith('@') || !/^[A-Z0-9][A-Z0-9.-]{0,11}$/.test(sym)) return;
+  if (demo || sharedView || !data || !isWorker() || !getToken()) return;
+  if ((data.research || {})[sym] || researchAsked.has(sym)) return;
+  researchAsked.add(sym);
+  try {
+    const j = await workerCall('/api/data?part=research&tk=' + encodeURIComponent(sym), { method: 'GET' });
+    if (!j.research && !j.fin) return;
+    if (j.research) data.research = Object.assign({}, data.research, { [sym]: j.research });
+    if (j.fin) data.fin = Object.assign({}, data.fin, { [sym]: j.fin });
+    if (ui.detail && String(ui.detail).replace(/^~/, '').toUpperCase() === sym) renderDetail(false);
+    else refresh();
+  } catch (err) { /* geen onderzoek: de pagina laat gewoon zien wat er wel is */ }
+}

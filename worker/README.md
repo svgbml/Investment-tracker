@@ -28,7 +28,8 @@ Alle adressen vragen je toegangscode, als `?token=…` of als header `Authorizat
 
 | Wat | Methode en adres |
 |---|---|
-| Gegevens voor de website, in delen met vingerafdruk (ETag): `core` (posities, weken), `extra` (markt, onderzoek, koersen) en `series` (metingen). Met `If-None-Match` geeft de Worker 304 als er niets veranderd is. `part=core&split=1` laat de metingen weg; `part=series&since=<ms>` geeft alleen metingen na dat moment (de site bewaart de rest in IndexedDB). Zonder `part` alles samen. De toegangscode gaat in de kop `Authorization: Bearer …` | `GET /api/data?part=core&split=1` / `?part=extra` / `?part=series&since=…` |
+| Gegevens voor de website, in delen met vingerafdruk (ETag): `core` (posities, weken), `extra` (markt, onderzoek, koersen, agenda, orders, peildatum) en `series` (metingen). Met `If-None-Match` geeft de Worker 304 als er niets veranderd is. `part=core&split=1` laat de metingen weg; `part=series&since=<ms>` geeft alleen metingen na dat moment (de site bewaart de rest in IndexedDB). Zonder `part` alles samen. De toegangscode gaat in de kop `Authorization: Bearer …` | `GET /api/data?part=core&split=1` / `?part=extra` / `?part=series&since=…` |
+| Onderzoek van één aandeel (koersdoelen, profiel, meningen van analisten en de cijfers), voor een bedrijfspagina: veel kleiner dan het hele `extra`-deel. Ook met ETag en 304 | `GET /api/data?part=research&tk=AAPL` |
 | Status: laatste meting, mislukte metingen op rij, gezondheid van de bronnen | `GET /api/status` |
 | Reservekopie (zonder sleutels of toegangscodes), per tabel in pagina's van 2000 rijen; zonder `table` het overzicht | `GET /api/backup?table=weeks&offset=0` |
 | Reservekopie terugzetten, per pagina; `done: true` bij de laatste pagina bouwt de gegevens opnieuw op | `POST /api/restore` met `{"table": "weeks", "rows": [[…]], "done": false}` |

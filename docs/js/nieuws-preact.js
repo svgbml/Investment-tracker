@@ -49,12 +49,16 @@ function demoOlderNews(before, tk) {
   return { items, more: true };
 }
 
+// Hoeveel koppen er in één keer in de pagina komen; de rest volgt zodra je in de buurt scrolt
+const NEWS_STEP = 30;
 function NewsList({ items, tk, onClear }) {
   const [filter, setFilter] = useState(xs.newsF || 'all');
   const [older, setOlder] = useState([]);
   const [busy, setBusy] = useState(false);
   const [end, setEnd] = useState(false);
   const [note, setNote] = useState('');
+  const [limit, setLimit] = useState(NEWS_STEP);
+  const tail = useRef(null);
   const keep = (n) => (filter === 'all' || n.kind === filter) && (!tk || n.tk === tk);
   const shown = useMemo(() => {
     const seen = new Set();
@@ -76,13 +80,27 @@ function NewsList({ items, tk, onClear }) {
   };
   const count = useMemo(() => { const c = { pos: 0, neg: 0, neu: 0 }; shown.forEach((n) => { c[newsTone(n)]++; }); return c; }, [shown]);
   const pick = (k) => { xs.newsF = k; setFilter(k); };
+  // Alleen tekenen wat je kunt zien: een ander filter of bedrijf begint weer bij de eerste 30 koppen
+  useEffect(() => { setLimit(NEWS_STEP); }, [filter, tk]);
+  const vis = shown.slice(0, limit);
+  const rest = shown.length - vis.length;
+  useEffect(() => {
+    if (!rest) return undefined;
+    if (typeof IntersectionObserver !== 'function') { setLimit(shown.length); return undefined; }
+    const el = tail.current;
+    if (!el) return undefined;
+    const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) setLimit((n) => n + NEWS_STEP); }, { rootMargin: '600px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [rest, shown.length]);
   return html`<section class="tile pad span-2 news-tile">
     <div class="plan-head"><h3>Nieuws</h3><${Seg} value=${filter} options=${FILTERS} onPick=${pick} label="Nieuws filteren" /></div>
     ${tk ? html`<p class="small news-only">Alleen ${tk} <button type="button" class="linklike" onClick=${onClear}>Toon alles</button></p>` : null}
     ${shown.length
       ? html`<p class="small muted" style="margin:2px 0 6px">${count.pos} positief, ${count.neg} negatief, ${count.neu} neutraal</p>
-        <div class="news">${shown.map((n) => html`<${NewsItem} key=${n.url + '|' + n.tk + '|' + n.headline} n=${n} />`)}</div>
-        ${canOlder && !end ? html`<div class="news-more"><button type="button" class="btn ghost" disabled=${busy} onClick=${loadOlder}>${busy ? 'Bezig met laden…' : 'Ouder nieuws laden'}</button></div>` : null}
+        <div class="news">${vis.map((n) => html`<${NewsItem} key=${n.url + '|' + n.tk + '|' + n.headline} n=${n} />`)}</div>
+        ${rest ? html`<div class="news-tail" ref=${tail} aria-hidden="true"></div><p class="small muted" role="status" style="margin-top:6px">Nog ${rest} ${rest === 1 ? 'kop' : 'koppen'}: scrol verder.</p>` : null}
+        ${canOlder && !end && !rest ? html`<div class="news-more"><button type="button" class="btn ghost" disabled=${busy} onClick=${loadOlder}>${busy ? 'Bezig met laden…' : 'Ouder nieuws laden'}</button></div>` : null}
         ${note ? html`<p class="small muted" role="status" style="margin-top:6px">${note}</p>` : null}`
       : html`<p class="muted">${filter === 'market' && !data.marketNews ? 'Marktnieuws komt van Finnhub en wordt buiten de meettijden opgehaald.' : 'Geen nieuws in deze selectie.'}</p>`}
     <p class="sub" style="margin-top:8px">Koppen en links van Finnhub (of Alpha Vantage als reserve): per aandeel de laatste tien dagen, en algemeen marktnieuws. Het artikel opent bij de bron. Positief of negatief is een schatting uit woorden in de kop en samenvatting, geen oordeel van de bron; lees bij twijfel het artikel.</p>
@@ -170,10 +188,9 @@ function MoodMap({ pts, sel, onPick }) {
   };
   useLayoutEffect(layout);
   useEffect(() => {
-    if (!box.current || typeof ResizeObserver !== 'function') return undefined;
-    const ro = new ResizeObserver(() => layout());
-    ro.observe(box.current);
-    return () => ro.disconnect();
+    // Werk samengevoegd per frame (observeSize uit js/00-kern.js), anders meet de kaart bij elke pixel opnieuw
+    const ro = observeSize(box.current, layout, 'mood');
+    return ro ? () => ro.disconnect() : undefined;
   }, [box.current]);
   if (pts.length < 2) return null;
   const [x0, x1] = axisRange(pts.map((p) => p.buy)), [y0, y1] = axisRange(pts.map((p) => p.bull));

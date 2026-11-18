@@ -27,9 +27,64 @@ function refresh(...names) {
   list.forEach((n) => {
     const draw = VIEWS.get(n);
     if (!draw) return;
+    const t0 = performance.now();
     try { draw(); }
     catch (err) { console.error('Weergave "' + n + '" kon niet worden getekend:', err); }
+    perfNote(n, performance.now() - t0);
   });
+}
+
+// ---------- Tekentijd per weergave (zichtbaar met ?perf, zie js/15-prestaties.js) ----------
+// Altijd meten (een tijdstempel per weergave kost niets); het paneel toont het alleen met ?perf.
+const PERF = new Map();
+function perfNote(name, ms) {
+  const r = PERF.get(name) || { n: 0, last: 0, tot: 0, max: 0 };
+  r.n++; r.last = ms; r.tot += ms; r.max = Math.max(r.max, ms);
+  PERF.set(name, r);
+  if (typeof perfPanelSoon === 'function') perfPanelSoon();
+}
+
+// ---------- Werk samenvoegen: meten en zetten één keer per frame ----------
+// rafWork('fold', fn) met dezelfde sleutel in hetzelfde frame doet het werk één keer, in plaats van
+// bij elke gebeurtenis opnieuw te meten en te zetten (dat dwingt de browser telkens tot herberekenen).
+const rafJobs = new Map();
+let rafJobId = 0;
+function rafWork(key, fn) {
+  rafJobs.set(key, fn);
+  if (rafJobId) return;
+  rafJobId = requestAnimationFrame(() => {
+    rafJobId = 0;
+    const jobs = [...rafJobs.values()];
+    rafJobs.clear();
+    jobs.forEach((j) => { try { j(); } catch (err) { console.error('Werk in dit frame mislukte:', err); } });
+  });
+}
+
+// ---------- Schermmaat: één luisteraar voor de hele site, met wachttijd ----------
+// onResize(fn) doet het werk pas als het slepen even stilligt; met { lead: true } ook meteen bij de
+// eerste gebeurtenis (voor goedkoop werk dat direct moet meebewegen).
+const RESIZE_WAIT = 140;
+const resizeJobs = [];
+let resizeTimer = 0;
+function onResize(fn, opts) {
+  const o = opts || {};
+  resizeJobs.push({ fn, lead: !!o.lead, key: o.key || 'r' + resizeJobs.length });
+}
+function runResizeJobs(leadOnly) {
+  resizeJobs.forEach((j) => { if (!leadOnly || j.lead) rafWork('resize:' + j.key, j.fn); });
+}
+window.addEventListener('resize', () => {
+  if (!resizeTimer) runResizeJobs(true);
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => { resizeTimer = 0; runResizeJobs(false); }, RESIZE_WAIT);
+}, { passive: true });
+
+// Een element in de gaten houden met een ResizeObserver, maar het werk samengevoegd per frame
+function observeSize(el, fn, key) {
+  if (!el || typeof ResizeObserver !== 'function') return null;
+  const ro = new ResizeObserver(() => rafWork((key || 'size') + ':' + (el.id || ''), fn));
+  ro.observe(el);
+  return ro;
 }
 
 // ---------- HTML-sjablonen ----------

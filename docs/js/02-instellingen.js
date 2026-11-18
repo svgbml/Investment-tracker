@@ -106,6 +106,7 @@ $('form-settings').addEventListener('submit', (e) => {
     localStorage.removeItem(LS_TOKEN);
     localStorage.removeItem(LS_LAST);
     idbDel('last');
+    if (typeof snapForget === 'function') snapForget();
     data = null;
     showWelcome();
   }
@@ -401,10 +402,12 @@ async function saveLast(url, d) {
 // Een derde deel, 'series' (metingen per 10 minuten, uren en dagen), komt na de eerste keer alleen nog
 // met de regels die erbij kwamen (?since=).
 const dataParts = { core: null, extra: null, series: null, tags: {}, seriesTs: 0 };
+let fromSwCache = false;   // het antwoord kwam uit de opslag van de service worker (geen verbinding)
 async function fetchPart(url, token, part, query) {
   const h = { Authorization: 'Bearer ' + token };
   if (dataParts.tags[part] && dataParts[part]) h['If-None-Match'] = dataParts.tags[part];
   const res = await fetch(url + (url.includes('?') ? '&' : '?') + 'part=' + part + (query || ''), { cache: 'no-store', headers: h });
+  if (res.headers.get('X-Tracker-Cached')) fromSwCache = true;
   if (res.status === 304) return null;
   const json = await res.json().catch(() => null);
   if (!res.ok || !json) throw new Error((json && json.error) || 'de web-app gaf status ' + res.status);
@@ -472,6 +475,7 @@ function loadDemoScript() {
 async function load() {
   clearTimeout(refreshTimer);
   showError('');
+  fromSwCache = false;
   if (sharedView) {
     $$('.btn-refresh').forEach((b) => b.classList.add('busy'));
     try {
@@ -523,6 +527,8 @@ async function load() {
       data = json;
       saveLast(url, json);
       render();
+      // Zonder verbinding gaf de service worker de laatst binnengekomen stand terug: dat hoort de gebruiker te zien
+      if (fromSwCache) showError('Geen verbinding. Je ziet de laatst geladen stand van ' + fDT.format(new Date(json.generated)) + '.');
     } else if (data) {
       // Niets veranderd: alleen de tijd bijwerken
       $$('.updated').forEach((e) => { e.textContent = (mode === 'm' ? '' : 'Bijgewerkt ') + fDT.format(new Date()); });
