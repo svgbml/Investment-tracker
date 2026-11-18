@@ -213,6 +213,51 @@ function budgetLine(id, B) {
   const b = src && B && (B.sources || []).find((x) => x.src === src);
   return b ? budgetMeter(b) : '';
 }
+// ---------- Reserves per functie: welke bron eerst, welke daarna (zie de Worker: srcBackup, srcDown) ----------
+// [bron-id in src_health, naam, sleutel (null = geen sleutel nodig), bron-id in het budget]
+const FUNC_ROUTES = [
+  ['Koershistorie (grafieken, risico, vergelijken)', [['fmp', 'FMP', 'FMP_KEY', 'fmp'], ['twelvedata', 'Twelve Data', 'TWELVEDATA_KEY', 'twelvedata'], ['alphavantage', 'Alpha Vantage', 'ALPHAVANTAGE_KEY', 'alphavantage']]],
+  ['Bedrijfsprofiel (sector, branche, beta)', [['fmp', 'FMP', 'FMP_KEY', 'fmp'], ['finnhub', 'Finnhub', 'FINNHUB_KEY']]],
+  ['Vergelijkbare bedrijven', [['fmp', 'FMP', 'FMP_KEY', 'fmp'], ['finnhub', 'Finnhub', 'FINNHUB_KEY']]],
+  ['Kwartaalcijfers in de agenda', [['fmp', 'FMP', 'FMP_KEY', 'fmp'], ['finnhub', 'Finnhub', 'FINNHUB_KEY']]],
+  ['Nieuws, analisten en koersdoelen per aandeel', [['finnhub', 'Finnhub', 'FINNHUB_KEY'], ['alphavantage', 'Alpha Vantage', 'ALPHAVANTAGE_KEY', 'alphavantage']]],
+  ['Marktnieuws', [['finnhub', 'Finnhub', 'FINNHUB_KEY'], ['alphavantage', 'Alpha Vantage', 'ALPHAVANTAGE_KEY', 'alphavantage']]],
+  ['Koersalarmen op je volglijst', [['finnhub', 'Finnhub', 'FINNHUB_KEY'], ['twelvedata', 'Twelve Data', 'TWELVEDATA_KEY', 'twelvedata'], ['-', 'laatst bekende koers', null]]],
+  ['Bedrijven zoeken', [['-', 'eigen lijst (SEC)', null], ['finnhub', 'Finnhub', 'FINNHUB_KEY'], ['twelvedata', 'Twelve Data', 'TWELVEDATA_KEY', 'twelvedata']]],
+  ['Indexen (S&P 500, Nasdaq-100)', [['fred', 'FRED', null], ['fmp', 'FMP', 'FMP_KEY', 'fmp']]],
+  ['Euro-dollarkoers', [['frankfurter', 'Frankfurter', null], ['-', 'ECB', null]]],
+  ['Inflatie', [['ecb_hicp', 'ECB', null], ['-', 'Eurostat', null]]],
+  ['Weekoverzicht', [['resend', 'Resend (mail)', 'RESEND_KEY'], ['-', 'pushmelding', null]]],
+];
+function sourceState(src, F) {
+  const [id, , key, bud] = src;
+  if (key && !(F.keys && F.keys[key])) return { st: 'off', why: 'geen sleutel' };
+  const h = id !== '-' && F.health && F.health[id];
+  if (h && h.until && h.until > Date.now()) return { st: 'down', why: (h.minute ? 'even pauze' : /limiet/i.test(h.msg || '') ? 'limiet' : 'storing') + ' tot ' + new Intl.DateTimeFormat(LOCALE, { weekday: h.until - Date.now() > 20 * 3600e3 ? 'short' : undefined, hour: '2-digit', minute: '2-digit' }).format(h.until) };
+  const b = bud && F.budgets && (F.budgets.sources || []).find((x) => x.src === bud);
+  if (b && b.per === 'dag' && (b.pct || 0) >= 1) return { st: 'down', why: 'daglimiet op' };
+  return { st: 'ok', why: '' };
+}
+function backupRow(F) {
+  if (!F || !F.keys) return '';
+  const rows = FUNC_ROUTES.map(([name, chain]) => {
+    const states = chain.map((src) => sourceState(src, F));
+    const active = states.findIndex((x) => x.st === 'ok');
+    const chips = chain.map((src, i) => {
+      const s = states[i];
+      const cls = i === active ? 'use' : s.st === 'down' ? 'down' : s.st === 'off' ? 'off' : 'wait';
+      return '<span class="rt-chip ' + cls + '" title="' + esc(i === active ? 'Nu in gebruik' : s.why || 'Reserve, klaar voor gebruik') + '">' + esc(src[1]) +
+        (s.why ? ' <small>(' + esc(s.why) + ')</small>' : '') + '</span>';
+    }).join('<span class="rt-arrow" aria-hidden="true">→</span>');
+    const spare = states.filter((x, i) => i > active && x.st === 'ok').length;
+    const note = active < 0 ? 'nu geen bron beschikbaar' : active > 0 ? 'reserve in gebruik' : spare ? spare + (spare === 1 ? ' reserve klaar' : ' reserves klaar') : chain.length > 1 ? 'geen reserve klaar' : '';
+    return '<div class="rt-row"><div class="rt-h"><b>' + esc(name) + '</b><span class="small ' + (active !== 0 ? 'loss' : 'muted') + '">' + esc(note) + '</span></div><div class="rt-chain">' + chips + '</div></div>';
+  }).join('');
+  return '<div class="link-row" data-link="routes"><div class="link-h"><b>Reserves per functie</b><span class="muted small">bij een limiet of storing</span></div>' +
+    '<p class="small muted">Zit een bron aan zijn limiet of geeft hij een fout, dan neemt de volgende in de rij het over; na middernacht (bij een limiet per minuut na een paar minuten) gaat de Worker terug naar de eerste. Een bron zonder sleutel wordt overgeslagen: voeg hieronder een gratis sleutel toe om hem als reserve te gebruiken.</p>' +
+    rows + '</div>';
+}
+
 function cloudflareRow(B) {
   const list = (B && B.cloudflare) || [];
   if (!list.length) return '';
@@ -244,8 +289,8 @@ function renderLinks(msg) {
   const F = linkState;
   const errFor = (id) => F.errors && F.errors[id === 'inflation' ? 'inflation' : id];
   box.innerHTML = '<p class="muted small">De basis heeft alleen Trading 212 nodig. Extra functies zet je aan met een gratis sleutel of een schakelaar. Sleutels gaan naar je eigen Worker en worden nooit teruggestuurd naar de browser.</p>' +
-    cloudflareRow(F.budgets) + LINKS.map((L) => {
-      const keysSet = (L.keys || []).filter((k) => !k[2]).map(([k]) => F.keys[k]);
+    cloudflareRow(F.budgets) + backupRow(F) + LINKS.map((L) => {
+      const keysSet = (L.keys || []).filter((k) => !k[2]).map(([k]) => F.keys[String(k)]);
       const on = L.flag ? F.flags[L.flag] !== false && (!L.keys || L.optKeys || keysSet.every(Boolean)) : keysSet.every(Boolean);
       const err = errFor(L.id);
       const st = err ? '<span class="tag loss">Fout</span>' : on ? '<span class="tag gain">Aan</span>' : '<span class="tag">Uit</span>';

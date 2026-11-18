@@ -647,12 +647,17 @@ async function srcNote(env, src, kind, msg) {
   st[src] = o;
   await setKv(env, 'src_hist', JSON.stringify(st));
 }
-// Een limiet: tot net na middernacht (UTC) uit; andere fouten: een oplopende pauze
+// Bronnen met een limiet per minuut: na een limiet even wachten, niet de hele dag
+const MINUTE_LIMIT_PAUSE = { finnhub: 10 * 60e3, fred: 10 * 60e3, sec: 5 * 60e3 };
+const MINUTE_LIMIT_DAY_AFTER = 3;
+// Een daglimiet: tot net na middernacht (UTC) uit; een minuutlimiet: kort (na drie keer op rij ook tot middernacht);
+// andere fouten: een oplopende pauze
 async function srcFail(env, src, msg, limit) {
   const st = await srcState(env);
   const o = st[src] || { fails: 0 };
   o.fails = (o.fails || 0) + 1; o.msg = String(msg || '').slice(0, 160); o.at = isoLocal(Date.now());
-  if (limit) { const d = new Date(); d.setUTCHours(24, 5, 0, 0); o.until = d.getTime(); }
+  if (limit && MINUTE_LIMIT_PAUSE[src] && o.fails < MINUTE_LIMIT_DAY_AFTER) { o.until = Date.now() + MINUTE_LIMIT_PAUSE[src]; o.minute = true; }
+  else if (limit) { const d = new Date(); d.setUTCHours(24, 5, 0, 0); o.until = d.getTime(); o.minute = false; }
   else { const pause = srcPause(o.fails); if (pause) o.until = Date.now() + pause; }
   o.next = o.until ? isoLocal(o.until) : null;
   st[src] = o;
@@ -2127,7 +2132,7 @@ async function avTask(env, tk) {
   const sym = SYMBOL_MAP[tk] || tk;
   let prev = {};
   try { prev = JSON.parse((await getKv(env, 'rs_' + tk)) || '{}'); } catch (e) { prev = {}; }
-  const need = avNeeds(prev, !!env.FINNHUB_KEY);
+  const need = avNeeds(prev, !!env.FINNHUB_KEY && !(await srcDown(env, 'finnhub')));
   if (!need.length) return 0;
   const calls = [];
   if (need.includes('rec') || need.includes('target')) calls.push('OVERVIEW');
@@ -2773,6 +2778,18 @@ async function marketStep(env) {
           rows.forEach(([d, v]) => writes.push(st.bind(arg, d, v)));
           if (rows.length) await srcBackup(env, 'fmp', 'Alpha Vantage');
         } else if (fmpDown) deferred.push(task);
+      } else if (kind === 'peers' && fmpDown && env.FINNHUB_KEY && !(await srcDown(env, 'finnhub'))) {
+        // Reserve voor FMP: vergelijkbare bedrijven van Finnhub (zelfde sector en branche)
+        calls++;
+        const r = await getJson(FINNHUB_BASE + '/stock/peers?symbol=' + encodeURIComponent(arg) + '&token=' + encodeURIComponent(env.FINNHUB_KEY));
+        if (r.status === 429) { await srcFail(env, 'finnhub', 'Finnhub-limiet (vergelijkbare bedrijven)', true); deferred.push(task); continue; }
+        const other = (x) => x && !x.startsWith(arg) && !arg.startsWith(x);
+        const pick = (Array.isArray(r.body) ? r.body : []).filter((x) => other(x) && !x.includes('.')).slice(0, PEERS_PER_STOCK);
+        if (pick.length) {
+          writes.push(env.DB.prepare('INSERT OR REPLACE INTO ext_peers (symbol, peers, updated) VALUES (?,?,?)').bind(arg, JSON.stringify(pick), parts(new Date()).day));
+          pick.forEach((sym) => { if (!queue.includes('profile:' + sym)) queue.unshift('profile:' + sym); });
+          await srcBackup(env, 'fmp', 'Finnhub (vergelijkbare bedrijven)');
+        } else deferred.push(task);
       } else if (!env.FMP_KEY || fmpDown) {
         // FMP-taak zonder sleutel overslaan; met sleutel maar FMP tijdelijk uit: later opnieuw
         if (fmpDown) deferred.push(task);
@@ -2880,7 +2897,17 @@ async function marketStep(env) {
         // Finnhub zit aan zijn limiet: Finnhub-taken naar achteren, de rest (zoals FMP-koersen) gaat door
         const fh = [task].concat(queue.filter((t) => t.startsWith('fh:') || t === 'fhnews'));
         queue = queue.filter((t) => !(t.startsWith('fh:') || t === 'fhnews'));
-        deferred.push(...fh);
+        const st = (await srcState(env)).finnhub || {};
+        if (env.ALPHAVANTAGE_KEY && st.minute === false) {
+          // De hele dag uit: Alpha Vantage neemt je posities over (eerst die, het budget is klein), de volglijst wacht
+          const heldSet = new Set((await heldStocks(env)).map((h) => h.ticker));
+          fh.forEach((t) => {
+            const tk = t.slice(3);
+            if (t.startsWith('fh:') && heldSet.has(tk) && !queue.includes('av:' + tk)) queue.push('av:' + tk);
+            else deferred.push(t);
+          });
+          await srcBackup(env, 'finnhub', 'Alpha Vantage (nieuws en analisten)');
+        } else deferred.push(...fh);
       } else if (/limiet|subrequests/i.test(e.message)) { queue.unshift(task); stop = true; }
       else if (/ongeldig/i.test(e.message) && /^fh:/.test(task)) {
         // Finnhub-sleutel werkt niet: Alpha Vantage neemt het over als die sleutel er is
@@ -3018,7 +3045,7 @@ function isDst(localIso) {
 
 export const _test = { parts, isLive, shortTicker, isoLocal, isDst, hourStart, dayOf, newsHistTask, storeNews, noteOpinionDay,
   tradingDay, usTradingDay, shiftDay, weekdayOf, srcPause, srcFail, srcOk, srcState, srcHistState, checkPositions, splitRatio,
-  planResearch, uniqTasks, dbWatch, testKey, r2Backup, r2Info, r2Preview, healthInfo, budgetInfo, buildData, bumpMarket, ensureMarketTables, ensureIndexes, countingDb, flushCalls };
+  planResearch, uniqTasks, dbWatch, testKey, r2Backup, r2Info, r2Preview, healthInfo, budgetInfo, buildData, bumpMarket, ensureMarketTables, ensureIndexes, countingDb, flushCalls, srcFail, searchCompanies, checkPriceAlerts };
 
 
 // =====================================================================
@@ -3773,7 +3800,7 @@ async function checkPriceAlerts(env, rows, now) {
   if (!active.length || !(await pushSubs(env)).length) return '';
   const held = new Map(rows.filter((r) => r.ticker !== TOTAL && r.price).map((r) => [r.ticker, r.price]));
   const price = new Map();
-  let quotes = 0;
+  let quotes = 0, tdQuotes = 0;
   for (const a of active) {
     if (held.has(a.sym)) { price.set(a.sym, held.get(a.sym)); continue; }
     if (price.has(a.sym)) continue;
@@ -3781,6 +3808,15 @@ async function checkPriceAlerts(env, rows, now) {
       quotes++;
       const r = await getJson(FINNHUB_BASE + '/quote?symbol=' + encodeURIComponent(a.sym) + '&token=' + encodeURIComponent(env.FINNHUB_KEY));
       if (r.ok && r.body && r.body.c > 0) { price.set(a.sym, r.body.c); continue; }
+      if (r.status === 429) await srcFail(env, 'finnhub', 'Finnhub-limiet (koersalarm)', true);
+    }
+    if (env.TWELVEDATA_KEY && tdQuotes < 5 && !(await srcDown(env, 'twelvedata'))) {
+      // Reserve voor Finnhub: actuele koers van Twelve Data (1 van de 800 verzoeken per dag)
+      tdQuotes++;
+      const r = await getJson('https://api.twelvedata.com/price?symbol=' + encodeURIComponent(a.sym) + '&apikey=' + encodeURIComponent(env.TWELVEDATA_KEY));
+      const v = r.ok && r.body ? numOrNull(r.body.price) : null;
+      if (v > 0) { price.set(a.sym, v); await srcBackup(env, 'finnhub', 'Twelve Data (koersalarm)'); continue; }
+      if (r.status === 429 || (r.body && r.body.code === 429)) await srcFail(env, 'twelvedata', 'Twelve Data-limiet', true);
     }
     const p = await env.DB.prepare('SELECT data FROM ext_profile WHERE symbol = ?').bind(a.sym).first().catch(() => null);
     try { const d = p && JSON.parse(p.data); if (d && d.price > 0) price.set(a.sym, d.price); } catch (e) { /* geen profiel */ }
@@ -3850,6 +3886,14 @@ async function searchCompanies(env, q, url) {
     const r = await getJson(FINNHUB_BASE + '/search?q=' + encodeURIComponent(query) + '&token=' + encodeURIComponent(env.FINNHUB_KEY));
     if (r.ok && r.body && Array.isArray(r.body.result)) r.body.result.filter((x) => /Common Stock|ADR|ETP|ETF/i.test(x.type || '')).slice(0, 12).forEach((x) => add(x.symbol, x.description, x.displaySymbol !== x.symbol ? x.displaySymbol : '', 'Finnhub'));
     else if (r.status === 429) await srcFail(env, 'finnhub', 'Finnhub-limiet', true);
+  }
+  if (seen.size < 8 && env.TWELVEDATA_KEY && (!env.FINNHUB_KEY || (await srcDown(env, 'finnhub'))) && !(await srcDown(env, 'twelvedata'))) {
+    // Reserve voor Finnhub: zoeken bij Twelve Data (alleen Amerikaanse en Europese aandelen en fondsen)
+    const r = await getJson('https://api.twelvedata.com/symbol_search?symbol=' + encodeURIComponent(query) + '&outputsize=12&apikey=' + encodeURIComponent(env.TWELVEDATA_KEY));
+    const data = r.ok && r.body && Array.isArray(r.body.data) ? r.body.data : [];
+    data.filter((x) => /Common Stock|ETF|Depositary/i.test(x.instrument_type || '')).forEach((x) => add(x.symbol, x.instrument_name, x.exchange !== 'NASDAQ' && x.exchange !== 'NYSE' ? x.exchange : '', 'Twelve Data'));
+    if (data.length) await srcBackup(env, 'finnhub', 'Twelve Data (zoeken)');
+    else if (r.status === 429) await srcFail(env, 'twelvedata', 'Twelve Data-limiet', true);
   }
   return [...seen.values()].slice(0, 15);
 }

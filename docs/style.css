@@ -2323,3 +2323,17 @@ html, body { overflow-x: clip; }
 /* Limiet per koppeling in de instellingen: dezelfde meter als op de bronnenpagina */
 .link-row .lim-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 6px 0 2px; }
 .link-row .lim-row .bron-meter { flex: 0 0 140px; }
+
+
+/* Reserves per functie (instellingen): de bronnen van een functie in volgorde */
+.rt-row { border-top: 1px solid var(--rule); padding: 10px 0 2px; }
+.rt-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.rt-h .small { margin-left: auto; }
+.rt-chain { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
+.rt-chip { display: inline-flex; align-items: baseline; gap: 4px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--rule); font-size: 13px; }
+.rt-chip small { font-size: 11.5px; color: var(--ink-2); }
+.rt-chip.use { border-color: var(--gain); color: var(--gain); font-weight: 600; }
+.rt-chip.down { border-color: var(--loss); color: var(--loss); }
+.rt-chip.down small { color: var(--loss); }
+.rt-chip.off { border-style: dashed; color: var(--ink-2); }
+.rt-arrow { color: var(--ink-2); font-size: 12px; }

@@ -12,6 +12,7 @@ const WHATS_NEW = {
     'De Worker leest veel minder uit zijn database, zodat de gratis daglimiet van Cloudflare niet meer opraakt.',
     'Instellingen > Koppelingen: bij elke bron zie je hoe dicht hij bij zijn limiet zit, en voor je Worker en database hoeveel van de gratis daglimiet er gebruikt is.',
     'Raakt de database toch zijn daglimiet, dan zegt de melding dat duidelijk en hoe laat het weer werkt.',
+    'Reserves per functie: zit een bron aan zijn limiet, dan neemt een andere het over (ook voor vergelijkbare bedrijven, koersalarmen en zoeken). Bij Koppelingen zie je per functie welke bron nu werkt.',
   ],
   v60: [
     'Grafieken: wijs een punt aan en je ziet weer het tijdstip van de meting en de waarde.',

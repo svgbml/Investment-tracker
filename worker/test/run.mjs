@@ -1267,5 +1267,45 @@ await test('Cloudflare-limieten: gelezen en geschreven D1-rijen tellen mee in he
   assert.ok(f.features.budgets && Array.isArray(f.features.budgets.cloudflare), 'budget in /api/features');
 });
 
+await test('reserves bij een limiet: minuutlimiet kort, vergelijkbare bedrijven en zoeken via een andere bron', async () => {
+  const T = WM._test;
+  // Finnhub: limiet per minuut -> 10 minuten pauze; na drie keer op rij tot middernacht
+  setKv('src_health', {});
+  await T.srcFail(env, 'finnhub', 'Finnhub-limiet', true);
+  let st = JSON.parse(kv('src_health')).finnhub;
+  assert.equal(st.minute, true);
+  assert.ok(st.until - Date.now() <= 10 * 60e3 + 1000 && st.until > Date.now(), 'korte pauze');
+  await T.srcFail(env, 'finnhub', 'Finnhub-limiet', true);
+  await T.srcFail(env, 'finnhub', 'Finnhub-limiet', true);
+  st = JSON.parse(kv('src_health')).finnhub;
+  assert.equal(st.minute, false, 'derde keer: rest van de dag');
+  assert.ok(st.until - Date.now() > 10 * 60e3 || new Date().getUTCHours() === 23, 'tot middernacht');
+  // Een daglimiet (FMP) gaat meteen tot middernacht
+  await T.srcFail(env, 'fmp', 'FMP-limiet', true);
+  assert.notEqual(JSON.parse(kv('src_health')).fmp.minute, true);
+
+  // Vergelijkbare bedrijven: FMP aan zijn limiet -> Finnhub stock/peers
+  setKv('src_health', { fmp: { fails: 1, until: Date.now() + 3600e3, minute: false } });
+  setKv('mkt_queue', ['peers:AAPL']);
+  setKv('market_schema', '');
+  routes = [[/finnhub\.io\/api\/v1\/stock\/peers/, reply(['AAPL', 'MSFT', 'GOOGL', 'DELL', 'HPQ.DE'])], [/./, reply({}, 404)]];
+  const e2 = Object.assign(Object.create(env), { FMP_KEY: 'fmp', FINNHUB_KEY: 'fh' });
+  await req('/api/market', { method: 'POST', env: e2 });
+  const pr = DB.db.prepare('SELECT peers FROM ext_peers WHERE symbol = ?').get('AAPL');
+  assert.ok(pr, 'peers bewaard');
+  assert.deepEqual(JSON.parse(pr.peers), ['MSFT', 'GOOGL', 'DELL'], 'zonder zichzelf en zonder buitenlandse notering');
+  assert.match(JSON.parse(kv('src_health')).fmp.backup, /Finnhub/);
+
+  // Zoeken: geen Finnhub -> Twelve Data
+  setKv('companies', []);
+  routes = [[/api\.twelvedata\.com\/symbol_search/, reply({ data: [{ symbol: 'ZEDX', instrument_name: 'Zed Corp', exchange: 'NASDAQ', instrument_type: 'Common Stock' }, { symbol: 'ZEDW', instrument_name: 'Zed Warrant', exchange: 'NASDAQ', instrument_type: 'Warrant' }] })]];
+  const e3 = Object.assign(Object.create(env), { TWELVEDATA_KEY: 'td' });
+  const found = await T.searchCompanies(e3, 'zed');
+  assert.ok(found.some((x) => x.sym === 'ZEDX' && x.src === 'Twelve Data'), JSON.stringify(found));
+  assert.ok(!found.some((x) => x.sym === 'ZEDW'), 'geen warrants');
+  routes = [];
+  setKv('src_health', {});
+});
+
 console.log((failed ? failed + ' fout, ' : '') + passed + ' geslaagd');
 process.exit(failed ? 1 : 0);
