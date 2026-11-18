@@ -87,7 +87,8 @@ function posGroupHeadM(grp) {
 }
 
 // ---------- Computer: lijst met rijen, grafiekkolom en subtotalen ----------
-const BELL_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10 21h4"/></svg>';
+// Pictogrammen uit de sprite in index.html (idee 108)
+const BELL_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true" stroke="currentColor"><use href="#i-meldingen"/></svg>';
 function posRow(c) {
   const pts = seriesFor(c.tk, '1m');
   const sp = ui.listSpan === 'today' ? c.changePct : spanPct(c, seriesFor(c.tk, ui.listSpan));
@@ -107,7 +108,7 @@ function posGroupHtmlD(grp) {
   const pct = posGroupPct(grp);
   return '<div class="pgroup' + (shut ? ' shut' : '') + '">' +
     '<button type="button" class="pg-h" data-pgroup="' + esc(grp.k) + '" aria-expanded="' + (!shut) + '">' +
-      '<span class="pg-l"><svg class="pg-c" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M9 5l7 7-7 7"/></svg>' +
+      '<span class="pg-l"><svg class="pg-c" viewBox="0 0 24 24" aria-hidden="true" stroke-linecap="round"><use href="#i-chev"/></svg>' +
       '<span class="pg-n">' + esc(grp.k) + '</span><span class="pg-k">' + grp.cs.length + '</span></span>' +
       '<span></span><span class="pg-v">' + esc(eur(grp.v)) + '</span>' +
       '<span class="pg-p ' + tone(grp.d) + '">' + esc(isNum(pct) ? spct(pct) : '–') + '</span>' +

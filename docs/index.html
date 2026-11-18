@@ -22,6 +22,39 @@
 </head>
 <body data-page="home">
 
+  <!-- Pictogrammen: één keer getekend, overal gebruikt met <use href="#i-…"> (idee 108). Kleur en lijndikte komen van de <svg> eromheen. -->
+  <svg class="sprite" width="0" height="0" aria-hidden="true" focusable="false" style="position:absolute;overflow:hidden">
+    <symbol id="i-logo" viewBox="0 0 24 24"><path d="M3 17l5-5 4 3 8-9" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-grafiek" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l5-5 4 3 8-9"/></symbol>
+    <symbol id="i-risico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"/></symbol>
+    <symbol id="i-doel" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 1 0 9 9M12 7a5 5 0 1 0 5 5M12 11a1 1 0 1 0 1 1"/></symbol>
+    <symbol id="i-agenda" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16v14H4zM4 10h16M8 3v4M16 3v4"/></symbol>
+    <symbol id="i-krant" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h12v16H5zM17 8h3v10a2 2 0 0 1-2 2M8 8h6M8 12h6M8 16h4"/></symbol>
+    <symbol id="i-valuta" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M17 7H9.5a3 3 0 0 0 0 6h5a3 3 0 0 1 0 6H6"/></symbol>
+    <symbol id="i-bedrijven" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><rect x="13" y="13" width="7" height="7" rx="2"/></symbol>
+    <symbol id="i-nieuws" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h8M8 17h5"/></symbol>
+    <symbol id="i-analyse" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 20V11M12 20V4M19 20v-6"/></symbol>
+    <symbol id="i-plannen" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="0.8" fill="currentColor"/></symbol>
+    <symbol id="i-installeren" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></symbol>
+    <symbol id="i-oog" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/><path class="slash" d="M4 4l16 16"/></symbol>
+    <symbol id="i-vernieuwen" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5"/></symbol>
+    <symbol id="i-instellingen" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
+    <symbol id="i-slot" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 0 1 9 9M12 3a9 9 0 0 0-9 9M8 12a4 4 0 0 1 8 0v3a4 4 0 0 1-8 0M12 11v5"/></symbol>
+    <symbol id="i-sluiten" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+    <symbol id="i-instellingen-m" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 5l-7 7 7 7"/></symbol>
+    <symbol id="i-koppelingen" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 5l7 7-7 7"/></symbol>
+    <symbol id="i-toegang" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 11V8a5 5 0 0 1 10 0v3M5 11h14v10H5z"/></symbol>
+    <symbol id="i-weergave" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18M12 3v18"/></symbol>
+    <symbol id="i-meldingen" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10 21h4"/></symbol>
+    <symbol id="i-delen" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7h16v-7M12 3v12M7 8l5-5 5 5"/></symbol>
+    <symbol id="i-privacy" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"/></symbol>
+    <symbol id="i-installeren-2" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 2h10v20H7zM11 18h2"/></symbol>
+    <symbol id="i-status" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-8 4 16 3-8h4"/></symbol>
+    <symbol id="i-updates" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 0 1 14-5l2 2M20 12a8 8 0 0 1-14 5l-2-2M18 4v5h-5M6 20v-5h5"/></symbol>
+    <symbol id="i-importeren" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h10l4 4v14H5zM9 12h6M9 16h6"/></symbol>
+  </svg>
+
   <!-- Naar inhoud: het eerste waar de toetsenbordfocus op komt -->
   <button type="button" class="skip" data-skip>Naar inhoud</button>
 
@@ -42,7 +75,7 @@
     </section>
     <section id="welcome" class="welcome" hidden>
       <div class="wl-top">
-        <span class="wl-brand"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l5-5 4 3 8-9" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>Investeringstracker</span>
+        <span class="wl-brand"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-logo"/></svg>Investeringstracker</span>
         <div class="wl-lang" role="group" aria-label="Taal">
           <button type="button" data-lang-pick="nl" aria-pressed="true" lang="nl" title="Nederlands">NL</button>
           <button type="button" data-lang-pick="en" aria-pressed="false" lang="en" title="English">EN</button>
@@ -79,12 +112,12 @@
         </div>
       </div>
       <ul class="feat-list">
-        <li><span class="feat-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l5-5 4 3 8-9"/></svg></span><b>Overzicht</b><span>Waarde, resultaat en grafieken per dag, week en positie.</span><i>Trading 212</i></li>
-        <li><span class="feat-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"/></svg></span><b>Risico</b><span>Klasse 1 tot 7, wat samen beweegt en wat het risico verlaagt.</span><i>Trading 212</i></li>
-        <li><span class="feat-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 1 0 9 9M12 7a5 5 0 1 0 5 5M12 11a1 1 0 1 0 1 1"/></svg></span><b>Plannen</b><span>Streefverdeling, vooruitblik, jaaroverzicht en mijlpalen.</span><i>Trading 212</i></li>
-        <li><span class="feat-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16v14H4zM4 10h16M8 3v4M16 3v4"/></svg></span><b>Agenda en sectoren</b><span>Kwartaalcijfers, dividenden en vergelijkbare bedrijven.</span><i>gratis FMP-sleutel</i></li>
-        <li><span class="feat-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h12v16H5zM17 8h3v10a2 2 0 0 1-2 2M8 8h6M8 12h6M8 16h4"/></svg></span><b>Nieuws en analisten</b><span>Nieuws, koersdoelen, stemming en insiderhandel.</span><i>gratis Finnhub-sleutel</i></li>
-        <li><span class="feat-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M17 7H9.5a3 3 0 0 0 0 6h5a3 3 0 0 1 0 6H6"/></svg></span><b>Valuta en inflatie</b><span>Euro-dollarkoers, rendement na inflatie, vergelijking met de index.</span><i>geen sleutel</i></li>
+        <li><span class="feat-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#i-grafiek"/></svg></span><b>Overzicht</b><span>Waarde, resultaat en grafieken per dag, week en positie.</span><i>Trading 212</i></li>
+        <li><span class="feat-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#i-risico"/></svg></span><b>Risico</b><span>Klasse 1 tot 7, wat samen beweegt en wat het risico verlaagt.</span><i>Trading 212</i></li>
+        <li><span class="feat-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#i-doel"/></svg></span><b>Plannen</b><span>Streefverdeling, vooruitblik, jaaroverzicht en mijlpalen.</span><i>Trading 212</i></li>
+        <li><span class="feat-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#i-agenda"/></svg></span><b>Agenda en sectoren</b><span>Kwartaalcijfers, dividenden en vergelijkbare bedrijven.</span><i>gratis FMP-sleutel</i></li>
+        <li><span class="feat-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#i-krant"/></svg></span><b>Nieuws en analisten</b><span>Nieuws, koersdoelen, stemming en insiderhandel.</span><i>gratis Finnhub-sleutel</i></li>
+        <li><span class="feat-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#i-valuta"/></svg></span><b>Valuta en inflatie</b><span>Euro-dollarkoers, rendement na inflatie, vergelijking met de index.</span><i>geen sleutel</i></li>
       </ul>
       <p class="small wl-foot"><a href="https://github.com/svgbml/Investment-tracker#zelf-installeren" target="_blank" rel="noopener">Zo zet je je eigen tracker op</a>: een gratis Cloudflare-account en een Trading 212 API-sleutel zijn genoeg voor de basis.</p>
     </section>
@@ -94,26 +127,26 @@
   <div id="shell" hidden>
     <header class="topbar">
       <span class="brand">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l5-5 4 3 8-9" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-logo"/></svg>
         <span class="brand-txt sr-only">Investeringstracker</span><span id="top-mini" class="top-mini" aria-hidden="true"></span>
       </span>
       <nav class="pillnav" aria-label="Hoofdmenu">
         <span class="pill" aria-hidden="true"></span>
-        <a href="#overzicht" data-page="home" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l5-5 4 3 8-9"/></svg><span>Overzicht</span></a>
-        <a href="#bedrijven" data-page="list"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><rect x="13" y="13" width="7" height="7" rx="2"/></svg><span>Bedrijven</span></a>
-        <a href="#nieuws" data-page="news"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h8M8 17h5"/></svg><span>Nieuws</span></a>
-        <a href="#analyse" data-page="stats"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 20V11M12 20V4M19 20v-6"/></svg><span>Analyse</span></a>
-        <a href="#plannen" data-page="plan"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="0.8" fill="currentColor"/></svg><span>Plannen</span></a>
+        <a href="#overzicht" data-page="home" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-grafiek"/></svg><span>Overzicht</span></a>
+        <a href="#bedrijven" data-page="list"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-bedrijven"/></svg><span>Bedrijven</span></a>
+        <a href="#nieuws" data-page="news"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-nieuws"/></svg><span>Nieuws</span></a>
+        <a href="#analyse" data-page="stats"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-analyse"/></svg><span>Analyse</span></a>
+        <a href="#plannen" data-page="plan"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-plannen"/></svg><span>Plannen</span></a>
       </nav>
       <div class="top-actions">
         <span class="updated"></span>
-        <button class="icon-btn btn-install-top" type="button" aria-label="Installeren als app" title="Installeren als app" hidden><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg></button>
-        <button class="icon-btn btn-hide" type="button" aria-pressed="false" aria-label="Bedragen verbergen"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/><path class="slash" d="M4 4l16 16"/></svg></button>
+        <button class="icon-btn btn-install-top" type="button" aria-label="Installeren als app" title="Installeren als app" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-installeren"/></svg></button>
+        <button class="icon-btn btn-hide" type="button" aria-pressed="false" aria-label="Bedragen verbergen"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-oog"/></svg></button>
         <button class="icon-btn btn-refresh" type="button" aria-label="Gegevens vernieuwen">
-          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5"/></svg>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-vernieuwen"/></svg>
         </button>
         <button class="icon-btn btn-settings" type="button" aria-label="Instellingen">
-          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-instellingen"/></svg>
         </button>
       </div>
     </header>
@@ -224,9 +257,9 @@
       <div id="m-mini" class="m-mini" aria-hidden="true"></div>
       <div class="m-top-actions">
         <span class="updated"></span>
-        <button class="m-icon btn-hide" type="button" aria-pressed="false" aria-label="Bedragen verbergen"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/><path class="slash" d="M4 4l16 16"/></svg></button>
+        <button class="m-icon btn-hide" type="button" aria-pressed="false" aria-label="Bedragen verbergen"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-oog"/></svg></button>
         <button class="m-icon btn-refresh" type="button" aria-label="Gegevens vernieuwen">
-          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5"/></svg>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-vernieuwen"/></svg>
         </button>
       </div>
     </header>
@@ -319,17 +352,17 @@
     <nav class="m-tabs" aria-label="Hoofdmenu">
       <span class="m-tab-ind" aria-hidden="true"></span>
       <a href="#overzicht" data-page="home" aria-current="page">
-        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l5-5 4 3 8-9"/></svg>Overzicht</a>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-grafiek"/></svg>Overzicht</a>
       <a href="#bedrijven" data-page="list">
-        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><rect x="13" y="13" width="7" height="7" rx="2"/></svg>Bedrijven</a>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-bedrijven"/></svg>Bedrijven</a>
       <a href="#nieuws" data-page="news">
-        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h8M8 17h5"/></svg>Nieuws</a>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-nieuws"/></svg>Nieuws</a>
       <a href="#analyse" data-page="stats">
-        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 20V11M12 20V4M19 20v-6"/></svg>Analyse</a>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-analyse"/></svg>Analyse</a>
       <a href="#plannen" data-page="plan">
-        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="0.8" fill="currentColor"/></svg>Plannen</a>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-plannen"/></svg>Plannen</a>
       <button type="button" class="btn-settings">
-        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>Instellingen</button>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-instellingen"/></svg>Instellingen</button>
     </nav>
   </div>
 
@@ -341,7 +374,7 @@
   <!-- Vergrendeling met vingerafdruk of gezicht (optioneel, per apparaat; zie js/21-pwa.js) -->
   <div id="lock" class="lock" role="dialog" aria-modal="true" aria-labelledby="lock-title" hidden>
     <div class="lock-card">
-      <span class="lock-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 0 1 9 9M12 3a9 9 0 0 0-9 9M8 12a4 4 0 0 1 8 0v3a4 4 0 0 1-8 0M12 11v5"/></svg></span>
+      <span class="lock-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#i-slot"/></svg></span>
       <h2 id="lock-title">Vergrendeld</h2>
       <p class="muted small" id="lock-text">Ontgrendel met je vingerafdruk, gezicht of de pincode van dit apparaat.</p>
       <button type="button" class="btn primary" id="lock-go">Ontgrendelen</button>
@@ -350,7 +383,7 @@
   <dialog id="dlg-alarm" class="dlg-alarm" aria-labelledby="dlg-alarm-title">
     <div class="dlg-alarm-top">
       <h2 id="dlg-alarm-title">Koersalarm</h2>
-      <button type="button" class="set-close" data-alarm-close aria-label="Sluiten"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      <button type="button" class="set-close" data-alarm-close aria-label="Sluiten"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-sluiten"/></svg></button>
     </div>
   </div>
     <div id="alarm-body"></div>
@@ -359,9 +392,9 @@
   <dialog id="dlg-settings" aria-labelledby="dlg-settings-title">
     <form method="dialog" id="form-settings" data-view="list">
       <div class="set-top">
-        <button type="button" class="set-back" data-set-back><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 5l-7 7 7 7"/></svg><span>Instellingen</span></button>
+        <button type="button" class="set-back" data-set-back><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-instellingen-m"/></svg><span>Instellingen</span></button>
         <h2 id="dlg-settings-title">Instellingen</h2>
-        <button type="button" class="set-close" data-set-close aria-label="Sluiten"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+        <button type="button" class="set-close" data-set-close aria-label="Sluiten"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-sluiten"/></svg></button>
       </div>
       <div class="set-search">
         <label class="sr-only" for="set-q">Zoeken in instellingen</label>
@@ -370,9 +403,9 @@
       </div>
       <div class="set-layout">
         <nav class="set-nav" aria-label="Onderdelen">
-          <div class="set-group"><button type="button" data-set-go="links" aria-current="false"><span class="set-ic" style="background:#2B5BD7" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg></span><span class="t"><b>Koppelingen</b><span data-set-sum="links"></span></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 5l7 7-7 7"/></svg></button><button type="button" data-set-go="account" aria-current="false"><span class="set-ic" style="background:#14181F" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 11V8a5 5 0 0 1 10 0v3M5 11h14v10H5z"/></svg></span><span class="t"><b>Toegang en Worker</b><span data-set-sum="account"></span></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 5l7 7-7 7"/></svg></button></div>
-          <div class="set-group"><button type="button" data-set-go="view" aria-current="false"><span class="set-ic" style="background:#7A4BD1" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18M12 3v18"/></svg></span><span class="t"><b>Weergave</b><span data-set-sum="view"></span></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 5l7 7-7 7"/></svg></button><button type="button" data-set-go="push" aria-current="false"><span class="set-ic" style="background:#D97A2B" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10 21h4"/></svg></span><span class="t"><b>Meldingen</b><span data-set-sum="push"></span></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 5l7 7-7 7"/></svg></button><button type="button" data-set-go="share" aria-current="false"><span class="set-ic" style="background:#0B7A4B" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7h16v-7M12 3v12M7 8l5-5 5 5"/></svg></span><span class="t"><b>Delen (alleen lezen)</b><span data-set-sum="share"></span></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 5l7 7-7 7"/></svg></button><button type="button" data-set-go="privacy" aria-current="false"><span class="set-ic" style="background:#B4311F" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"/></svg></span><span class="t"><b>Privacy en veiligheid</b><span data-set-sum="privacy"></span></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 5l7 7-7 7"/></svg></button></div>
-          <div class="set-group"><button type="button" data-set-go="install" aria-current="false"><span class="set-ic" style="background:#3A414C" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 2h10v20H7zM11 18h2"/></svg></span><span class="t"><b>Als app installeren</b><span data-set-sum="install"></span></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 5l7 7-7 7"/></svg></button><button type="button" data-set-go="backup" aria-current="false"><span class="set-ic" style="background:#0B7A4B" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg></span><span class="t"><b>Status en reservekopie</b><span data-set-sum="backup"></span></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 5l7 7-7 7"/></svg></button><button type="button" data-set-go="update" aria-current="false"><span class="set-ic" style="background:#5B6472" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 0 1 14-5l2 2M20 12a8 8 0 0 1-14 5l-2-2M18 4v5h-5M6 20v-5h5"/></svg></span><span class="t"><b>Updates</b><span data-set-sum="update"></span></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 5l7 7-7 7"/></svg></button><button type="button" data-set-go="import" aria-current="false"><span class="set-ic" style="background:#8A93A3" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h10l4 4v14H5zM9 12h6M9 16h6"/></svg></span><span class="t"><b>Geschiedenis uit Google Sheet</b><span data-set-sum="import"></span></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 5l7 7-7 7"/></svg></button></div>
+          <div class="set-group"><button type="button" data-set-go="links" aria-current="false"><span class="set-ic" style="background:#2B5BD7" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#i-koppelingen"/></svg></span><span class="t"><b>Koppelingen</b><span data-set-sum="links"></span></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chev"/></svg></button><button type="button" data-set-go="account" aria-current="false"><span class="set-ic" style="background:#14181F" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#i-toegang"/></svg></span><span class="t"><b>Toegang en Worker</b><span data-set-sum="account"></span></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chev"/></svg></button></div>
+          <div class="set-group"><button type="button" data-set-go="view" aria-current="false"><span class="set-ic" style="background:#7A4BD1" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#i-weergave"/></svg></span><span class="t"><b>Weergave</b><span data-set-sum="view"></span></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chev"/></svg></button><button type="button" data-set-go="push" aria-current="false"><span class="set-ic" style="background:#D97A2B" aria-hidden="true"><svg viewBox="0 0 24 24" stroke="#FFFFFF"><use href="#i-meldingen"/></svg></span><span class="t"><b>Meldingen</b><span data-set-sum="push"></span></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chev"/></svg></button><button type="button" data-set-go="share" aria-current="false"><span class="set-ic" style="background:#0B7A4B" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#i-delen"/></svg></span><span class="t"><b>Delen (alleen lezen)</b><span data-set-sum="share"></span></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chev"/></svg></button><button type="button" data-set-go="privacy" aria-current="false"><span class="set-ic" style="background:#B4311F" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#i-privacy"/></svg></span><span class="t"><b>Privacy en veiligheid</b><span data-set-sum="privacy"></span></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chev"/></svg></button></div>
+          <div class="set-group"><button type="button" data-set-go="install" aria-current="false"><span class="set-ic" style="background:#3A414C" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#i-installeren-2"/></svg></span><span class="t"><b>Als app installeren</b><span data-set-sum="install"></span></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chev"/></svg></button><button type="button" data-set-go="backup" aria-current="false"><span class="set-ic" style="background:#0B7A4B" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#i-status"/></svg></span><span class="t"><b>Status en reservekopie</b><span data-set-sum="backup"></span></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chev"/></svg></button><button type="button" data-set-go="update" aria-current="false"><span class="set-ic" style="background:#5B6472" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#i-updates"/></svg></span><span class="t"><b>Updates</b><span data-set-sum="update"></span></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chev"/></svg></button><button type="button" data-set-go="import" aria-current="false"><span class="set-ic" style="background:#8A93A3" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#i-importeren"/></svg></span><span class="t"><b>Geschiedenis uit Google Sheet</b><span data-set-sum="import"></span></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chev"/></svg></button></div>
         </nav>
         <div class="set-main">
         <section class="set-sec" data-set="links" hidden>
