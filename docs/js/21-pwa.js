@@ -54,11 +54,9 @@ function syncUnread() {
     if (!demo) { try { localStorage.setItem(LS_SEEN, String(seen)); } catch (e) { /* niet erg */ } }
   }
   const n = Math.min(99, unreadCount(seen));
-  $$('.pillnav a[data-page="news"], .m-tabs a[data-page="news"]').forEach((a) => {
-    if (n) { a.dataset.unread = String(n); a.setAttribute('aria-label', 'Nieuws, ' + n + ' ongelezen'); }
-    else { delete a.dataset.unread; a.removeAttribute('aria-label'); }
-  });
-  try { if (nav2.setAppBadge) (n ? nav2.setAppBadge(n) : nav2.clearAppBadge()).catch(() => {}); } catch (e) { /* niet ondersteund */ }
+  // Geen teller meer op het menu of het app-pictogram; het aantal staat nog wel op de pagina Vandaag
+  $$('.pillnav a[data-page="news"], .m-tabs a[data-page="news"]').forEach((a) => { delete a.dataset.unread; a.removeAttribute('aria-label'); });
+  try { if (nav2.clearAppBadge) nav2.clearAppBadge().catch(() => {}); } catch (e) { /* niet ondersteund */ }
   return n;
 }
 
