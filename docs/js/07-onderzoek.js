@@ -4,8 +4,9 @@
 
 // ---------- Onderzoek per bedrijf: nieuws, analisten, insiders, bedrijfscijfers ----------
 const FEAT = () => (data && data.features) || { flags: {}, has: {} };
-const offTile = (title, text) => '<section class="tile pad"><h3>' + esc(title) + '</h3><p class="muted">' + esc(text) + '</p>' +
-  (demo ? '' : '<button type="button" class="linklike small" data-act="links">Koppelingen openen</button>') + '</section>';
+// fix: de sleutel of schakelaar die deze tegel vult (zie fixBtn in js/21-handig.js); zonder fix een knop naar Koppelingen
+const offTile = (title, text, fix) => '<section class="tile pad"><h3>' + esc(title) + '</h3><p class="muted">' + esc(text) + '</p>' +
+  (demo ? '' : fix ? fixBtn(fix) : '<button type="button" class="linklike small" data-act="links">Koppelingen openen</button>') + '</section>';
 const srcOf = (R, k) => (R && R.src && R.src[k]) || 'finnhub';
 const INSIDER_CODES = { AQ: 'Verkregen', DS: 'Afgestaan', P: 'Koop', S: 'Verkoop', M: 'Opties omgezet', A: 'Toegekend', F: 'Ingehouden (belasting)', G: 'Geschonken', D: 'Teruggegeven', C: 'Omgezet', X: 'Opties omgezet' };
 const bigNum = (v, unit) => {
@@ -27,17 +28,17 @@ function companyResearch(c) {
   const finnhubOff = !F.has.finnhub && !F.has.av && !demo;
   const wait = 'De gegevens worden opgehaald buiten de meettijden; kom straks terug.';
   // Nieuws
-  if (finnhubOff) tiles.push(offTile('Nieuws', 'Zet Finnhub aan (gratis sleutel) om het laatste nieuws per aandeel te zien.'));
+  if (finnhubOff) tiles.push(offTile('Nieuws', 'Zet Finnhub aan (gratis sleutel) om het laatste nieuws per aandeel te zien.', 'FINNHUB_KEY'));
   else if (!R) tiles.push(offTile('Nieuws', wait));
   else {
     const news = R.news || [];
-    tiles.push('<section class="tile pad"><h3>Nieuws</h3>' + (news.length ? '<div class="news">' + news.map((n) =>
+    tiles.push('<section class="tile pad"><h3>Nieuws' + ageTagOf(R, AGE_LIMIT.news) + '</h3>' + (news.length ? '<div class="news">' + news.map((n) =>
       '<a class="news-i" href="' + esc(n.url) + '" target="_blank" rel="noopener"><span class="news-m">' + toneTag(n) + esc(fD.format(n.t) + (n.source ? ', ' + n.source : '')) + '</span><span class="news-t">' + esc(n.headline) + '</span></a>').join('') + '</div>'
       : '<p class="muted">Geen nieuws in de afgelopen tien dagen' + (c.cur && c.cur !== 'USD' ? ' (Finnhub heeft nieuws alleen voor Noord-Amerikaanse bedrijven)' : '') + '.</p>') +
       '<p class="sub" style="margin-top:8px">Koppen en links van ' + (srcOf(R, 'news') === 'av' ? 'Alpha Vantage' : 'Finnhub') + '; het artikel opent bij de bron.</p></section>');
   }
   // Analisten
-  if (finnhubOff) tiles.push(offTile('Wat analisten vinden', 'Zet Finnhub aan (gratis sleutel) om aanbevelingen van analisten en kwartaalverrassingen te zien.'));
+  if (finnhubOff) tiles.push(offTile('Wat analisten vinden', 'Zet Finnhub aan (gratis sleutel) om aanbevelingen van analisten en kwartaalverrassingen te zien.', 'FINNHUB_KEY'));
   else if (R) {
     const rec = (R.rec || [])[0], old = (R.rec || [])[3] || (R.rec || [])[R.rec ? R.rec.length - 1 : 0];
     const parts = rec ? [['Sterk kopen', rec.sb, '#0B7A4B'], ['Kopen', rec.b, '#5FB58A'], ['Houden', rec.h, '#C9CED6'], ['Verkopen', rec.s, '#E3A79C'], ['Sterk verkopen', rec.ss, '#B4311F']] : [];
@@ -46,7 +47,7 @@ function companyResearch(c) {
     const trend = rec && old && old !== rec && isNum(buyShare(old)) ? buyShare(rec) - buyShare(old) : null;
     const eps = (R.eps || []).slice().reverse();
     const mx = Math.max(1e-9, ...eps.map((x) => Math.abs(x.pct || 0)));
-    tiles.push('<section class="tile pad"><h3>Wat analisten vinden</h3>' +
+    tiles.push('<section class="tile pad"><h3>Wat analisten vinden' + ageTagOf(R, AGE_LIMIT.research) + '</h3>' +
       (rec && tot ? '<div class="rec-bar" role="img" aria-label="' + esc(parts.map((x) => x[0] + ' ' + x[1]).join(', ')) + '">' + parts.filter((x) => x[1]).map((x) =>
           '<i style="flex:' + x[1] + ';background:' + x[2] + '" data-tip="' + esc(x[0] + ': ' + x[1]) + '"></i>').join('') + '</div>' +
         '<div class="rec-leg">' + parts.map((x) => '<span><i style="background:' + x[2] + '"></i>' + esc(x[0]) + ' <b>' + (x[1] || 0) + '</b></span>').join('') + '</div>' +
@@ -61,9 +62,9 @@ function companyResearch(c) {
         '<p class="sub" style="margin-top:6px">Winst per aandeel: werkelijk / verwacht, en het verschil.</p>' : '') + '</section>');
   }
   // Insiders
-  if (finnhubOff) tiles.push(offTile('Insiderhandel', 'Zet Finnhub aan (gratis sleutel) om te zien of bestuurders zelf aandelen kopen of verkopen.'));
+  if (finnhubOff) tiles.push(offTile('Insiderhandel', 'Zet Finnhub aan (gratis sleutel) om te zien of bestuurders zelf aandelen kopen of verkopen.', 'FINNHUB_KEY'));
   else if (R) {
-    if ((R.denied || []).includes('insider')) tiles.push(offTile('Insiderhandel', 'Insiderhandel zit niet in je Finnhub-abonnement.'));
+    if ((R.denied || []).includes('insider')) tiles.push(offTile('Insiderhandel', 'Insiderhandel zit niet in je Finnhub-abonnement. Alpha Vantage kan het aanvullen (gratis sleutel).', 'ALPHAVANTAGE_KEY'));
     else {
       const ins = R.insider || [];
       // Alpha Vantage kent alleen verkregen en afgestaan; kopen en toekenning zijn daar niet te scheiden
@@ -73,7 +74,7 @@ function companyResearch(c) {
       const netSh = sum(ps.map((x) => x.change || 0));
       const netVal = sum(ps.map((x) => (x.change || 0) * (x.price || 0)));
       const buyers = new Set(ins.filter((x) => x.code === BUY).map((x) => x.name)).size, sellers = new Set(ins.filter((x) => x.code === SELL).map((x) => x.name)).size;
-      tiles.push('<section class="tile pad"><h3>Insiderhandel</h3>' + (ins.length ? kvList([
+      tiles.push('<section class="tile pad"><h3>Insiderhandel' + ageTagOf(R, AGE_LIMIT.research) + '</h3>' + (ins.length ? kvList([
           [avIns ? 'Laatste 6 maanden, verkregen en afgestaan' : 'Laatste 6 maanden, kopen en verkopen', ps.length ? (netSh >= 0 ? (avIns ? 'per saldo verkregen' : 'per saldo gekocht') : (avIns ? 'per saldo afgestaan' : 'per saldo verkocht')) : 'geen', ps.length ? (netSh >= 0 ? 'gain' : 'loss') : ''],
           ['Waarde (koop min verkoop)', ps.length ? bigNum(netVal, 'USD') : '–', tone(netVal)],
           ['Kopers en verkopers', buyers + ' en ' + sellers],
@@ -87,7 +88,7 @@ function companyResearch(c) {
   }
   // Bedrijfscijfers
   const Fin = (data.fin || {})[c.tk];
-  if (!F.has.sec && !demo) tiles.push(offTile('Bedrijfscijfers', 'Vul bij Koppelingen een e-mailadres in voor SEC EDGAR (gratis) om omzet en winst over meerdere jaren te zien.'));
+  if (!F.has.sec && !demo) tiles.push(offTile('Bedrijfscijfers', 'Vul bij Koppelingen een e-mailadres in voor SEC EDGAR (gratis) om omzet en winst over meerdere jaren te zien.', 'SEC_CONTACT'));
   else if (!Fin) tiles.push(offTile('Bedrijfscijfers', wait));
   else if (Fin.none) tiles.push('<section class="tile pad"><h3>Bedrijfscijfers</h3><p class="muted">' + esc(Fin.none) + '</p></section>');
   else tiles.push(finTile(Fin));
@@ -105,7 +106,7 @@ function finTile(Fin) {
   const ly = years[years.length - 1], py = years[years.length - 2];
   const growth = ly && py && rev.get(py) ? rev.get(ly) / rev.get(py) - 1 : null;
   const margin = ly && rev.get(ly) && isNum(net.get(ly)) ? net.get(ly) / rev.get(ly) : null;
-  return '<section class="tile pad"><h3>Bedrijfscijfers per jaar</h3>' +
+  return '<section class="tile pad"><h3>Bedrijfscijfers per jaar' + ageTagOf(Fin, AGE_LIMIT.sec) + '</h3>' +
     '<div class="fin-bars" role="img" aria-label="Omzet en winst per jaar">' + years.map((y) => {
       const r = rev.get(y), n = net.get(y);
       return '<div class="fin-y" data-tip="' + esc(y + ': omzet ' + bigNum(r, unit) + ', winst ' + bigNum(n, unit) + (isNum(r) && isNum(n) && r ? ' (marge ' + P1.format(n / r) + ')' : '')) + '">' +
@@ -521,7 +522,7 @@ function usdExposure() {
 
 function fxTile() {
   const F = FEAT();
-  if (!demo && F.flags.fx === false) return offTile('Euro en dollar', 'Het valuta-overzicht staat uit. Zet het aan bij Koppelingen (geen sleutel nodig).');
+  if (!demo && F.flags.fx === false) return offTile('Euro en dollar', 'Het valuta-overzicht staat uit. Zet het aan bij Koppelingen (geen sleutel nodig).', 'flag:fx');
   const fx = data.fx;
   if (!fx || !fx.rates || !(fx.rates.USD || []).length) return offTile('Euro en dollar', 'De koersen van de ECB worden één keer per dag opgehaald; dat is nog niet gebeurd.');
   const pts = fx.rates.USD.map(([d, v]) => ({ t: ymd(d), v }));
@@ -532,7 +533,7 @@ function fxTile() {
   const avgRate = usdBuys.length ? sum(usdBuys.map((x) => x.fxRate * x.net)) / sum(usdBuys.map((x) => x.net)) : null;
   const E = usdExposure();
   const scen = E.total * (1 - 1 / 1.1);
-  return '<section class="tile pad"><h3>Euro en dollar</h3>' +
+  return '<section class="tile pad"><h3>Euro en dollar' + ageTagOf(fx, AGE_LIMIT.daily) + '</h3>' +
     '<div class="fx-head"><span class="v big">' + esc(N4.format(now.v)) + '</span><span class="muted small">dollar per euro, ' + esc(fD.format(now.t)) + '</span></div>' +
     '<div class="chart" data-chart="fx" style="height:120px"></div><div class="xlabels" data-x="fx"></div>' +
     kvList([
@@ -552,7 +553,7 @@ function hicpSeries(area) {
 
 function inflationTile() {
   const F = FEAT();
-  if (!demo && F.flags.inflation === false) return offTile('Na inflatie', 'Inflatie staat uit. Zet het aan bij Koppelingen (geen sleutel nodig).');
+  if (!demo && F.flags.inflation === false) return offTile('Na inflatie', 'Inflatie staat uit. Zet het aan bij Koppelingen (geen sleutel nodig).', 'flag:inflation');
   const nl = hicpSeries('NL'), ez = hicpSeries('U2');
   if (nl.length < 13) return offTile('Na inflatie', 'De inflatiecijfers van de ECB worden één keer per dag opgehaald; dat is nog niet gebeurd.');
   const last = nl[nl.length - 1];
@@ -568,7 +569,7 @@ function inflationTile() {
   const nominal = W.length ? idx - 1 : null;
   const real = isNum(nominal) && isNum(priceRise) ? (1 + nominal) / (1 + priceRise) - 1 : null;
   const dep = M.lastWeek && isNum(M.lastWeek.netDeposits) ? M.lastWeek.netDeposits : null;
-  return '<section class="tile pad"><h3>Na inflatie</h3>' +
+  return '<section class="tile pad"><h3>Na inflatie' + ageTagOf(data.hicp, AGE_LIMIT.daily) + '</h3>' +
     '<div class="fx-head"><span class="v big">' + esc(isNum(infl) ? P1.format(infl) : '–') + '</span><span class="muted small">inflatie Nederland, 12 maanden tot ' + esc(fMonY.format(last.t)) + '</span></div>' +
     '<div class="chart" data-chart="hicp" style="height:110px"></div><div class="xlabels" data-x="hicp"></div>' +
     kvList([

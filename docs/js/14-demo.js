@@ -179,7 +179,7 @@ function makeDemoData() {
   Object.keys(profiles).forEach((sym) => {
     const base = 14 + rnd() * 40, dy = DIV_DEMO[sym] || 0;
     const yrs = [2021, 2022, 2023, 2024, 2025];
-    valuation[sym] = { updated: dIn(-3), pe: sym === 'SPCX' ? null : +(base * (0.85 + rnd() * 0.4)).toFixed(1), dy: dy || null,
+    valuation[sym] = { updated: dIn(sym === 'KO' ? -14 : -3), pe: sym === 'SPCX' ? null : +(base * (0.85 + rnd() * 0.4)).toFixed(1), dy: dy || null,
       hist: yrs.map((y) => [String(y), sym === 'SPCX' ? null : +(base * (0.7 + rnd() * 0.6)).toFixed(1), dy ? +(dy * (0.8 + rnd() * 0.4)).toFixed(4) : null]) };
   });
   const sectorPe = { date: mDays[mDays.length - 1], sectors: { Technology: 38.5, 'Communication Services': 24.1, Healthcare: 27.3, Industrials: 26.8, 'Consumer Cyclical': 29.9, 'Consumer Defensive': 22.4, 'Financial Services': 17.2, Energy: 13.1 } };
@@ -228,6 +228,7 @@ function makeDemoData() {
   book.filter((x) => !['VUAG', 'SXRV'].includes(x[0])).forEach(([tk, name], i) => {
     const day = (n) => { const d = new Date(now); d.setDate(d.getDate() - n); return d.getTime(); };
     research[tk] = {
+      updated: tk === 'KO' ? dIn(-3) : iso(now),
       news: [1, 2, 4, 7].map((n, k) => ({ t: day(n), headline: 'Voorbeeld: ' + name + ' ' + ['stijgt na sterke cijfers', 'daalt na verlaagde verwachting', 'kondigt nieuw product aan', 'krijgt opwaardering van analist'][(k + i) % 4] + ' (geen echt nieuws)', source: 'Voorbeeldbron', url: '#' })),
       rec: [0, 1, 2, 3].map((k) => ({ period: dIn(-30 * k).slice(0, 8) + '01', sb: 6 + ((i + k) % 5), b: 12 + ((i * 3 + k) % 7), h: 6 + (i % 6), s: (i + k) % 3, ss: (i % 4 === 0) ? 1 : 0 })),
       eps: [0, 1, 2, 3].map((k) => { const est = +(1 + rnd() * 3).toFixed(2); const pct = +((rnd() - 0.35) * 14).toFixed(1); return { period: dIn(-91 * k - 40), actual: +(est * (1 + pct / 100)).toFixed(2), estimate: est, pct }; }),
@@ -237,7 +238,7 @@ function makeDemoData() {
     const yrs = [2020, 2021, 2022, 2023, 2024, 2025];
     let r = base;
     const rows = yrs.map((y) => { r *= 1 + (rnd() * 0.25 - 0.02); return [y, Math.round(r)]; });
-    fin[tk] = { updated: dIn(-2), series: {
+    fin[tk] = { updated: tk === 'KO' ? dIn(-40) : dIn(-2), series: {
       rev: { unit: tk === 'TSM' ? 'TWD' : 'USD', rows: rows.map(([y, v]) => [y, tk === 'TSM' ? v * 30 : v]) },
       net: { unit: tk === 'TSM' ? 'TWD' : 'USD', rows: rows.map(([y, v], k) => [y, Math.round((tk === 'TSM' ? v * 30 : v) * (margin + (rnd() - 0.5) * 0.06) * (tk === 'SPCX' && k < 3 ? -0.4 : 1))]) },
       op: { unit: 'USD', rows: rows.map(([y, v]) => [y, Math.round(v * (margin + 0.05))]) },

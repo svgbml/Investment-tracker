@@ -43,7 +43,24 @@ const EN = {
   'rendement deze week': 'return this week', 'accountwaarde': 'account value', 'Eerste aandeel': 'First stock', 'Tweede aandeel': 'Second stock', 'Naast een ander aandeel zetten': 'Compare with another stock',
   'Nieuws en analisten': 'News and analysts', '▲ Positief': '▲ Positive', '▼ Negatief': '▼ Negative', '● Neutraal': '● Neutral', 'Mijn tracker koppelen': 'Connect my tracker', 'Functies bekijken met voorbeeldgetallen': 'Explore with sample data',
 };
+// Nieuw in js/21-handig.js: naar inhoud, wat er nieuw is, ouderdom van gegevens, lege tegels, kopiëren
+Object.assign(EN, {
+  'Naar inhoud': 'Skip to content', 'Wat is er nieuw': "What's new", 'Begrepen': 'Got it',
+  'Openen': 'Opening', 'Laatst bekeken pagina opnieuw openen': 'Reopen the last page you viewed',
+  'Staat dit uit, dan begint de tracker altijd op Overzicht. Deze keuze geldt alleen op dit apparaat.':
+    'With this off, the tracker always starts on Overview. This choice applies to this device only.',
+  'Bedragen staan verborgen': 'Amounts are hidden', 'Kopiëren lukte niet': 'Copying failed',
+  'Finnhub-sleutel invullen': 'Enter Finnhub key', 'FMP-sleutel invullen': 'Enter FMP key',
+  'Alpha Vantage-sleutel invullen': 'Enter Alpha Vantage key', 'Twelve Data-sleutel invullen': 'Enter Twelve Data key',
+  'FRED-sleutel invullen': 'Enter FRED key', 'E-mailadres voor SEC invullen': 'Enter email address for SEC',
+  'Trading 212-sleutel invullen': 'Enter Trading 212 key', 'Valuta aanzetten': 'Turn on currencies',
+  'Inflatie aanzetten': 'Turn on inflation', 'Indexen aanzetten': 'Turn on indices', 'SEC EDGAR aanzetten': 'Turn on SEC EDGAR',
+  'Kopen en verkopen aanzetten': 'Turn on buying and selling', 'Geschiedenis overnemen': 'Import history',
+  'Toegang en Worker openen': 'Open access and Worker',
+});
 const EN_RE = [
+  [/^Wat is er nieuw in (.+)$/, "What's new in $1"], [/^(\d+) u oud$/, '$1 h old'], [/^(\d+) d oud$/, '$1 d old'],
+  [/^Gekopieerd: (.+)$/, 'Copied: $1'],
   [/^Alle (\d+) bedrijven bekijken$/, 'View all $1 companies'], [/^Alle (\d+) bedrijven$/, 'All $1 companies'], [/^(\d+) van 7$/, '$1 of 7'], [/^Via (.+)$/, 'Via $1'],
   [/^Stijgers, markt en dalers (.*)$/, 'Risers, market and fallers $1'], [/^(\d+) dagen$/, '$1 days'], [/^(\d+) jaar$/, '$1 years'], [/^Waarde beleggingen, (.+)$/, 'Investments value, $1'],
   [/^Bijgewerkt (.+)$/, 'Updated $1'], [/^vandaag$/, 'today'], [/^Nieuwe versie (.+)$/, 'New version $1'],

@@ -1425,3 +1425,48 @@ body.welcoming #mshell { padding-bottom: 0; }
 .key-test.loss { color: var(--loss); }
 :root[data-theme="dark"] .bron-strip i.limiet, :root[data-theme="dark"] .bron-meter i.warn { background: #E2A33A; }
 :root[data-theme="dark"] .bron-strip i.ok { opacity: .9; }
+/* ===== Handig: wat er nieuw is, ouderdom van gegevens, naar inhoud, kopiëren (ideeën 2–9) ===== */
+
+/* Naar inhoud (idee 5): buiten beeld tot de toetsenbordfocus erop komt */
+.skip {
+  position: fixed; top: 10px; left: 10px; z-index: 120; padding: 10px 16px;
+  border: 0; border-radius: 999px; background: var(--accent); color: #FFFFFF;
+  font: inherit; font-weight: 600; font-size: 14px; cursor: pointer;
+  transform: translateY(-200%); transition: transform .18s ease;
+}
+.skip:focus { transform: none; outline: 3px solid var(--ink); outline-offset: 2px; }
+#app:focus, #m-main:focus, #welcome:focus { outline: none; }
+
+/* Wat is er nieuw (idee 2) */
+.banner.whatsnew { display: block; }
+.banner.whatsnew b { display: block; margin-bottom: 4px; }
+.banner.whatsnew ul { margin: 0 0 8px; padding-left: 20px; }
+.banner.whatsnew li { margin: 2px 0; }
+
+/* Ouderdom van gegevens (idee 3) */
+.age {
+  display: inline-block; margin-left: 8px; padding: 1px 7px; border-radius: 999px;
+  background: var(--band); color: var(--ink-2); font-size: 11px; font-weight: 600;
+  letter-spacing: .01em; vertical-align: middle; white-space: nowrap;
+}
+
+/* Lege tegels: het veld dat de tegel vult even aanwijzen (idee 6) */
+.fix-hit { border-radius: 10px; outline: 2px solid var(--accent); outline-offset: 3px; }
+
+/* Lange tabellen: kop in beeld houden (idee 7) */
+.tbl-wrap.tall { max-height: min(70vh, 620px); overflow: auto; overscroll-behavior: contain; }
+.tbl-wrap.tall thead th {
+  position: sticky; top: 0; z-index: 2; background: var(--surface);
+  box-shadow: inset 0 -1px 0 var(--rule);
+}
+
+/* Melding na kopiëren (idee 8) */
+.toast {
+  position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); z-index: 130;
+  max-width: calc(100vw - 32px); padding: 10px 16px; border-radius: 999px;
+  background: var(--ink); color: var(--bg); font-size: 14px; font-weight: 600;
+  transform: translateX(-50%); opacity: 1; transition: opacity .35s ease;
+  pointer-events: none;
+}
+.toast.gone { opacity: 0; }
+@media (max-width: 700px) { .toast { bottom: calc(76px + env(safe-area-inset-bottom)); } }

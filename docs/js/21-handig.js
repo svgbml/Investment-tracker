@@ -1,0 +1,292 @@
+/* Investeringstracker – Handig: wat er nieuw is, ouderdom van gegevens, naar inhoud,
+ * knoppen bij lege tegels, getallen kopiëren en de laatst bekeken pagina onthouden.
+ * Gewoon script (geen module): alle bestanden in docs/js/ delen één bereik en laden op volgorde (zie index.html). */
+'use strict';
+
+// ---------- Wat er nieuw is (idee 2) ----------
+// Korte lijst per versie, in gewone woorden. CHANGELOG.md in de map hierboven heeft het volledige verhaal
+// (gemaakt met node tools/changelog.mjs); hieronder staat alleen wat de gebruiker merkt.
+// Bij een nieuwe versie: zet de regels van die versie bovenaan, met VERSION uit js/01-basis.js als sleutel.
+const WHATS_NEW = {
+  v57: [
+    'Een kaartje als dit bij een nieuwe versie, met wat er veranderde.',
+    'Tegels met oude gegevens krijgen een klein label, bijvoorbeeld “3 u oud”.',
+    'Lege tegels hebben nu een knop naar de instelling of sleutel die ze vult.',
+    'Lange tabellen houden hun kop in beeld bij scrollen.',
+    'Een getal kopiëren: rechtsklik op de computer, lang indrukken op de telefoon.',
+    'De tracker opent weer op de pagina die je als laatste bekeek (uit te zetten bij Weergave).',
+    'Nieuws: wat analisten vinden per sector en door de tijd.',
+  ],
+  v56: ['Animaties hersteld bij het wisselen van pagina, en op de risicopagina suggesties die je spreiding verbreden.'],
+  v55: ['Kopen en verkopen: je vrije saldo, het risico van het aandeel en wat analisten ervan vinden in het orderscherm.'],
+  v54: ['Computer: menu en knoppen in één balk, en de site gebruikt de volle breedte van je scherm.'],
+};
+const LS_SEEN_VER = 'tracker.seenVersion';
+const demoUrl = new URLSearchParams(location.search).has('demo');
+const seenVersion = () => { try { return localStorage.getItem(LS_SEEN_VER) || ''; } catch (e) { return VERSION; } };
+const markVersionSeen = () => { try { localStorage.setItem(LS_SEEN_VER, VERSION); } catch (e) { /* niet erg */ } };
+
+let newsCardDone = false;
+// Kaartje tonen: alleen als dit apparaat de tracker al eerder opende, de versie veranderde en er iets te melden is
+function maybeWhatsNew() {
+  if (newsCardDone || sharedView) return;
+  const card = $('whatsnew');
+  if (!card) return;
+  const seen = seenVersion();
+  const items = WHATS_NEW[VERSION];
+  if (!items || !items.length) { newsCardDone = true; markVersionSeen(); return; }
+  // Eerste keer op dit apparaat (en niet de voorbeeldweergave): niets tonen, alleen onthouden
+  if (!seen && !demoUrl) { newsCardDone = true; markVersionSeen(); return; }
+  if (seen === VERSION && !demoUrl) { newsCardDone = true; return; }
+  newsCardDone = true;
+  // Eén keer per apparaat: meteen onthouden, ook als de gebruiker het kaartje laat staan
+  if (!demoUrl) markVersionSeen();
+  $('whatsnew-title').textContent = 'Wat is er nieuw in ' + VERSION;
+  $('whatsnew-list').innerHTML = items.map((t) => '<li>' + esc(t) + '</li>').join('');
+  card.hidden = false;
+  if (typeof translateTree === 'function') translateTree(card);
+}
+document.addEventListener('click', (e) => {
+  const t = /** @type {Element} */ (e.target);
+  if (!t || !t.closest || !t.closest('[data-wn-close]')) return;
+  markVersionSeen();
+  const card = $('whatsnew');
+  if (card) card.hidden = true;
+});
+
+// ---------- Ouderdom van gegevens (idee 3) ----------
+// Alleen een label als gegevens echt oud zijn; de grens hangt af van hoe vaak de bron verandert.
+const AGE_LIMIT = { news: 14, research: 36, market: 48, daily: 72, weekly: 10 * 24, sec: 21 * 24 };
+function stampMs(v) {
+  if (v == null) return null;
+  if (typeof v === 'number') return isFinite(v) ? v : null;
+  const s = String(v);
+  if (!s) return null;
+  // Datum zonder tijd (2026-11-14): tel vanaf het einde van die dag, anders lijkt hij een dag ouder
+  const ms = Date.parse(/^\d{4}-\d\d-\d\d$/.test(s) ? s + 'T23:59:59' : s);
+  return isFinite(ms) ? ms : null;
+}
+const ageWords = (h) => (h < 48 ? Math.round(h) + ' u oud' : Math.round(h / 24) + ' d oud');
+// Klein label achter een kop: ageTag(stempel, grens in uren)
+function ageTag(stamp, limitH) {
+  const t = stampMs(stamp);
+  if (t == null) return '';
+  const h = (Date.now() - t) / HOUR;
+  const lim = isNum(limitH) ? limitH : AGE_LIMIT.market;
+  if (!(h > lim)) return '';
+  return '<span class="age" title="' + esc('Deze gegevens zijn van ' + fDT.format(t) + '. De Worker haalt ze opnieuw op buiten de meettijden.') + '">' + esc(ageWords(h)) + '</span>';
+}
+// Jongste van meerdere stempels (bijvoorbeeld Finnhub en Alpha Vantage voor hetzelfde aandeel)
+function ageTagOf(obj, limitH, keys) {
+  if (!obj) return '';
+  const list = (keys || ['updated', 'avAt']).map((k) => stampMs(obj[k])).filter((x) => x != null);
+  return list.length ? ageTag(Math.max.apply(null, list), limitH) : '';
+}
+
+// ---------- Naar inhoud (idee 5) ----------
+function focusMain() {
+  const w = $('welcome');
+  const el = w && !w.hidden ? w : $(mode === 'm' ? 'm-main' : 'app');
+  if (!el) return;
+  el.setAttribute('tabindex', '-1');
+  try { el.focus({ preventScroll: true }); } catch (e) { el.focus(); }
+  el.scrollIntoView({ block: 'start', behavior: reduceMotion() ? 'auto' : 'smooth' });
+}
+document.addEventListener('click', (e) => {
+  const t = /** @type {Element} */ (e.target);
+  if (t && t.closest && t.closest('[data-skip]')) focusMain();
+});
+
+// ---------- Knoppen bij lege tegels (idee 6) ----------
+// Elke tegel die zegt dat er nog geen gegevens zijn, wijst naar de instelling of sleutel die dat oplost.
+const FIX_LABEL = {
+  FINNHUB_KEY: 'Finnhub-sleutel invullen',
+  FMP_KEY: 'FMP-sleutel invullen',
+  ALPHAVANTAGE_KEY: 'Alpha Vantage-sleutel invullen',
+  TWELVEDATA_KEY: 'Twelve Data-sleutel invullen',
+  FRED_KEY: 'FRED-sleutel invullen',
+  SEC_CONTACT: 'E-mailadres voor SEC invullen',
+  T212_KEY: 'Trading 212-sleutel invullen',
+  'flag:fx': 'Valuta aanzetten',
+  'flag:inflation': 'Inflatie aanzetten',
+  'flag:indices': 'Indexen aanzetten',
+  'flag:sec': 'SEC EDGAR aanzetten',
+  'flag:trading': 'Kopen en verkopen aanzetten',
+  'sec:import': 'Geschiedenis overnemen',
+  'sec:account': 'Toegang en Worker openen',
+  'sec:links': 'Koppelingen openen',
+};
+// Bij welke sleutel hoort welke functie: staat die al aan, dan is er niets op te lossen
+const FIX_HAS = { FMP_KEY: 'fmp', FINNHUB_KEY: 'finnhub', ALPHAVANTAGE_KEY: 'av', TWELVEDATA_KEY: 'td', SEC_CONTACT: 'sec', T212_KEY: 't212' };
+// Heeft een knop zin? Niet in de voorbeeldweergave, en niet als de sleutel of schakelaar al aanstaat
+function fixShow(fix) {
+  if (demo || !fix) return false;
+  const h = FIX_HAS[fix];
+  if (h && FEAT().has[h]) return false;
+  const fl = fix.indexOf('flag:') === 0 ? fix.slice(5) : null;
+  if (fl && FEAT().flags[fl]) return false;
+  return true;
+}
+const fixLabel = (fix) => FIX_LABEL[fix] || 'Koppelingen openen';
+// Knop naar de plek die deze tegel vult (ook te gebruiken in een Preact-module via data-fix)
+function fixBtn(fix) {
+  if (!fixShow(fix)) return '';
+  return '<button type="button" class="linklike small" data-fix="' + esc(fix) + '">' + esc(fixLabel(fix)) + '</button>';
+}
+// Wachten tot Koppelingen geladen is (dat gaat via de Worker) en dan het juiste veld aanwijzen
+function fixWait(get, tries) {
+  const el = get();
+  if (el) {
+    el.scrollIntoView({ block: 'center', behavior: reduceMotion() ? 'auto' : 'smooth' });
+    try { /** @type {HTMLElement} */ (el).focus({ preventScroll: true }); } catch (e) { /** @type {HTMLElement} */ (el).focus(); }
+    const row = el.closest('.key-row, .link-row') || el;
+    row.classList.add('fix-hit');
+    setTimeout(() => row.classList.remove('fix-hit'), 2400);
+    return;
+  }
+  if ((tries || 0) > 24) return;
+  setTimeout(() => fixWait(get, (tries || 0) + 1), 120);
+}
+document.addEventListener('click', (e) => {
+  const t = /** @type {Element} */ (e.target);
+  const b = /** @type {HTMLElement|null} */ (t && t.closest ? t.closest('[data-fix]') : null);
+  if (!b) return;
+  const fix = b.dataset.fix || '';
+  openSettings(false);
+  if (fix.indexOf('sec:') === 0) { setGo(fix.slice(4)); return; }
+  setGo('links');
+  if (fix.indexOf('flag:') === 0) fixWait(() => document.querySelector('#links-body input[data-flag="' + fix.slice(5) + '"]'));
+  else fixWait(() => $('key-' + fix));
+});
+
+// ---------- Getallen kopiëren (idee 8) ----------
+// Rechtsklik op de computer, lang indrukken op de telefoon. Verborgen bedragen worden nooit gekopieerd.
+const COPY_SEL = '.hero-value, .hero-change, .m-stat .v, .tile .v, .kv dd, td.num, .tx-v, .pill-chg, [data-v]';
+const COPY_ROOTS = '#app, #m-main, #detail';
+let copyBlock = 0;
+function toastMsg(text) {
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.setAttribute('role', 'status');
+  el.textContent = text;
+  document.body.appendChild(el);
+  setTimeout(() => el.classList.add('gone'), 1500);
+  setTimeout(() => el.remove(), 2000);
+}
+// De tekst van het getal zelf: toelichtingen eronder (naam, "29 analisten", labels) tellen niet mee
+function copyText(el) {
+  const c = /** @type {Element} */ (el.cloneNode(true));
+  c.querySelectorAll('.sub, .nm, .tag, .k, .muted, small').forEach((x) => x.remove());
+  return (c.textContent || '').trim().replace(/\s+/g, ' ');
+}
+// De waarde zonder opmaak: liefst het ruwe getal dat de site al bewaarde, anders het getal uit de tekst
+function plainNumber(el) {
+  const raw = el.dataset ? el.dataset.v : '';
+  if (raw && raw !== '' && isFinite(Number(raw))) return String(Number(raw));
+  const txt = copyText(el);
+  if (!/\d/.test(txt)) return null;
+  let s = txt.replace(/[⁠  \s]/g, '').replace(/[−–]/g, '-').replace(/[€$£%]/g, '');
+  const dec = LANG === 'nl' || LANG === 'de' || LANG === 'fr' ? ',' : '.';
+  const thou = dec === ',' ? '.' : ',';
+  s = s.split(thou).join('');
+  if (dec === ',') s = s.replace(',', '.');
+  const m = /-?\d+(\.\d+)?/.exec(s);
+  if (!m) return txt;
+  const n = Number(m[0]);
+  return isFinite(n) ? String(n) : txt;
+}
+async function copyNumber(el) {
+  // Verborgen bedragen worden nooit gekopieerd, ook niet het getal dat eronder zit
+  if (hideAmounts && (el.textContent || '').indexOf('•') !== -1) { toastMsg('Bedragen staan verborgen'); return; }
+  const v = plainNumber(el);
+  if (v == null) return;
+  try { await navigator.clipboard.writeText(v); toastMsg('Gekopieerd: ' + v); }
+  catch (err) { toastMsg('Kopiëren lukte niet'); }
+}
+const copyTarget = (t) => (t && t.closest && t.closest(COPY_ROOTS) ? t.closest(COPY_SEL) : null);
+document.addEventListener('contextmenu', (e) => {
+  const el = copyTarget(/** @type {Element} */ (e.target));
+  if (!el || !/\d/.test(el.textContent || '')) return;
+  e.preventDefault();
+  copyNumber(el);
+});
+// Lang indrukken: na een halve seconde kopiëren, en de klik daarna niet laten doorwerken (geen inzoomen)
+let pressTimer = null, pressFrom = null;
+const pressStop = () => { clearTimeout(pressTimer); pressTimer = null; pressFrom = null; };
+document.addEventListener('pointerdown', (e) => {
+  if (e.pointerType === 'mouse') return;
+  const el = copyTarget(/** @type {Element} */ (e.target));
+  if (!el || !/\d/.test(el.textContent || '')) return;
+  pressFrom = { x: e.clientX, y: e.clientY };
+  pressTimer = setTimeout(() => {
+    pressStop();
+    copyBlock = Date.now();
+    try { if (navigator.vibrate) navigator.vibrate(12); } catch (err) { /* niet ondersteund */ }
+    copyNumber(el);
+  }, 520);
+}, { passive: true });
+document.addEventListener('pointermove', (e) => {
+  if (!pressFrom) return;
+  if (Math.abs(e.clientX - pressFrom.x) > 8 || Math.abs(e.clientY - pressFrom.y) > 8) pressStop();
+}, { passive: true });
+['pointerup', 'pointercancel', 'scroll'].forEach((n) => document.addEventListener(n, pressStop, { passive: true, capture: true }));
+document.addEventListener('click', (e) => {
+  if (Date.now() - copyBlock < 700) { e.preventDefault(); e.stopPropagation(); }
+}, true);
+
+// ---------- Laatst bekeken pagina onthouden (idee 9) ----------
+const LS_RESUME = 'tracker.resume';
+const LS_LAST_PAGE = 'tracker.lastPage';
+const resumeOn = () => { try { return localStorage.getItem(LS_RESUME) !== '0'; } catch (e) { return true; } };
+function rememberPage() {
+  if (!resumeOn() || ui.detail) return;
+  // Pas opslaan als de routering klaar is; bij het laden tekent de site eerst Overzicht
+  const want = parseHash().page;
+  if (want && want !== ui.page) return;
+  try { localStorage.setItem(LS_LAST_PAGE, ui.page); } catch (e) { /* niet erg */ }
+}
+// Bij het openen zonder adres achter het hekje: terug naar de pagina van de vorige keer
+(function resumeLastPage() {
+  if (!resumeOn() || location.hash || sharedView) return;
+  let p = '';
+  try { p = localStorage.getItem(LS_LAST_PAGE) || ''; } catch (e) { p = ''; }
+  if (!p || p === 'home' || !(p in ORDER)) return;
+  try { history.replaceState(null, '', location.pathname + location.search + '#' + pageHash(p)); } catch (e) { /* niet erg */ }
+})();
+window.addEventListener('hashchange', rememberPage);
+document.addEventListener('change', (e) => {
+  const t = /** @type {Element} */ (e.target);
+  const el = /** @type {HTMLInputElement|null} */ (t && t.closest ? t.closest('[data-resume]') : null);
+  if (!el) return;
+  try { localStorage.setItem(LS_RESUME, el.checked ? '1' : '0'); } catch (err) { /* niet erg */ }
+  if (el.checked) rememberPage();
+});
+(function syncResumeBox() {
+  const el = /** @type {HTMLInputElement|null} */ (document.querySelector('[data-resume]'));
+  if (el) el.checked = resumeOn();
+})();
+
+// ---------- Lange tabellen: kop in beeld houden (idee 7) ----------
+// De kop blijft staan zolang de tabel zelf schuift; dat gebeurt pas vanaf een flink aantal rijen.
+const TALL_ROWS = 10;
+function stickyTables() {
+  document.querySelectorAll('.tbl-wrap').forEach((w) => {
+    const rows = w.querySelectorAll('tbody tr').length;
+    if (rows > TALL_ROWS) w.classList.add('tall'); else w.classList.remove('tall');
+  });
+}
+// Tabellen worden op allerlei momenten opnieuw getekend (pagina openen, sorteren, filteren, Preact):
+// na elke wijziging een keer kijken, in het volgende beeld.
+let stickyWait = 0;
+function stickySoon() {
+  cancelAnimationFrame(stickyWait);
+  stickyWait = requestAnimationFrame(() => { stickyWait = requestAnimationFrame(stickyTables); });
+}
+['app', 'm-main', 'detail'].forEach((id) => {
+  const el = $(id);
+  if (el) new MutationObserver(stickySoon).observe(el, { childList: true, subtree: true });
+});
+
+// ---------- Meeliften op het tekenen van elke pagina ----------
+defineView('handig', () => { maybeWhatsNew(); rememberPage(); stickySoon(); });
+Object.keys(PAGE_VIEWS).forEach((p) => { if (!PAGE_VIEWS[p].includes('handig')) PAGE_VIEWS[p].push('handig'); });
