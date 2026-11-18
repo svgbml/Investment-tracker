@@ -173,25 +173,24 @@ function newsItems() {
   ((data.marketNews && data.marketNews.items) || []).forEach((n) => out.push(Object.assign({ tk: null, kind: 'market' }, n)));
   return out.filter((n) => { const k = (n.url && n.url !== '#' ? n.url : n.headline) + '|' + n.tk; if (seen.has(k) || newsMuted(n)) return false; seen.add(k); return true; }).sort((a, b) => b.t - a.t);
 }
-// Toon van een artikel, geschat uit woorden in kop en samenvatting (Engels en Nederlands); geen oordeel van de bron
-const NEWS_POS = /\b(beat|beats|surge|surges|soar|soars|jump|jumps|rall(y|ies)|gain|gains|rise|rises|record|upgrade[sd]?|outperform|strong|growth|profit|tops|raises?|boost|bullish|buy rating|approv(al|ed)|wins?|expands?|stijg\w*|winst|record|sterk\w*|groei\w*|verhoog\w*|opwaarder\w*|positief|herstel\w*)\b/gi;
-const NEWS_NEG = /\b(miss|misses|plunge[sd]?|plunges|sink|sinks|tumble[sd]?|drops?|fall|falls|slump\w*|loss|losses|downgrade[sd]?|cut|cuts|weak|warns?|warning|lawsuit|probe|investigation|recall|layoffs?|bearish|sell rating|fraud|decline[sd]?|crash\w*|daal\w*|daling|verlies\w*|zwak\w*|verlaag\w*|afwaarder\w*|negatief|ontslag\w*|rechtszaak|onderzoek naar|waarschuw\w*|onder druk|pressure|tariffs?|heffing\w*)\b/gi;
-function newsTone(n) {
-  const txt = (n.headline || '') + ' ' + (n.summary || '');
-  const p = (txt.match(NEWS_POS) || []).length, m = (txt.match(NEWS_NEG) || []).length;
-  return p > m ? 'pos' : m > p ? 'neg' : 'neu';
-}
-const toneTag = (n) => { const t = newsTone(n); return '<span class="ntone ' + t + '" title="Geschat uit de woorden in de kop">' + (t === 'pos' ? '▲ Positief' : t === 'neg' ? '▼ Negatief' : '● Neutraal') + '</span>'; };
+// Toon van een artikel: de schatting zelf staat in js/15-toon.js (woordenlijst met gewichten, Engels en Nederlands).
+// Het label vertelt in de tooltip welke woorden de toon bepaalden.
+const toneTag = (n) => { const t = newsTone(n); return '<span class="ntone ' + t + '" title="' + esc(toneTitle(n)) + '">' + (t === 'pos' ? '\u25b2 Positief' : t === 'neg' ? '\u25bc Negatief' : '\u25cf Neutraal') + '</span>'; };
+const newsTkTag = (n) => (n.tk ? '<span class="tag' + (n.kind === 'watch' ? '' : ' gain') + '">' + esc(n.tk) + '</span> ' : '<span class="tag">Markt</span> ');
+const newsItemHtml = (n) => '<a class="news-i" href="' + esc(n.url) + '" target="_blank" rel="noopener"><span class="news-m">' + newsTkTag(n) + toneTag(n) + esc(fDT.format(n.t) + (n.source ? ', ' + n.source : '')) + '</span>' +
+  '<span class="news-t">' + esc(n.headline) + '</span>' + (n.summary ? '<span class="news-s">' + esc(n.summary) + '</span>' : '') + '</a>';
 function newsListTile() {
   const f = xs.newsF;
-  const items = newsItems().filter((n) => f === 'all' || n.kind === f).slice(0, 40);
-  const tag = (n) => (n.tk ? '<span class="tag' + (n.kind === 'watch' ? '' : ' gain') + '">' + esc(n.tk) + '</span> ' : '<span class="tag">Markt</span> ');
+  const all = newsItems().filter((n) => f === 'all' || n.kind === f);
+  // Eerst berichten over hetzelfde onderwerp samenvoegen (js/21-nieuwsplus.js), dan hoogstens 40 bundels tonen
+  const cls = (typeof newsClusters === 'function' ? newsClusters(all) : all.map((n) => ({ lead: n, items: [n], sources: [n.source] }))).slice(0, 40);
+  const items = cls.flatMap((c) => c.items);
+  const bundled = items.length - cls.length;
   return '<section class="tile pad span-2 news-tile"><div class="plan-head"><h3>Nieuws</h3>' + segX('newsF', [['all', 'Alles'], ['mine', 'Mijn aandelen'], ['watch', 'Volglijst'], ['market', 'Markt']], f, 'Nieuws filteren') + '</div>' +
-    (items.length ? '<p class="small muted" style="margin:2px 0 6px">' + (() => { const c = { pos: 0, neg: 0, neu: 0 }; items.forEach((n) => { c[newsTone(n)]++; }); return esc(c.pos + ' positief, ' + c.neg + ' negatief, ' + c.neu + ' neutraal'); })() + '</p>' +
-      '<div class="news">' + items.map((n) => '<a class="news-i" href="' + esc(n.url) + '" target="_blank" rel="noopener"><span class="news-m">' + tag(n) + toneTag(n) + esc(fDT.format(n.t) + (n.source ? ', ' + n.source : '')) + '</span><span class="news-t">' + esc(n.headline) + '</span>' +
-      (n.summary ? '<span class="news-s">' + esc(n.summary) + '</span>' : '') + '</a>').join('') + '</div>'
+    (items.length ? '<p class="small muted" style="margin:2px 0 6px">' + (() => { const c = { pos: 0, neg: 0, neu: 0 }; items.forEach((n) => { c[newsTone(n)]++; }); return esc(c.pos + ' positief, ' + c.neg + ' negatief, ' + c.neu + ' neutraal' + (bundled > 0 ? ', ' + bundled + ' gebundeld' : '')); })() + '</p>' +
+      '<div class="news">' + cls.map((c) => newsClusterHtml(c, newsItemHtml)).join('') + '</div>'
       : '<p class="muted">' + (f === 'market' && !data.marketNews ? 'Marktnieuws komt van Finnhub en wordt buiten de meettijden opgehaald.' : 'Geen nieuws in deze selectie.') + '</p>') +
-    '<p class="sub" style="margin-top:8px">Koppen en links van Finnhub: per aandeel de laatste tien dagen, en algemeen marktnieuws. Het artikel opent bij de bron. Positief of negatief is een schatting uit woorden in de kop en samenvatting (zoals "stijgt", "beats", "daalt", "downgrade"), geen oordeel van de bron; lees bij twijfel het artikel.</p></section>';
+    '<p class="sub" style="margin-top:8px">Koppen en links van Finnhub: per aandeel de laatste tien dagen, en algemeen marktnieuws. Het artikel opent bij de bron. Berichten met bijna dezelfde kop staan samen onder "x bronnen". Positief of negatief is een schatting uit woorden in de kop en samenvatting (zoals "stijgt", "beats", "daalt", "downgrade"), geen oordeel van de bron; lees bij twijfel het artikel.</p></section>';
 }
 function analystTableTile() {
   const rows = analystRows().sort((a, b) => (b.rc ? b.rc.buy : 0) - (a.rc ? a.rc.buy : 0));
@@ -243,9 +242,10 @@ function renderNews() {
   if (window.NewsView && window.NewsView.ok && !off) { window.NewsView.draw(host); return; }
   if (window.NewsView && window.NewsView.ok) window.NewsView.clear(host);
   if (off) { host.innerHTML = '<div class="grid wide">' + offTile('Nieuws en analisten', 'Zet Finnhub aan (gratis sleutel) bij Koppelingen voor nieuws per aandeel, marktnieuws, analisten en insiderhandel.', 'FINNHUB_KEY') + '</div>'; return; }
-  host.innerHTML = '<div class="grid wide">' + newsListTile() + suggestTile() + '</div>' +
-    '<div class="section-head"><h2>Analisten</h2><p class="muted small">Aanbevelingen, koersdoelen en hoe betrouwbaar ze zijn</p></div><div class="grid wide">' + analystTableTile() + reliabilityTile() + opinionTile() + '</div>' +
-    '<div class="section-head"><h2>Insiders</h2><p class="muted small">Kopen en verkopen bestuurders zelf?</p></div><div class="grid wide">' + insiderTile() + newsToolsTile() + '</div>';
+  host.innerHTML = '<div class="grid wide">' + newsListTile() + missedTile() + '</div>' +
+    '<div class="grid wide" style="margin-top:16px">' + suggestTile() + newsToolsTile() + '</div>' +
+    '<div class="section-head"><h2>Analisten</h2><p class="muted small">Aanbevelingen, koersdoelen en hoe betrouwbaar ze zijn</p></div><div class="grid wide">' + analystTableTile() + reliabilityTile() + opinionTile() + earnSeasonTile() + analystScoreTile() + '</div>' +
+    '<div class="section-head"><h2>Insiders</h2><p class="muted small">Kopen en verkopen bestuurders zelf?</p></div><div class="grid wide">' + insiderTile() + '</div>';
 }
 
 // ---------- Volglijst: suggesties om te volgen ----------

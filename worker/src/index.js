@@ -1566,7 +1566,7 @@ async function saveSettings(env, body) {
   }
   if (body && body.alerts && typeof body.alerts === 'object') {
     const a = body.alerts, num2 = (x, lo, hi) => { const v = Number(x); return isFinite(v) && v >= lo && v <= hi ? v : null; };
-    clean.alerts = { move: num2(a.move, 0, 50), earnings: !!a.earnings, insider: !!a.insider, drift: num2(a.drift, 0, 50) };
+    clean.alerts = { move: num2(a.move, 0, 50), earnings: !!a.earnings, insider: !!a.insider, drift: num2(a.drift, 0, 50), ratings: a.ratings !== false };
   }
   if (body && typeof body.mailAmounts === 'boolean') clean.mailAmounts = body.mailAmounts;
   if (body && typeof body.depositReminder === 'boolean') clean.depositReminder = body.depositReminder;
@@ -2172,6 +2172,7 @@ async function finnhubTask(env, tk) {
     out.targetHist = th.slice(-60);
   }
   noteOpinionDay(prev, out, today);
+  try { await alertRatings(env, tk, out); } catch (e) { console.error('meldingen', e); }
   await setKv(env, 'rs_' + tk, JSON.stringify(out));
   await noteExtError(env, 'finnhub', null);
   return calls;
@@ -2870,7 +2871,7 @@ async function sendPush(env, msg) {
   return sent;
 }
 
-const ALERT_DEFAULTS = { move: 5, earnings: true, insider: true, drift: 5 };
+const ALERT_DEFAULTS = { move: 5, earnings: true, insider: true, drift: 5, ratings: true };
 async function alertRules(env) { const s = await getSettings(env); return Object.assign({}, ALERT_DEFAULTS, (s && s.alerts) || {}); }
 
 // Eén keer per sleutel (bijvoorbeeld "move|2026-11-17|AAPL"); de laatste 400 sleutels worden onthouden
@@ -2931,15 +2932,94 @@ async function alertEarnings(env) {
   return list.length ? list.length + ' meldingen over kwartaalcijfers.' : '';
 }
 
-// Na het ophalen bij Finnhub: nieuwe aankopen door bestuurders (alleen kopen met eigen geld, code P)
+// Je eigen aandelen met hun naam: uit de laatste meting, anders uit de laatste weekmeting; fondsen tellen niet mee
+async function heldNamed(env) {
+  let rows = [];
+  const last = await env.DB.prepare('SELECT MAX(ts) AS ts FROM intraday').first();
+  if (last && last.ts) ({ results: rows } = await env.DB.prepare('SELECT ticker, name FROM intraday WHERE ts = ? AND ticker != ?').bind(last.ts, TOTAL).all());
+  if (!rows.length) ({ results: rows } = await env.DB.prepare('SELECT ticker, name FROM positions WHERE date = (SELECT MAX(date) FROM positions)').all());
+  return rows.filter((r) => !ETF_RE.test(r.name || ''));
+}
+// Zit dit aandeel in je portefeuille? (Meldingen over insiders, 13F en aanbevelingen gaan alleen over je eigen posities.)
+async function isHeldTicker(env, tk) {
+  try { return (await heldNamed(env)).some((r) => r.ticker === tk); } catch (e) { return false; }
+}
+
+// Na het ophalen bij Finnhub: nieuwe aankopen door bestuurders (alleen kopen met eigen geld, code P), alleen voor je posities
 async function alertInsider(env, tk, prevList, newList) {
   if (!(await pushSubs(env)).length) return;
   const rules = await alertRules(env);
   if (!rules.insider) return;
+  if (!(await isHeldTicker(env, tk))) return;
   const seen = new Set((prevList || []).map((x) => x.date + '|' + x.name + '|' + x.change));
   const since = new Date(Date.now() - 14 * 864e5).toISOString().slice(0, 10);
+  const month = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
+  const buyers = new Set((newList || []).filter((y) => y.code === 'P' && y.date >= month).map((y) => y.name)).size;
   for (const x of (newList || []).filter((y) => y.code === 'P' && y.date >= since && !seen.has(y.date + '|' + y.name + '|' + y.change)).slice(0, 2)) {
-    await alertOnce(env, 'ins|' + tk + '|' + x.date + '|' + x.name, { title: tk + ': bestuurder koopt aandelen', body: (x.name || 'Een bestuurder') + ' kocht ' + (x.change || '?') + ' aandelen' + (x.price ? ' à $' + x.price : '') + ' op ' + x.date + '.', url: '#bedrijf/' + encodeURIComponent(tk), tag: 'ins-' + tk });
+    await alertOnce(env, 'ins|' + tk + '|' + x.date + '|' + x.name, {
+      title: tk + ': bestuurder koopt aandelen',
+      body: (x.name || 'Een bestuurder') + ' kocht ' + (x.change || '?') + ' aandelen' + (x.price ? ' à $' + x.price : '') + ' op ' + x.date + '.' +
+        (buyers > 1 ? ' ' + buyers + ' bestuurders kochten deze maand.' : ''),
+      url: '#bedrijf/' + encodeURIComponent(tk), tag: 'ins-' + tk,
+    });
+  }
+}
+
+// Melding als analisten binnen een week duidelijk van mening veranderen over een aandeel dat je hebt.
+// Pas vanaf 7 dagen geschiedenis (recHist), anders lijkt de eerste meting zelf een verschuiving.
+const dayDiff = (a, b) => Math.round((Date.parse(b + 'T00:00:00Z') - Date.parse(a + 'T00:00:00Z')) / 864e5);
+async function alertRatings(env, tk, out) {
+  if (!(await pushSubs(env)).length) return;
+  const rules = await alertRules(env);
+  if (rules.ratings === false) return;
+  const H = (Array.isArray(out.recHist) ? out.recHist : []).filter((x) => Array.isArray(x) && x[0]);
+  if (H.length < 2 || !(dayDiff(H[0][0], H[H.length - 1][0]) >= 7)) return;
+  const cur = H[H.length - 1];
+  const old = H.filter((x) => x[0] <= ymdUTC(Date.now() - 7 * 864e5)).pop();
+  if (!old || old === cur) return;
+  const pos = (x) => (x[1] || 0) + (x[2] || 0);
+  const tot = (x) => (x[1] || 0) + (x[2] || 0) + (x[3] || 0) + (x[4] || 0) + (x[5] || 0);
+  const d = pos(cur) - pos(old);
+  if (Math.abs(d) < 2) return;
+  if (!(await isHeldTicker(env, tk))) return;
+  const t0 = Number(old[6]), t1 = Number(cur[6]);
+  const dT = isFinite(t0) && isFinite(t1) && t0 > 0 ? t1 / t0 - 1 : null;
+  const n = Math.abs(d);
+  await alertOnce(env, 'rat|' + tk + '|' + Math.floor(Date.now() / (7 * 864e5)) + '|' + (d > 0 ? 'u' : 'd'), {
+    title: tk + ': ' + n + ' analist' + (n === 1 ? '' : 'en') + (d > 0 ? ' meer' : ' minder') + ' positief deze week',
+    body: 'Nu zegt ' + pos(cur) + ' van de ' + tot(cur) + ' analisten kopen (was ' + pos(old) + ' van ' + tot(old) + ').' +
+      (dT != null && Math.abs(dT) >= 0.02 ? ' Het gemiddelde koersdoel ging ' + (dT > 0 ? 'omhoog' : 'omlaag') + ' met ' + Math.round(Math.abs(dT) * 100) + '%.' : ''),
+    url: '#bedrijf/' + encodeURIComponent(tk), tag: 'rat-' + tk,
+  });
+}
+
+// Namen uit een 13F-opgave naast je eigen posities leggen: "APPLE INC" hoort bij Apple
+const f13Name = (s) => String(s || '').toUpperCase().replace(/[^A-Z ]+/g, ' ')
+  .replace(/\b(INC|CORP|CORPORATION|CO|COMPANY|LTD|PLC|NEW|CL|CLASS|HLDGS|HOLDING|HOLDINGS|GROUP|THE|SA|NV|AG|ADR|COM|SHS|TR|LLC|LP)\b/g, ' ')
+  .replace(/\s+/g, ' ').trim();
+// Melding als een grote belegger in een aandeel stapt dat jij ook hebt, of zijn positie flink wijzigt
+async function alert13F(env, label, cik, acc, top, before) {
+  if (!(await pushSubs(env)).length) return;
+  const rules = await alertRules(env);
+  if (!rules.insider) return;
+  const held = (await heldNamed(env)).map((r) => ({ tk: r.ticker, key: f13Name(r.name) })).filter((x) => x.key.length >= 3);
+  if (!held.length) return;
+  const was = new Map((before || []).map((x) => [x.name, x]));
+  const who = String(label).split(' (')[0];
+  for (const x of top) {
+    const key = f13Name(x.name);
+    const hit = held.find((h) => key === h.key || key.startsWith(h.key + ' ') || h.key.startsWith(key + ' '));
+    if (!hit) continue;
+    const p = was.get(x.name);
+    const chg = p && p.shares ? x.shares / p.shares - 1 : null;
+    if (p && !(chg != null && Math.abs(chg) >= 0.2)) continue;
+    const pct = Math.round((x.pct || 0) * 100);
+    await alertOnce(env, 'f13|' + cik + '|' + acc + '|' + hit.tk, {
+      title: hit.tk + ': ' + who + (!p ? ' stapte in' : chg > 0 ? ' kocht bij' : ' bouwde af'),
+      body: who + ' meldt ' + (!p ? 'een nieuwe positie' : 'een wijziging van ' + (chg > 0 ? '+' : '−') + Math.round(Math.abs(chg) * 100) + '%') +
+        ' in ' + x.name + ' (' + pct + '% van hun portefeuille), volgens de kwartaalopgave bij de SEC.',
+      url: '#bedrijf/' + encodeURIComponent(hit.tk), tag: 'f13-' + hit.tk,
+    });
   }
 }
 
@@ -3744,6 +3824,7 @@ async function fetch13F(env) {
         const p = before.get(x.name);
         return { name: x.name, value: x.value, shares: x.shares, pct: total ? x.value / total : 0, chg: p && p.shares ? x.shares / p.shares - 1 : null, isNew: !!old && !p };
       });
+      try { await alert13F(env, label, cik, acc, top, (old && old.top) || []); } catch (e) { console.error('meldingen', e); }
       funds.push({ cik, label, acc, period, filed, total, n: all.length, top, names: all.map((x) => x.name).slice(0, 200) });
     } catch (e) {
       await noteExtError(env, 'sec', '13F ' + label + ': ' + String(e && e.message || e).slice(0, 80));

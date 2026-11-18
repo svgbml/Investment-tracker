@@ -109,7 +109,7 @@ await test('inloggen met de Trading 212-sleutel, met limiet per verbinding', asy
 
 await test('instellingen: meldingsregels, notities en rekeningen', async () => {
   const r = await jsonOf(await req('/api/settings', { method: 'POST', body: { alerts: { move: 4, earnings: true, insider: false, drift: 6 }, mailAmounts: false, notes: { 'AAPL|1767348000000': 'Waarom' }, accounts: [{ name: 'Broker', cash: 10, holdings: [{ name: 'X', value: 5 }] }] } }));
-  assert.deepEqual(r.settings.alerts, { move: 4, earnings: true, insider: false, drift: 6 });
+  assert.deepEqual(r.settings.alerts, { move: 4, earnings: true, insider: false, drift: 6, ratings: true });
   assert.equal(r.settings.mailAmounts, false);
   assert.equal(r.settings.accounts[0].holdings[0].value, 5);
 });
@@ -913,6 +913,59 @@ await test('taken kunnen twee keer draaien zonder schade (idee 155)', async () =
   assert.equal(q.length, new Set(q).size, 'geen dubbele taken: ' + q.join(', '));
   routes = [];
   setKv('mkt_queue', '[]');
+await test('meldingen over analisten, insiders en 13F: alleen voor je eigen posities', async () => {
+  const e2 = Object.assign({}, env, { FINNHUB_KEY: 'fh', SEC_CONTACT: 'iemand@example.com' });
+  await req('/api/push/subscribe', { method: 'POST', body: { sub: { endpoint: 'https://push.test/abc', keys: { p256dh: b64u(pubRaw), auth: b64u(sub.auth) } } } });
+  await req('/api/settings', { method: 'POST', body: { alerts: { move: 0, earnings: false, insider: true, drift: 0, ratings: true } } });
+  const day = (n) => new Date(Date.now() + n * 864e5).toISOString().slice(0, 10);
+  // Tien dagen geschiedenis: toen zeiden 13 van de 18 analisten kopen
+  const hist = [[day(-10), 5, 8, 4, 1, 0, 200]];
+  setKv('rs_AAPL', { recHist: hist });
+  setKv('rs_NVDA', { recHist: hist });
+  const fh = (sym) => [
+    [/finnhub\.io\/api\/v1\/company-news/, reply([])],
+    [/finnhub\.io\/api\/v1\/stock\/recommendation/, reply([{ period: day(0), strongBuy: 5, buy: 11, hold: 4, sell: 1, strongSell: 0 }])],
+    [/finnhub\.io\/api\/v1\/stock\/earnings/, reply([{ period: day(-20), actual: 2.1, estimate: 2, surprisePercent: 5 }])],
+    [/finnhub\.io\/api\/v1\/stock\/insider-transactions/, reply({ data: [{ name: 'Voorbeeld, A.', transactionDate: day(-2), transactionCode: 'P', change: 900, transactionPrice: 210, share: 5000 }] })],
+    [/finnhub\.io\/api\/v1\/stock\/price-target/, reply({ targetMean: 230, targetMedian: 232, targetHigh: 280, targetLow: 190, lastUpdated: day(0) })],
+    [/finnhub\.io\/api\/v1\/news-sentiment/, reply({ sentiment: { bullishPercent: 0.6, bearishPercent: 0.4 }, companyNewsScore: 0.7, buzz: { articlesInLastWeek: 20, buzz: 1 } })],
+  ];
+  let pushes = [];
+  const catchPush = [[/push\.test/, async (u, init) => { pushes.push(await decryptPush(init.body)); return reply('', 201); }]];
+  // AAPL zit in de portefeuille: melding over de analisten en over de bestuurder die koopt
+  setKv('mkt_queue', ['fh:AAPL']);
+  routes = fh('AAPL').concat(catchPush);
+  await req('/api/market', { method: 'POST', env: e2 });
+  const rat = pushes.filter((p) => /analist/.test(p.title));
+  assert.equal(rat.length, 1, JSON.stringify(pushes));
+  assert.match(rat[0].title, /AAPL: 3 analisten meer positief deze week/);
+  assert.match(rat[0].body, /16 van de 21 analisten kopen/);
+  assert.equal(pushes.filter((p) => /bestuurder koopt/.test(p.title)).length, 1, JSON.stringify(pushes));
+  // Tweede ronde dezelfde week: geen tweede melding
+  pushes = [];
+  setKv('mkt_queue', ['fh:AAPL']);
+  routes = fh('AAPL').concat(catchPush);
+  await req('/api/market', { method: 'POST', env: e2 });
+  assert.equal(pushes.length, 0, 'één melding per week per aandeel: ' + JSON.stringify(pushes));
+  // NVDA staat alleen op de volglijst: geen meldingen over insiders of analisten
+  pushes = [];
+  setKv('mkt_queue', ['fh:NVDA']);
+  routes = fh('NVDA').concat(catchPush);
+  await req('/api/market', { method: 'POST', env: e2 });
+  assert.equal(pushes.length, 0, 'volglijst geeft geen meldingen: ' + JSON.stringify(pushes));
+  assert.ok(JSON.parse(kv('rs_NVDA')).recHist.length >= 2, 'de geschiedenis wordt wel bijgehouden');
+  // 13F: een grote belegger koopt bij in een aandeel dat je hebt
+  pushes = [];
+  setKv('mkt_queue', ['f13']);
+  const fund = { form: ['13F-HR'], accessionNumber: ['0000950123-26-001234'], filingDate: [day(-1)], reportDate: [day(-40)] };
+  routes = [[/submissions\/CIK/, reply({ filings: { recent: fund } })],
+    [/index\.json$/, reply({ directory: { item: [{ name: 'primary_doc.xml' }, { name: 'infotable.xml' }] } })],
+    [/infotable\.xml$/, reply('<informationTable><infoTable><nameOfIssuer>APPLE INC</nameOfIssuer><value>900</value><shrsOrPrnAmt><sshPrnamt>40</sshPrnamt></shrsOrPrnAmt></infoTable></informationTable>')]].concat(catchPush);
+  await req('/api/market', { method: 'POST', env: e2 });
+  const f13 = pushes.filter((p) => /AAPL/.test(p.title));
+  assert.ok(f13.length >= 1, 'melding over de 13F: ' + JSON.stringify(pushes));
+  assert.match(f13[0].title, /Berkshire Hathaway/);
+  assert.match(f13[0].body, /kwartaalopgave bij de SEC/);
 });
 
 console.log((failed ? failed + ' fout, ' : '') + passed + ' geslaagd');

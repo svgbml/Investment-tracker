@@ -1,7 +1,7 @@
 name: Controles
 
-# Bij elke push en pull request: syntaxis en namen van de website, typecontrole (geen nieuwe typefouten),
-# en de Worker-tests met nep-API's.
+# Bij elke push en pull request: syntaxis en namen van de website, de toonschatting van nieuwsberichten,
+# typecontrole (geen nieuwe typefouten) en de Worker-tests met nep-API's.
 on:
   push:
   pull_request:
@@ -20,6 +20,8 @@ jobs:
           node-version: 24
       - name: Website
         run: node tools/check-site.mjs
+      - name: Toon van nieuwsberichten
+        run: node tools/check-toon.mjs
       - name: Types (TypeScript checkJs, geen nieuwe meldingen)
         run: node tools/check-types.mjs
       - name: Worker
