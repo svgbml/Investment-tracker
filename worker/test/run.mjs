@@ -582,5 +582,338 @@ await test('mening van analisten: alleen een regel bij een verandering', async (
   assert.equal(out.recHist.length, 2);
 });
 
+// ---------- Bronnen, controle en reservekopieën (ideeën 61, 62, 145–155) ----------
+
+await test('handelsdag: zomer- en wintertijd, weekend en de Amerikaanse beurs (idee 154)', async () => {
+  const T = WM._test;
+  // Winter: 00:30 UTC is 01:30 in Amsterdam, dus dezelfde dag
+  assert.equal(T.dayOf(Date.parse('2026-01-05T00:30:00Z')), '2026-01-05');
+  // Winter: 23:30 UTC is 00:30 de volgende dag in Amsterdam
+  assert.equal(T.dayOf(Date.parse('2026-01-05T23:30:00Z')), '2026-01-06');
+  // Zomertijd begint zondag 29 maart 2026 om 01:00 UTC: 22:30 UTC op 28 maart is al 29 maart (23:30 CET)
+  assert.equal(T.dayOf(Date.parse('2026-03-28T22:30:00Z')), '2026-03-28');
+  assert.equal(T.dayOf(Date.parse('2026-03-28T23:30:00Z')), '2026-03-29');
+  assert.equal(T.dayOf(Date.parse('2026-03-29T01:30:00Z')), '2026-03-29'); // 03:30 CEST
+  // Zomertijd eindigt zondag 25 oktober 2026 om 01:00 UTC
+  assert.equal(T.dayOf(Date.parse('2026-10-24T22:30:00Z')), '2026-10-25'); // 00:30 CEST
+  assert.equal(T.dayOf(Date.parse('2026-10-25T22:30:00Z')), '2026-10-25'); // 23:30 CET
+  assert.equal(T.isDst('2026-03-29T03:30:00'), true);
+  assert.equal(T.isDst('2026-10-25T04:30:00'), false, '04:30 na de overgang is wintertijd');
+  // Handelsdag: in het weekend de vrijdag ervoor
+  assert.equal(T.tradingDay(Date.parse('2026-11-18T12:00:00Z')), '2026-11-18'); // woensdag
+  assert.equal(T.tradingDay(Date.parse('2026-11-21T12:00:00Z')), '2026-11-20'); // zaterdag -> vrijdag
+  assert.equal(T.tradingDay(Date.parse('2026-11-22T12:00:00Z')), '2026-11-20'); // zondag -> vrijdag
+  // Amerikaanse beurs: voor 22:30 Amsterdamse tijd is vandaag nog niet afgesloten
+  assert.equal(T.usTradingDay(Date.parse('2026-11-18T20:00:00Z')), '2026-11-17'); // 21:00 in Amsterdam
+  assert.equal(T.usTradingDay(Date.parse('2026-11-18T22:00:00Z')), '2026-11-18'); // 23:00 in Amsterdam
+  assert.equal(T.usTradingDay(Date.parse('2026-11-23T08:00:00Z')), '2026-11-20'); // maandagochtend -> vrijdag
+  assert.equal(T.shiftDay('2026-03-29', -1), '2026-03-28');
+  assert.equal(T.weekdayOf('2026-11-22'), 7);
+});
+
+await test('bronstatus: oplopende pauze, geschiedenis van 30 dagen en /api/health (ideeën 61, 145, 147)', async () => {
+  const T = WM._test;
+  assert.equal(T.srcPause(1), 0, 'eerste fout geeft nog geen pauze');
+  assert.equal(T.srcPause(2), 15 * 60e3);
+  assert.equal(T.srcPause(3), 60 * 60e3);
+  assert.equal(T.srcPause(9), 24 * 3600e3, 'ten hoogste 24 uur');
+  setKv('src_health', '{}');
+  setKv('src_hist', '{}');
+  await T.srcFail(env, 'finnhub', 'Finnhub gaf 500');
+  let st = await T.srcState(env);
+  assert.equal(st.finnhub.fails, 1);
+  assert.ok(!st.finnhub.until, 'na één fout nog geen pauze');
+  await T.srcFail(env, 'finnhub', 'Finnhub gaf 500');
+  st = await T.srcState(env);
+  assert.ok(st.finnhub.until > Date.now() && st.finnhub.until <= Date.now() + 16 * 60e3, 'nu 15 minuten uit');
+  assert.ok(st.finnhub.next, 'volgende poging staat erbij');
+  await T.srcFail(env, 'fmp', 'FMP-limiet bereikt', true);
+  const h = (await jsonOf(await req('/api/health'))).health;
+  assert.equal(h.hist.finnhub.days[h.day][2], 2, 'twee fouten vandaag');
+  assert.equal(h.hist.fmp.days[h.day][1], 1, 'één limiet vandaag');
+  assert.match(h.hist.finnhub.lastErr.msg, /500/);
+  assert.ok(h.sources.fmp.until > Date.now(), 'limiet: tot na middernacht uit');
+  assert.deepEqual(h.backoff, [15, 60, 240, 720, 1440]);
+  // Weer in orde: de bron valt uit de lijst, de goede dag staat in de geschiedenis
+  await T.srcOk(env, 'finnhub');
+  const h2 = (await jsonOf(await req('/api/health'))).health;
+  assert.ok(!h2.sources.finnhub, 'bron weer in orde');
+  assert.ok(h2.hist.finnhub.days[h2.day][0] >= 1, 'dag in orde geteld');
+  // Oude dagen vallen weg (hoogstens 30)
+  const hist = await T.srcHistState(env);
+  hist.finnhub.days = {};
+  for (let i = 0; i < 40; i++) hist.finnhub.days['2026-0' + (1 + Math.floor(i / 28)) + '-' + String((i % 28) + 1).padStart(2, '0')] = [1, 0, 0];
+  setKv('src_hist', JSON.stringify(hist));
+  await T.srcFail(env, 'finnhub', 'nog een fout');
+  const days = Object.keys((await T.srcHistState(env)).finnhub.days);
+  assert.ok(days.length <= 30, '30 dagen bewaard, nu ' + days.length);
+  setKv('src_health', '{}');
+});
+
+await test('sleutel testen zonder opslaan en zonder hem te laten zien (idee 62)', async () => {
+  routes = [[/finnhub\.io\/api\/v1\/quote/, (u) => (/goed-geheim/.test(u) ? reply({ c: 190 }) : reply({ error: 'bad' }, 401))]];
+  const keysBefore = kv('keys');
+  let r = await jsonOf(await req('/api/keytest', { method: 'POST', body: { name: 'FINNHUB_KEY', value: 'goed-geheim' } }));
+  assert.equal(r.ok, true);
+  assert.equal(r.result.state, 'ok', JSON.stringify(r.result));
+  assert.ok(!JSON.stringify(r).includes('goed-geheim'), 'de sleutel staat niet in het antwoord');
+  assert.equal(kv('keys'), keysBefore, 'testen slaat niets op');
+  r = await jsonOf(await req('/api/keytest', { method: 'POST', body: { name: 'FINNHUB_KEY', value: 'fout-geheim' } }));
+  assert.equal(r.result.state, 'fout');
+  assert.ok(!JSON.stringify(r).includes('fout-geheim'));
+  // Zonder waarde en zonder opgeslagen sleutel: leeg
+  r = await jsonOf(await req('/api/keytest', { method: 'POST', body: { name: 'ALPHAVANTAGE_KEY' } }));
+  assert.equal(r.result.state, 'leeg');
+  // Trading 212: de sleutel in de Worker werkt
+  routes = [[/t212\.test\/api\/v0\/equity\/account\/summary/, reply({ currency: 'EUR', cash: { availableToTrade: 1 } })]];
+  r = await jsonOf(await req('/api/keytest', { method: 'POST', body: { name: 'T212_KEY' } }));
+  assert.equal(r.result.state, 'ok');
+  assert.match(r.result.message, /EUR/);
+  // Een onbekende naam wordt geweigerd
+  const bad = await req('/api/keytest', { method: 'POST', body: { name: 'WEB_TOKEN', value: 'x' } });
+  assert.equal(bad.status, 400);
+  routes = [];
+});
+
+await test('onmogelijke waarden worden geweigerd en vastgelegd (idee 148)', async () => {
+  const T = WM._test;
+  const prev = { AAA: { price: 100, qty: 1 }, BBB: { price: 10, qty: 2 } };
+  const chk = T.checkPositions([
+    { ticker: 'AAA', price: 101, qty: 1, value: 101 },
+    { ticker: 'CCC', price: 5, qty: -3, value: 15 },
+    { ticker: 'DDD', price: 1000, qty: 1, value: 1000 },
+    { ticker: 'BBB', price: 0, qty: 2, value: 20 },
+  ], Object.assign({}, prev, { DDD: { price: 100, qty: 1 } }));
+  assert.deepEqual(chk.rows.map((r) => r.ticker), ['AAA', 'BBB'], 'zonder koers blijft de waarde bewaard');
+  assert.equal(chk.rows[1].price, null, 'de onbruikbare koers wordt niet bewaard');
+  assert.equal(chk.bad.length, 3);
+  assert.match(chk.bad[0].why, /aantal -3/);
+  assert.equal(chk.bad[0].kept, false);
+  assert.match(chk.bad[1].why, /koerssprong/);
+  assert.match(chk.bad[2].why, /koers 0/);
+  assert.equal(chk.bad[2].kept, true);
+  // Via een meting: de goede positie wordt bewaard, de rare niet, en de vorige gegevens blijven staan
+  setKv('pos_extra', JSON.stringify({ GOED: { price: 50, qty: 2, isin: 'NL0000GOED1' }, RAAR: { price: 10, qty: 5, isin: 'NL0000RAAR1' } }));
+  setKv('data_rejects', '[]');
+  const rt = t212Routes();
+  rt[0] = [/t212\.test\/api\/v0\/equity\/positions/, reply([
+    { instrument: { ticker: 'GOED_EQ', name: 'Goede nv', currency: 'EUR', isin: 'NL0000GOED1' }, quantity: 2, currentPrice: 51, averagePricePaid: 40, walletImpact: { currentValue: 102, unrealizedProfitLoss: 22, totalCost: 80, fxImpact: 0 } },
+    { instrument: { ticker: 'RAAR_EQ', name: 'Rare nv', currency: 'EUR', isin: 'NL0000RAAR1' }, quantity: 5, currentPrice: 90, averagePricePaid: 10, walletImpact: { currentValue: 450, unrealizedProfitLoss: 400, totalCost: 50, fxImpact: 0 } },
+  ])];
+  routes = rt;
+  const r = await jsonOf(await req('/api/run', { method: 'POST' }));
+  assert.match(r.message, /1 afwijkende waarde\(n\) tegengehouden/);
+  assert.equal(DB.db.prepare("SELECT COUNT(*) AS n FROM intraday WHERE ticker = 'GOED'").get().n, 1, 'de goede positie is bewaard');
+  assert.equal(DB.db.prepare("SELECT COUNT(*) AS n FROM intraday WHERE ticker = 'RAAR'").get().n, 0, 'de rare koers is niet bewaard');
+  const extra = JSON.parse(kv('pos_extra'));
+  assert.equal(extra.RAAR.price, 10, 'de vorige koers blijft de maatstaf');
+  const rejects = JSON.parse(kv('data_rejects'));
+  assert.equal(rejects[rejects.length - 1].ticker, 'RAAR');
+  const health = (await jsonOf(await req('/api/health'))).health;
+  assert.equal(health.rejects[0].ticker, 'RAAR');
+  routes = [];
+});
+
+await test('splitsing en nieuwe ticker: geschiedenis mee aangepast, en niet twee keer (ideeën 149, 155)', async () => {
+  const T = WM._test;
+  assert.equal(T.splitRatio(10, 100, 20, 50), 2, '2:1');
+  assert.equal(T.splitRatio(10, 10, 1, 100), 0.1, '1:10');
+  assert.equal(T.splitRatio(10, 100, 20, 100), null, 'bijkoop is geen splitsing');
+  assert.equal(T.splitRatio(10, 100, 10, 50), null, 'alleen koers gehalveerd is geen splitsing');
+  const ts0 = Math.floor((Date.now() - 2 * 3600e3) / 60000) * 60000;
+  DB.db.prepare('INSERT OR REPLACE INTO intraday (ts, ticker, name, value, unrealized, price, qty) VALUES (?,?,?,?,?,?,?)').run(ts0, 'SPLT', 'Splitser', 1000, 0, 100, 10);
+  DB.db.prepare('INSERT OR REPLACE INTO days (day, ticker, name, open, close, low, high, avg, range, range_pct, n, close_price) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)').run('2026-11-02', 'SPLT', 'Splitser', 1000, 1000, 1000, 1000, 1000, 0, 0, 1, 100);
+  DB.db.prepare('INSERT OR REPLACE INTO positions (date, ticker, name, value, unrealized, qty) VALUES (?,?,?,?,?,?)').run('2026-11-02', 'SPLT', 'Splitser', 1000, 0, 10);
+  const before = JSON.stringify({ SPLT: { price: 100, qty: 10, avg: 90, isin: 'NL0000SPLT1' }, OLDT: { price: 20, qty: 5, avg: 18, isin: 'NL0000NAAM1' } });
+  setKv('pos_extra', before);
+  setKv('corp_actions', '[]');
+  const payload = [
+    { instrument: { ticker: 'SPLT_EQ', name: 'Splitser', currency: 'EUR', isin: 'NL0000SPLT1' }, quantity: 20, currentPrice: 50, averagePricePaid: 45, walletImpact: { currentValue: 1000, unrealizedProfitLoss: 100, totalCost: 900, fxImpact: 0 } },
+    { instrument: { ticker: 'NEWT_EQ', name: 'Nieuwe naam nv', currency: 'EUR', isin: 'NL0000NAAM1' }, quantity: 5, currentPrice: 21, averagePricePaid: 18, walletImpact: { currentValue: 105, unrealizedProfitLoss: 15, totalCost: 90, fxImpact: 0 } },
+  ];
+  const rt = t212Routes();
+  rt[0] = [/t212\.test\/api\/v0\/equity\/positions/, reply(payload)];
+  routes = rt;
+  // Geschiedenis van de oude ticker, om de verhuizing te kunnen zien
+  DB.db.prepare('INSERT OR REPLACE INTO intraday (ts, ticker, name, value, unrealized, price, qty) VALUES (?,?,?,?,?,?,?)').run(ts0, 'OLDT', 'Oude naam nv', 100, 0, 20, 5);
+  setKv('rs_OLDT', JSON.stringify({ symbol: 'OLDT', updated: '2026-11-01T10:00:00' }));
+  const r = await jsonOf(await req('/api/run', { method: 'POST' }));
+  assert.match(r.message, /Splitsing SPLT 2:1/);
+  assert.match(r.message, /OLDT heet nu NEWT/);
+  const row = DB.db.prepare('SELECT price, qty FROM intraday WHERE ts = ? AND ticker = ?').get(ts0, 'SPLT');
+  assert.equal(row.price, 50, 'oude koers gehalveerd');
+  assert.equal(row.qty, 20, 'oud aantal verdubbeld');
+  assert.equal(DB.db.prepare("SELECT close_price AS p FROM days WHERE ticker = 'SPLT'").get().p, 50);
+  assert.equal(DB.db.prepare("SELECT qty AS q FROM positions WHERE ticker = 'SPLT' AND date = '2026-11-02'").get().q, 20);
+  assert.equal(DB.db.prepare("SELECT COUNT(*) AS n FROM intraday WHERE ticker = 'OLDT'").get().n, 0, 'oude ticker weg');
+  assert.ok(DB.db.prepare("SELECT COUNT(*) AS n FROM intraday WHERE ticker = 'NEWT'").get().n > 0, 'onder de nieuwe ticker');
+  assert.ok(kv('rs_NEWT') && !kv('rs_OLDT'), 'onderzoek mee verhuisd');
+  assert.equal(JSON.parse(kv('ticker_map')).OLDT.to, 'NEWT');
+  // Nog een keer met dezelfde beginstand: niets wordt opnieuw aangepast
+  setKv('pos_extra', before);
+  const r2 = await jsonOf(await req('/api/run', { method: 'POST' }));
+  assert.ok(!/Splitsing/.test(r2.message), 'splitsing niet twee keer: ' + r2.message);
+  assert.equal(DB.db.prepare('SELECT price FROM intraday WHERE ts = ? AND ticker = ?').get(ts0, 'SPLT').price, 50, 'koers niet nog eens gehalveerd');
+  routes = [];
+});
+
+await test('slimmer plannen: bezit vaker dan de volglijst, cijferdagen vooraan (idee 146)', async () => {
+  const T = WM._test;
+  const held = [{ ticker: 'AAPL', symbol: 'AAPL' }, { ticker: 'ASML', symbol: 'ASML' }];
+  const watch = [{ ticker: 'MSFT', symbol: 'MSFT' }, { ticker: 'NVDA', symbol: 'NVDA' }];
+  const rs = new Map([['MSFT', { updated: '2026-11-17T09:00:00' }], ['NVDA', { updated: '2026-11-10T09:00:00' }]]);
+  const events = { earnings: [{ ticker: 'ASML', date: '2026-11-20' }, { ticker: 'MSFT', date: '2026-11-19' }], lastEarnings: [{ ticker: 'AAPL', date: '2026-11-01' }] };
+  const p = T.planResearch(held, watch, rs, events, '2026-11-18');
+  assert.deepEqual(p.order.slice(0, 2).sort(), ['ASML', 'MSFT'], 'cijfers binnenkort gaan voor');
+  assert.ok(p.order.includes('NVDA'), 'volglijst die lang niet is bijgewerkt gaat mee');
+  assert.deepEqual(p.skipped, [], 'MSFT staat vooraan, dus niet overgeslagen');
+  assert.deepEqual(p.order.length, 4);
+  // Zonder cijfers in de buurt: een volgaandeel van gisteren wordt overgeslagen
+  const p2 = T.planResearch(held, watch, rs, { earnings: [], lastEarnings: [] }, '2026-11-18');
+  assert.deepEqual(p2.skipped, ['MSFT']);
+  assert.deepEqual(p2.order, ['AAPL', 'ASML', 'NVDA']);
+  // Net na de cijfers blijft een aandeel vooraan
+  const p3 = T.planResearch(held, [], new Map(), { lastEarnings: [{ ticker: 'ASML', date: '2026-11-17' }] }, '2026-11-18');
+  assert.deepEqual(p3.order, ['ASML', 'AAPL']);
+  assert.deepEqual(T.uniqTasks(['a', 'b', 'a']), ['a', 'b']);
+});
+
+await test('marktnieuws: Finnhub aan zijn limiet, dan Alpha Vantage (idee 153)', async () => {
+  setKv('src_health', '{}');
+  setKv('av_calls', '{}');
+  setKv('mkt_queue', JSON.stringify(['fhnews']));
+  routes = [
+    [/finnhub\.io\/api\/v1\/news/, reply({ error: 'limit' }, 429)],
+    [/alphavantage\.co\/query/, (u) => {
+      assert.match(u, /function=NEWS_SENTIMENT/);
+      return reply({ feed: [{ title: 'Beurzen hoger', url: 'https://nieuws.test/1', time_published: '20261118T090000', source: 'AV', summary: 'Kort', ticker_sentiment: [{ ticker: 'AAPL' }] }] });
+    }],
+  ];
+  const e = Object.assign(Object.create(env), { FINNHUB_KEY: 'fh', ALPHAVANTAGE_KEY: 'av' });
+  const r = await jsonOf(await req('/api/market', { method: 'POST', env: e }));
+  assert.equal(r.ok, true, JSON.stringify(r));
+  const news = JSON.parse(kv('market_news'));
+  assert.match(news.source, /Alpha Vantage/);
+  assert.equal(news.items[0].headline, 'Beurzen hoger');
+  assert.equal(news.items[0].related, 'AAPL');
+  const hp = (await jsonOf(await req('/api/health'))).health;
+  assert.match(hp.sources.finnhub.backup, /Alpha Vantage/);
+  // Zonder reserve-sleutel blijft het bij een uitleg bij de bron
+  setKv('mkt_queue', JSON.stringify(['fhnews']));
+  setKv('src_health', '{}');
+  await req('/api/market', { method: 'POST', env: Object.assign(Object.create(env), { FINNHUB_KEY: 'fh' }) });
+  assert.match(JSON.parse(kv('ext_errors')).marketnews.msg, /Alpha Vantage/);
+  routes = [];
+  setKv('mkt_queue', '[]');
+});
+
+await test('budget per bron en databasegrootte (ideeën 151, 152)', async () => {
+  const T = WM._test;
+  const day = T.parts(new Date()).day;
+  setKv('api_calls', JSON.stringify({ [day]: { finnhub: 42, sec: 3 } }));
+  setKv('fmp_calls', JSON.stringify({ day, n: 200 }));
+  setKv('av_calls', JSON.stringify({ day, n: 25 }));
+  const b = await T.budgetInfo(env);
+  const byId = Object.fromEntries(b.sources.map((x) => [x.src, x]));
+  assert.equal(byId.fmp.used, 200);
+  assert.equal(byId.fmp.limit, 250);
+  assert.ok(byId.fmp.pct > 0.8 && byId.fmp.pct <= 1);
+  assert.equal(byId.alphavantage.used, 25);
+  assert.equal(byId.alphavantage.pct, 1);
+  assert.equal(byId.finnhub.used, 42);
+  assert.equal(byId.finnhub.pct, null, 'per minuut: geen dagdeel');
+  // Databasegrootte: schatting plus opruimen van oud nieuws
+  DB.db.prepare('INSERT OR IGNORE INTO news_hist (tk, t, headline, source, url, summary) VALUES (?,?,?,?,?,?)')
+    .run('OUDX', Date.now() - 500 * 864e5, 'Heel oud bericht', 'Test', 'https://nieuws.test/oud', 'oud');
+  const before = DB.db.prepare("SELECT COUNT(*) AS n FROM news_hist WHERE tk = 'OUDX'").get().n;
+  assert.equal(before, 1);
+  const d = await T.dbWatch(env, true);
+  assert.ok(d.bytes > 0 && d.limit === 500e6 && d.pct >= 0);
+  assert.ok(d.tables.intraday.rows > 0);
+  assert.equal(DB.db.prepare("SELECT COUNT(*) AS n FROM news_hist WHERE tk = 'OUDX'").get().n, 0, 'nieuws ouder dan 400 dagen is opgeruimd');
+  assert.match(d.cleaned, /nieuwsregels/);
+  const st = (await jsonOf(await req('/api/status'))).status;
+  assert.ok(st.db.bytes > 0, 'statuspagina kent de grootte');
+  assert.ok(st.budgets.sources.length >= 5);
+});
+
+await test('reservekopie in R2: dag en week, bewaartermijn en voorbeeld (idee 150)', async () => {
+  const T = WM._test;
+  const store = new Map();
+  const R2 = {
+    put: async (k, v) => { store.set(k, { body: String(v), size: String(v).length, uploaded: new Date() }); },
+    get: async (k) => (store.has(k) ? { text: async () => store.get(k).body } : null),
+    delete: async (k) => { store.delete(k); },
+    list: async (o) => ({ objects: [...store.keys()].filter((k) => k.startsWith((o && o.prefix) || '')).sort().map((k) => ({ key: k, size: store.get(k).size, uploaded: store.get(k).uploaded })) }),
+  };
+  // Zonder binding gebeurt er niets
+  assert.equal(await T.r2Backup(env, new Date('2026-11-18T05:17:00Z')), null);
+  assert.equal((await T.r2Info(env)).on, false);
+  const e = Object.assign(Object.create(env), { BACKUP: R2 });
+  setKv('r2_last', '');
+  // Een zondag: dag- én weekkopie
+  assert.equal(await T.r2Backup(e, new Date('2026-11-22T05:17:00Z')), '2026-11-22');
+  assert.ok(store.has('dag/2026-11-22.json') && store.has('week/2026-11-22.json'));
+  // Dezelfde dag nog eens: niets nieuws
+  assert.equal(await T.r2Backup(e, new Date('2026-11-22T06:17:00Z')), null);
+  assert.equal(store.size, 2);
+  // Tien dagen achter elkaar: 7 dagkopieën blijven over
+  for (let i = 1; i <= 10; i++) { setKv('r2_last', ''); await T.r2Backup(e, new Date('2026-12-' + String(i).padStart(2, '0') + 'T05:17:00Z')); }
+  const info = await T.r2Info(e);
+  assert.equal(info.on, true);
+  assert.equal(info.copies.filter((c) => c.kind === 'dag').length, 7, 'zeven dagkopieën');
+  assert.ok(info.copies.filter((c) => c.kind === 'week').length <= 4);
+  // Voorbeeld: wat zit erin, zonder iets terug te zetten
+  const key = info.copies.find((c) => c.kind === 'dag').key;
+  const weeksNow = DB.db.prepare('SELECT COUNT(*) AS n FROM weeks').get().n;
+  const pv = (await T.r2Preview(e, key)).preview;
+  assert.equal(pv.key, key);
+  assert.ok(pv.bytes > 10);
+  const wk = pv.tables.find((t) => t.table === 'weeks');
+  assert.equal(wk.inDatabase, weeksNow);
+  assert.equal(wk.diff, wk.inBackup - weeksNow);
+  assert.equal(DB.db.prepare('SELECT COUNT(*) AS n FROM weeks').get().n, weeksNow, 'een voorbeeld verandert niets');
+  await assert.rejects(() => T.r2Preview(e, 'dag/../geheim.json'), /Onbekende reservekopie/);
+  await assert.rejects(() => T.r2Preview(e, 'dag/2001-01-01.json'), /niet \(meer\)/);
+  // Via de API, met en zonder bucket
+  const r = await jsonOf(await req('/api/r2', { env: e }));
+  assert.equal(r.on, true);
+  const r0 = await jsonOf(await req('/api/r2'));
+  assert.equal(r0.on, false);
+});
+
+await test('taken kunnen twee keer draaien zonder schade (idee 155)', async () => {
+  const snap = () => JSON.stringify({
+    prices: DB.db.prepare('SELECT symbol, day, price FROM ext_prices ORDER BY symbol, day').all(),
+    profiles: DB.db.prepare('SELECT symbol, data FROM ext_profile ORDER BY symbol').all(),
+    perf: DB.db.prepare('SELECT day, kind, name, change FROM ext_perf ORDER BY day, kind, name').all(),
+    news: DB.db.prepare('SELECT COUNT(*) AS n FROM news_hist').get(),
+  });
+  routes = [
+    [/financialmodelingprep.*\/profile/, reply([{ symbol: 'AAPL', companyName: 'Apple', price: 230, currency: 'USD', sector: 'Technology', industry: 'Consumer Electronics', exchange: 'NASDAQ' }])],
+    [/financialmodelingprep.*historical-price-eod/, reply([{ date: '2026-11-17', price: 229 }, { date: '2026-11-16', price: 228 }])],
+    [/financialmodelingprep.*sector-performance-snapshot/, reply([{ sector: 'Technology', exchange: 'NASDAQ', averageChange: 0.4 }])],
+    [/financialmodelingprep.*industry-performance-snapshot/, reply([{ industry: 'Consumer Electronics', exchange: 'NASDAQ', averageChange: 0.2 }])],
+    [/finnhub\.io\/api\/v1\/company-news/, reply([{ datetime: Math.floor(Date.parse('2026-11-17T10:00:00Z') / 1000), headline: 'Apple bericht', source: 'Test', url: 'https://nieuws.test/idem/1', summary: 's' }])],
+  ];
+  const queue = ['profile:AAPL', 'eod:AAPL', 'perf:2026-11-17', 'fh:AAPL'];
+  const e = Object.assign(Object.create(env), { FMP_KEY: 'fmp', FINNHUB_KEY: 'fh' });
+  setKv('fmp_calls', '{}');
+  setKv('src_health', '{}');
+  setKv('mkt_queue', JSON.stringify(queue));
+  await req('/api/market', { method: 'POST', env: e });
+  const a = snap();
+  setKv('mkt_queue', JSON.stringify(queue));
+  await req('/api/market', { method: 'POST', env: e });
+  assert.equal(snap(), a, 'tweede keer dezelfde taken geeft dezelfde gegevens');
+  // Dezelfde taak staat nooit twee keer in de rij
+  setKv('settings', JSON.stringify(Object.assign(JSON.parse(kv('settings') || '{}'), { watchlist: ['AAPL', 'AAPL', 'MSFT'] })));
+  await req('/api/market?plan=1', { method: 'POST', env: e });
+  const q = JSON.parse(kv('mkt_queue'));
+  assert.equal(q.length, new Set(q).size, 'geen dubbele taken: ' + q.join(', '));
+  routes = [];
+  setKv('mkt_queue', '[]');
+});
+
 console.log((failed ? failed + ' fout, ' : '') + passed + ' geslaagd');
 process.exit(failed ? 1 : 0);

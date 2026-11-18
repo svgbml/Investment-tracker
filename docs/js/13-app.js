@@ -55,6 +55,9 @@ Object.assign(EN, {
   'Positie': 'Position', 'Waarde nu': 'Value now', 'Aantal': 'Quantity', 'Koers in euro': 'Price in euro', 'Gemiddelde aankoopprijs': 'Average purchase price', 'Ingelegd': 'Invested',
   'Bijdrage aan dagresultaat': 'Contribution to daily result', 'Volgende kwartaalcijfers': 'Next earnings', 'Volgend dividend': 'Next dividend', 'Opening': 'Open', 'Laagste en hoogste': 'Low and high',
   'Gemeten dagen': 'Days measured', 'Huidige reeks': 'Current streak', 'Beste dag': 'Best day', 'Slechtste dag': 'Worst day', 'Beste week': 'Best week', 'Slechtste week': 'Worst week',
+  'Bronnen, laatste 30 dagen': 'Sources, last 30 days', 'Budget per bron': 'Budget per source', 'Ruimte in de database': 'Database space',
+  'Reservekopieën in de cloud': 'Cloud backups', 'Controle op rare gegevens': 'Odd data check', 'Splitsingen en nieuwe tickers': 'Splits and renamed tickers',
+  'Dag en tijdzone': 'Day and time zone', 'Testen': 'Test', 'Voorbeeld': 'Preview', 'Nu een kopie maken': 'Make a copy now', 'Bronnen': 'Sources',
   'Grootste veranderingen': 'Biggest changes', 'Alle bedrijven bekijken': 'View all companies', 'Zoek op naam of ticker': 'Search by name or ticker', 'Nog geen metingen van vandaag': 'No measurements today yet',
 });
 // Duits en Frans: dezelfde sleutels als EN; wat hier ontbreekt, valt terug op het Engels
@@ -539,7 +542,7 @@ function renderStatusView() {
   ]) + '<p class="sub" style="margin-top:8px">Na drie dagen worden metingen per 10 minuten uurregels; elke maand ruimt de Worker uurregels ouder dan 180 dagen op (de dagregels blijven). Een reservekopie maak je bij Instellingen.</p></section>';
   const keys = '<section class="tile pad"><h3>Koppelingen</h3>' + kvList(Object.entries(S.keys || {}).map(([k, v]) => [k.replace(/_KEY|_CONTACT/g, '').replace('T212', 'Trading 212').replace('_', ' '), v ? 'ingesteld' : 'niet ingesteld', v ? 'gain' : ''])) + '</section>';
   const head = pseudoHead('Status van je tracker', ok ? 'Alles werkt' : stale ? 'Geen nieuwe metingen' : 'Er gaat iets mis', ok ? 'Laatste meting ' + ago(S.lastMeasurement) + '.' : 'Bekijk hieronder de laatste fout. Een melding volgt na drie mislukte metingen.', ok ? 'gain' : 'loss');
-  const extra = statusExtraRows(S);
+  const extra = statusExtraRows(S).concat(typeof bronnenRows === 'function' ? bronnenRows(S) : []);
   return pseudoPage('Status', head, [[meas, src], [db, keys]].concat(extra), [meas, src, db, keys].concat(...extra));
 }
 document.addEventListener('click', (e) => {

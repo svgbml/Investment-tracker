@@ -29,7 +29,10 @@ Alle adressen vragen je toegangscode, als `?token=…` of als header `Authorizat
 | Wat | Methode en adres |
 |---|---|
 | Gegevens voor de website, in delen met vingerafdruk (ETag): `core` (posities, weken), `extra` (markt, onderzoek, koersen) en `series` (metingen). Met `If-None-Match` geeft de Worker 304 als er niets veranderd is. `part=core&split=1` laat de metingen weg; `part=series&since=<ms>` geeft alleen metingen na dat moment (de site bewaart de rest in IndexedDB). Zonder `part` alles samen. De toegangscode gaat in de kop `Authorization: Bearer …` | `GET /api/data?part=core&split=1` / `?part=extra` / `?part=series&since=…` |
-| Status: laatste meting, mislukte metingen op rij, gezondheid van de bronnen | `GET /api/status` |
+| Status: laatste meting, mislukte metingen op rij, gezondheid van de bronnen, budgetten per bron en de geschatte grootte van de database | `GET /api/status` |
+| Bronnenpagina: tijdlijn per bron (30 dagen ok/limiet/fout), wanneer een bron weer wordt geprobeerd, budget per bron, databaseruimte, geweigerde waarden, splitsingen en naamswijzigingen, en de reservekopieën in R2 | `GET /api/health` |
+| Sleutel testen met één proefvraag aan de bron, zonder op te slaan; zonder `value` test de Worker de sleutel die er al staat. Het antwoord bevat nooit de sleutel zelf | `POST /api/keytest` met `{"name": "FINNHUB_KEY", "value": "…"}` |
+| Reservekopieën in R2: lijst, of een voorbeeld van één kopie (zet niets terug); `POST` maakt nu een kopie | `GET /api/r2`, `GET /api/r2?preview=dag/2026-11-18.json`, `POST /api/r2` |
 | Reservekopie (zonder sleutels of toegangscodes), per tabel in pagina's van 2000 rijen; zonder `table` het overzicht | `GET /api/backup?table=weeks&offset=0` |
 | Reservekopie terugzetten, per pagina; `done: true` bij de laatste pagina bouwt de gegevens opnieuw op | `POST /api/restore` met `{"table": "weeks", "rows": [[…]], "done": false}` |
 | Bedrijf zoeken op naam of symbool (SEC-lijst, ETF's, Finnhub) | `GET /api/search?q=apple` |
@@ -152,7 +155,7 @@ binding = "BACKUP"
 bucket_name = "tracker-backup"
 ```
 
-Elke zondag zet de Worker dan een volledige kopie (zonder sleutels of toegangscodes) in de bucket als `backup-JJJJ-MM-DD.json`; de laatste acht blijven bewaard. Zo'n bestand kun je op de website terugzetten bij Instellingen. Zonder binding gebeurt er niets. Voeg de binding pas toe als de bucket bestaat, anders mislukt de deploy.
+Elke dag zet de Worker dan een volledige kopie (zonder sleutels of toegangscodes) in de bucket als `dag/JJJJ-MM-DD.json`, en op zondag ook als `week/JJJJ-MM-DD.json`. Bewaard blijven de laatste 7 dagkopieën en 4 weekkopieën; oudere (en kopieën van vóór deze indeling, `backup-…json`) ruimt de Worker zelf op. Op de bronnenpagina (Status) zie je de lijst en kun je per kopie een voorbeeld opvragen: wat erin zit en wat dat zou betekenen tegenover wat er nu in de database staat. Er wordt daarbij niets teruggezet; terugzetten doe je bewust bij Instellingen. Zonder binding gebeurt er niets. Voeg de binding pas toe als de bucket bestaat, anders mislukt de deploy.
 
 ## Grenzen
 

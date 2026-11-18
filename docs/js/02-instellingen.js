@@ -188,6 +188,8 @@ function healthLine(id, H) {
     return parts.length ? '<p class="small src-health">' + esc(parts.join('; ')) + '.</p>' : '';
   }).join('');
 }
+// Sleutels die de Worker kan testen met één proefvraag, zonder op te slaan (idee 62); zie js/15-bronnen.js
+const KEY_TEST_OK = ['T212_KEY', 'T212_SECRET', 'FMP_KEY', 'FINNHUB_KEY', 'ALPHAVANTAGE_KEY', 'TWELVEDATA_KEY', 'FRED_KEY', 'SEC_CONTACT', 'RESEND_KEY'];
 let linkState = null;
 
 async function workerCall(path, init) {
@@ -220,7 +222,10 @@ function renderLinks(msg) {
             (where === 'cloudflare' ? '<span class="small muted">Ingesteld als geheim bij Cloudflare. Vul hieronder in om hem via de site te vervangen.</span>' : '') +
             (where === 'override' ? '<span class="small muted">Vervangen via de site; het geheim bij Cloudflare wordt niet gebruikt. Met Terug naar Cloudflare geldt het geheim weer.</span>' : '') +
               '<span class="key-in"><input id="key-' + k + '" data-key="' + k + '" type="' + (/SEC_CONTACT|MAIL_/.test(k) ? 'email' : 'password') + '" autocomplete="off" spellcheck="false" placeholder="' + (where ? 'Ingesteld; vul in om te vervangen' : 'Niet ingesteld') + '">' +
-                '<button type="button" class="btn ghost" data-savekey="' + k + '">Opslaan</button>' + (where === 'site' || where === 'override' ? '<button type="button" class="btn ghost danger" data-delkey="' + k + '">' + (where === 'override' ? 'Terug naar Cloudflare' : 'Wissen') + '</button>' : '') + '</span></div>';
+                '<button type="button" class="btn ghost" data-savekey="' + k + '">Opslaan</button>' +
+                (KEY_TEST_OK.includes(String(k)) ? '<button type="button" class="btn ghost" data-testkey="' + k + '">Testen</button>' : '') +
+                (where === 'site' || where === 'override' ? '<button type="button" class="btn ghost danger" data-delkey="' + k + '">' + (where === 'override' ? 'Terug naar Cloudflare' : 'Wissen') + '</button>' : '') + '</span>' +
+              (KEY_TEST_OK.includes(String(k)) ? '<span class="small key-test muted" data-keytest-out="' + k + '"></span>' : '') + '</div>';
         }).join('') +
         (L.flag ? '<label class="check small"><input type="checkbox" data-flag="' + L.flag + '"' + (F.flags[L.flag] ? ' checked' : '') + '> Gebruiken</label>' : '') +
         (L.id === 'trading' && F.flags.trading ? tradeLimitsRow() : '') +
