@@ -17,6 +17,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # De hele geschiedenis: tools/check-stijl.mjs vergelijkt met main en heeft daarvoor
+          # een gemeenschappelijke voorouder nodig (met een ondiepe kloon is die er niet).
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -35,11 +39,12 @@ jobs:
       - name: CSS van gewijzigde regels
         run: |
           npm i --no-save --no-audit --no-fund stylelint@16
-          git fetch --no-tags --depth=1 origin main || true
           node tools/check-stijl.mjs
 
   browser:
-    runs-on: ubuntu-latest
+    # Vaste Ubuntu-versie: Playwright ondersteunt alleen bepaalde versies met --with-deps, en een
+    # vaste versie houdt ook de schermafbeeldingen (lettertypen) tussen metingen gelijk.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -47,8 +52,8 @@ jobs:
           node-version: 24
       - name: Playwright installeren
         run: |
-          npm i --no-save --no-audit --no-fund playwright@1.56.1
-          npx playwright install --with-deps chromium
+          npm i --no-save --no-audit --no-fund playwright@1.65.1
+          npx playwright install --with-deps chromium || npx playwright install chromium
       - name: Voorbeeldgegevens (geen lege tegels, geen NaN)
         run: node tools/check-demo.mjs
       - name: Alle pagina's openen (fouten in de console, overloop)

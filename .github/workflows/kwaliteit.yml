@@ -16,7 +16,8 @@ permissions:
 
 jobs:
   kwaliteit:
-    runs-on: ubuntu-latest
+    # Zie checks.yml: vaste Ubuntu-versie voor Playwright en voor gelijke schermafbeeldingen.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
@@ -26,8 +27,8 @@ jobs:
           node-version: 24
       - name: Playwright en hulpprogramma's installeren
         run: |
-          npm i --no-save --no-audit --no-fund playwright@1.56.1 axe-core@4.11.0 pixelmatch@7.1.0 pngjs@7.0.0
-          npx playwright install --with-deps chromium
+          npm i --no-save --no-audit --no-fund playwright@1.65.1 axe-core@4.11.0 pixelmatch@7.1.0 pngjs@7.0.0
+          npx playwright install --with-deps chromium || npx playwright install chromium
 
       - name: Toegankelijkheid (axe-core)
         id: a11y

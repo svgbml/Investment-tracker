@@ -35,10 +35,15 @@ function basis() {
 }
 
 // Gewijzigde regelnummers per bestand uit git diff (-U0 geeft alleen de regels zelf)
+let diffGelukt = true;
 function changedLines(ref) {
   const per = new Map();
   let diff = '';
-  try { diff = git('diff', '-U0', ref + '...HEAD', '--', '*.css'); } catch (e) { diff = ''; }
+  // Eerst vanaf de gemeenschappelijke voorouder (...); lukt dat niet, dan gewoon het verschil (..).
+  // Bij een ondiepe kloon bestaat die voorouder niet; dan zeggen we dat er niet vergeleken kon worden.
+  try { diff = git('diff', '-U0', ref + '...HEAD', '--', '*.css'); } catch (e) {
+    try { diff = git('diff', '-U0', ref, 'HEAD', '--', '*.css'); } catch (e2) { diff = ''; diffGelukt = false; }
+  }
   let extra = '';
   try { extra = git('diff', '-U0', '--', '*.css'); } catch (e) { extra = ''; }   // ook wat nog niet vastgelegd is
   let file = null;
@@ -52,8 +57,14 @@ function changedLines(ref) {
 }
 
 const ref = basis();
-const changed = alles || !ref ? null : changedLines(ref);
+let changed = alles || !ref ? null : changedLines(ref);
 if (!alles && !ref) console.log('Geen main gevonden om mee te vergelijken; het hele bestand wordt nagekeken.');
+if (!diffGelukt) {
+  // Niet stilletjes "in orde" zeggen terwijl er niets is nagekeken
+  console.log('LET OP: er kon niet met ' + ref + ' vergeleken worden (geen gemeenschappelijke geschiedenis; bij een ondiepe kloon: fetch-depth: 0).');
+  console.log('        Er is daarom niets nagekeken. Lokaal: node tools/check-stijl.mjs --basis <tak>, of --alles voor het hele bestand.');
+  process.exit(0);
+}
 const files = ['docs/style.css'];
 const res = await stylelint.lint({ files: files.map((f) => root + f), configFile: root + '.stylelintrc.json' });
 let shown = 0, total = 0;
