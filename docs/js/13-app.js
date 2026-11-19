@@ -72,6 +72,8 @@ Object.assign(EN, {
   'Bedragen staan verborgen': 'Amounts are hidden', 'Kopiëren lukte niet': 'Copying failed',
   'Finnhub-sleutel invullen': 'Enter Finnhub key', 'FMP-sleutel invullen': 'Enter FMP key',
   'Alpha Vantage-sleutel invullen': 'Enter Alpha Vantage key', 'Twelve Data-sleutel invullen': 'Enter Twelve Data key',
+  'Tiingo-sleutel invullen': 'Enter Tiingo key', 'Polygon-sleutel invullen': 'Enter Polygon key', 'Marketaux-sleutel invullen': 'Enter Marketaux key',
+  'Winst per aandeel per kwartaal': 'Earnings per share by quarter', 'Kwartaalcijfers tegenover verwachting': 'Quarterly results versus estimates',
   'FRED-sleutel invullen': 'Enter FRED key', 'E-mailadres voor SEC invullen': 'Enter email address for SEC',
   'Trading 212-sleutel invullen': 'Enter Trading 212 key', 'Valuta aanzetten': 'Turn on currencies',
   'Inflatie aanzetten': 'Turn on inflation', 'Indexen aanzetten': 'Turn on indices', 'SEC EDGAR aanzetten': 'Turn on SEC EDGAR',
@@ -668,7 +670,7 @@ function demoStatus() {
     queue: 12, fmpCalls: { n: 84 }, avCalls: { n: 6 }, errors: {}, health: { fmp: { backup: 'Finnhub', backupAt: new Date().toISOString() } },
     rows: { intraday: 3960, hours: 6420, days: 980, weeks: 13, orders: 31 }, sizes: { data_core: 41200, data_extra: 188000, data_series: 712000 }, devices: 2,
     companies: '{"n":10412,"updated":"' + new Date().toISOString().slice(0, 10) + '","source":"SEC"}',
-    keys: { T212_KEY: true, FMP_KEY: true, FINNHUB_KEY: true, SEC_CONTACT: true, ALPHAVANTAGE_KEY: false, TWELVEDATA_KEY: false, RESEND_KEY: false } };
+    keys: { T212_KEY: true, FMP_KEY: true, FINNHUB_KEY: true, SEC_CONTACT: true, ALPHAVANTAGE_KEY: false, TWELVEDATA_KEY: false, TIINGO_KEY: true, POLYGON_KEY: true, MARKETAUX_KEY: false, RESEND_KEY: false } };
 }
 async function loadStatus() {
   if (demo) { statusCache = demoStatus(); return statusCache; }

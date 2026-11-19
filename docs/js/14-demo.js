@@ -324,6 +324,14 @@ function makeDemoData() {
     L.insider = [{ name: 'Voorbeeld bestuurder', date: dIn(-12), code: 'DS', change: -1200, price: 470, shares: null }, { name: 'Voorbeeld directeur', date: dIn(-40), code: 'AQ', change: 3000, price: 0, shares: null }];
     L.src = { target: 'av', insider: 'av', news: 'av' };
   }
+  // PLTR laat de reserves zonder Alpha Vantage zien: nieuws van Polygon, kwartaalwinst (zonder verwachting) en Form 4 van de SEC
+  if (research.PLTR) {
+    const P = research.PLTR;
+    P.eps = P.eps.map((x, k) => ({ period: x.period, actual: +(0.21 - k * 0.03).toFixed(2), estimate: null, pct: null }));
+    P.insider = [{ name: 'Voorbeeld, D.', date: dIn(-5), code: 'S', change: -15000, price: 148.2, shares: 420000 }, { name: 'Voorbeeld, E.', date: dIn(-19), code: 'P', change: 2000, price: 131.5, shares: 26000 },
+      { name: 'Voorbeeld, D.', date: dIn(-33), code: 'M', change: 15000, price: 12.4, shares: 435000 }];
+    P.src = { news: 'polygon', sent: 'polygon', eps: 'sec', insider: 'sec' };
+  }
   const marketNews = { updated: iso(now), items: [1, 3, 5, 8, 12, 20, 26, 30].map((h, k) => ({ t: now.getTime() - h * HOUR,
     headline: ['Voorbeeld: centrale bank houdt rente gelijk', 'Voorbeeld: techaandelen stijgen na sterke cijfers', 'Voorbeeld: olieprijs daalt', 'Voorbeeld: euro sterker tegenover dollar',
       'Voorbeeld: chipmakers onder druk', 'Voorbeeld: inflatie in de VS lager dan verwacht', 'Voorbeeld: beurzen in Azië gemengd', 'Voorbeeld: overname in de zorgsector'][k] + ' (geen echt nieuws)',
@@ -345,7 +353,7 @@ function makeDemoData() {
     fx: { updated: iso(now), source: 'Voorbeeld', rates: fxRates },
     hicp: { updated: iso(now), source: 'Voorbeeld', series: { NL: hser(0.034, 101.9), U2: hser(0.026, 101.3) } },
     idx: { updated: iso(now), source: 'Voorbeeld', series: { SP500: idxSer(6100, 0.0004, 0.009), NASDAQ100: idxSer(21000, 0.0005, 0.012) } },
-    features: { flags: { fx: true, inflation: true, sec: true, etfAuto: true }, has: { fmp: true, finnhub: true, sec: true, t212: true } },
+    features: { flags: { fx: true, inflation: true, sec: true, etfAuto: true }, has: { fmp: true, finnhub: true, sec: true, tiingo: true, polygon: true, t212: true } },
   };
 
   // Marktoverzicht, maatstaven, deponeringen, 13F, economische agenda, pies, cijferdata en rente (voorbeelden)

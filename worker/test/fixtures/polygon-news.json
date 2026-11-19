@@ -1,0 +1,36 @@
+{
+  "results": [
+    {
+      "id": "voorbeeld-1",
+      "publisher": { "name": "Voorbeeldkrant", "homepage_url": "https://example.com/", "logo_url": "https://example.com/logo.svg", "favicon_url": "https://example.com/favicon.ico" },
+      "title": "Voorbeeldbedrijf verhoogt verwachting",
+      "author": "Redactie",
+      "published_utc": "2026-11-13T14:30:00Z",
+      "article_url": "https://example.com/nieuws/p1",
+      "tickers": ["KO", "PEP"],
+      "image_url": "https://example.com/p1.jpg",
+      "description": "Het bedrijf rekent op meer omzet dan eerder gemeld.",
+      "keywords": ["omzet"],
+      "insights": [
+        { "ticker": "KO", "sentiment": "positive", "sentiment_reasoning": "Hogere verwachting." },
+        { "ticker": "PEP", "sentiment": "neutral", "sentiment_reasoning": "Alleen genoemd." }
+      ]
+    },
+    {
+      "id": "voorbeeld-2",
+      "publisher": { "name": "Beursblad", "homepage_url": "https://example.org/" },
+      "title": "Grondstoffen duurder voor frisdrankmakers",
+      "author": "Redactie",
+      "published_utc": "2026-11-12T09:00:00Z",
+      "article_url": "https://example.org/nieuws/p2",
+      "tickers": ["KO"],
+      "description": "Suiker en aluminium kosten meer.",
+      "insights": [
+        { "ticker": "KO", "sentiment": "negative", "sentiment_reasoning": "Hogere kosten." }
+      ]
+    }
+  ],
+  "status": "OK",
+  "request_id": "voorbeeld-news",
+  "count": 2
+}

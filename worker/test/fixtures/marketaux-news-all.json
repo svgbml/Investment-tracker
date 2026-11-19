@@ -1,0 +1,38 @@
+{
+  "meta": { "found": 2, "returned": 2, "limit": 3, "page": 1 },
+  "data": [
+    {
+      "uuid": "voorbeeld-m1",
+      "title": "Frisdrankmaker koopt sapmerk",
+      "description": "Een overname van een klein sapmerk.",
+      "keywords": "overname",
+      "snippet": "Het bedrijf meldde dinsdag ...",
+      "url": "https://example.net/nieuws/m1",
+      "image_url": "https://example.net/m1.jpg",
+      "language": "en",
+      "published_at": "2026-11-13T12:00:00.000000Z",
+      "source": "example.net",
+      "relevance_score": null,
+      "entities": [
+        { "symbol": "KO", "name": "The Coca-Cola Company", "exchange": null, "exchange_long": null, "country": "us", "type": "equity", "industry": "Consumer Defensive", "match_score": 41.2, "sentiment_score": 0.52,
+          "highlights": [{ "highlight": "koopt sapmerk", "sentiment": 0.52, "highlighted_in": "main_text" }] }
+      ],
+      "similar": []
+    },
+    {
+      "uuid": "voorbeeld-m2",
+      "title": "Analisten twijfelen aan groei",
+      "description": "",
+      "snippet": "Volgens analisten blijft de groei achter.",
+      "url": "https://example.net/nieuws/m2",
+      "language": "en",
+      "published_at": "2026-11-12T08:00:00.000000Z",
+      "source": "example.net",
+      "entities": [
+        { "symbol": "KO", "name": "The Coca-Cola Company", "country": "us", "type": "equity", "match_score": 30.1, "sentiment_score": -0.4, "highlights": [] },
+        { "symbol": "PEP", "name": "PepsiCo, Inc.", "country": "us", "type": "equity", "match_score": 12.0, "sentiment_score": 0.0, "highlights": [] }
+      ],
+      "similar": []
+    }
+  ]
+}

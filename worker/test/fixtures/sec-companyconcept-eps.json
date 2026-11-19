@@ -1,0 +1,17 @@
+{
+  "cik": 21344,
+  "taxonomy": "us-gaap",
+  "tag": "EarningsPerShareDiluted",
+  "label": "Earnings Per Share, Diluted",
+  "description": "Voorbeeldomschrijving.",
+  "entityName": "COCA COLA CO",
+  "units": {
+    "USD/shares": [
+      { "start": "2025-01-01", "end": "2025-12-31", "val": 2.47, "accn": "0000021344-26-000001", "fy": 2025, "fp": "FY", "form": "10-K", "filed": "2026-02-20", "frame": "CY2025" },
+      { "start": "2026-01-01", "end": "2026-03-31", "val": 0.72, "accn": "0000021344-26-000002", "fy": 2026, "fp": "Q1", "form": "10-Q", "filed": "2026-04-28", "frame": "CY2026Q1" },
+      { "start": "2026-04-01", "end": "2026-06-30", "val": 0.81, "accn": "0000021344-26-000003", "fy": 2026, "fp": "Q2", "form": "10-Q", "filed": "2026-07-28", "frame": "CY2026Q2" },
+      { "start": "2026-01-01", "end": "2026-06-30", "val": 1.53, "accn": "0000021344-26-000003", "fy": 2026, "fp": "Q2", "form": "10-Q", "filed": "2026-07-28" },
+      { "start": "2026-07-01", "end": "2026-09-30", "val": 0.77, "accn": "0000021344-26-000004", "fy": 2026, "fp": "Q3", "form": "10-Q", "filed": "2026-10-27", "frame": "CY2026Q3" }
+    ]
+  }
+}

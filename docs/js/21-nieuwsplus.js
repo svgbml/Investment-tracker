@@ -145,6 +145,9 @@ function earnEventsOf(tk, held) {
   return { next, eps, lastEv, lastEps, moves: mv, usual };
 }
 const epsSurprise = (x) => (isNum(x.pct) ? spct1(x.pct / 100) : '–');
+// Tekst bij gerapporteerde cijfers; de SEC geeft alleen de werkelijke winst, zonder verwachting
+const epsVsText = (x) => (isNum(x.pct) ? epsSurprise(x) + (x.pct > 0 ? ' boven' : x.pct < 0 ? ' onder' : ' gelijk aan') + ' verwachting'
+  : isNum(x.actual) ? 'winst per aandeel $' + N2.format(x.actual) + ', verwachting onbekend' : 'verwachting onbekend');
 // Verrassingen als kleine staafjes, zoals op de bedrijfspagina
 function epsBars(eps) {
   const list = eps.slice().reverse();
@@ -164,9 +167,9 @@ function earnPreviewTile(o) {
     '<div class="fx-head"><span class="v big">' + esc(fD.format(t)) + '</span><span class="muted small">' + esc(whenText(t)) + '</span></div>' +
     kvList([
       ['Verwachte winst per aandeel', isNum(E.next.epsEst) ? N2.format(E.next.epsEst) + (cur === 'EUR' ? ' €' : ' $') : 'nog niet bekend'],
-      ['Laatste vier keer boven verwachting', E.eps.length ? beats + ' van ' + E.eps.length : 'nog geen gegevens'],
+      ['Laatste vier keer boven verwachting', E.eps.length ? beats + ' van ' + E.eps.length : E.lastEps ? 'verwachting onbekend' : 'nog geen gegevens'],
       ['Koers beweegt rond cijfers meestal', isNum(E.usual) ? P1.format(E.usual) + ' (op of neer)' : 'nog niet gemeten'],
-      ['Vorige cijfers', E.lastEps ? fDM.format(E.lastEps.t) + ', ' + epsSurprise(E.lastEps) + (E.lastEps.pct > 0 ? ' boven' : E.lastEps.pct < 0 ? ' onder' : '') + ' verwachting' : '–'],
+      ['Vorige cijfers', E.lastEps ? fDM.format(E.lastEps.t) + ', ' + epsVsText(E.lastEps) : '–'],
     ]) +
     (E.eps.length ? '<p class="small" style="margin-top:10px"><b>Verrassingen per kwartaal</b></p>' + epsBars(E.eps) : '') +
     (near.length ? '<p class="small muted" style="margin-top:8px">Koersreactie vorige keren: ' + near.map((m) => '<span class="' + tone(m.move) + '">' + esc(fDM.format(m.t) + ' ' + spct1(m.move)) + '</span>').join(' · ') + '</p>' : '') +
@@ -202,7 +205,7 @@ function earnSeasonTile() {
     : '<p class="muted">Geen aangekondigde kwartaalcijfers in de komende vier weken voor je posities en volglijst.</p>';
   const after = S.done.length ? '<p class="small" style="margin-top:14px"><b>Net gerapporteerd</b></p><div class="alt-list">' + S.done.slice(0, 8).map((x) =>
     '<button type="button" class="alt" data-ticker="' + esc(x.held ? x.tk : '~' + x.tk) + '"><b>' + esc(x.tk) + ' <span class="muted small">' + esc(fDM.format(x.t)) + '</span></b>' +
-    '<span class="small ' + tone(x.eps.pct) + '">' + esc(epsSurprise(x.eps) + (x.eps.pct > 0 ? ' boven' : x.eps.pct < 0 ? ' onder' : ' gelijk aan') + ' verwachting') + '</span>' +
+    '<span class="small ' + tone(x.eps.pct) + '">' + esc(epsVsText(x.eps)) + '</span>' +
     '<span class="small muted">' + esc(isNum(x.eps.actual) && isNum(x.eps.estimate) ? N2.format(x.eps.actual) + ' tegenover ' + N2.format(x.eps.estimate) + ' verwacht' : '') + '</span></button>').join('') + '</div>' : '';
   return '<section class="tile pad full earn-season"><h3>Cijferseizoen</h3>' +
     '<p class="small muted" style="margin-top:2px">' + esc(S.soon.length ? S.soon.length + (S.soon.length === 1 ? ' bedrijf komt' : ' bedrijven komen') + ' de komende vier weken met kwartaalcijfers.' : 'Niets aangekondigd voor de komende vier weken.') + '</p>' +

@@ -1475,10 +1475,13 @@ async function setKv(env, key, value) {
 }
 // Grote waarden (het overzicht, de deel-link, caches) in stukken opslaan: D1 staat hoogstens 2 MB per rij toe,
 // en met jaren aan dagen per positie of veel gevolgde aandelen wordt één rij te groot. Een waarde van één stuk
-// staat gewoon onder zijn eigen sleutel; anders staat daar een verwijzing ('\u0000stukken:N') en volgen
+// staat gewoon onder zijn eigen sleutel; anders staat daar een verwijzing ('~stukken:N') en volgen
 // sleutel#1 … sleutel#N. 900.000 tekens per stuk blijft ook bij veel speciale tekens (tot 2 bytes) onder de grens.
+// De verwijzing begon eerst met een NUL-teken; sommige SQLite-koppelingen kappen tekst daar af (de verwijzing
+// wordt dan leeg), dus nu een gewoon teken. Een JSON-waarde begint nooit met '~'. De oude vorm lezen we nog.
 const KV_PART = 900000;
-const KV_PART_MARK = '\u0000stukken:';
+const KV_PART_MARK = '~stukken:';
+const KV_PART_MARK_OLD = '\u0000stukken:';
 function bigStmts(env, key, value) {
   const v = String(value == null ? '' : value);
   const put = (k, x) => env.DB.prepare('INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)').bind(k, x);
@@ -1494,8 +1497,9 @@ function bigStmts(env, key, value) {
 async function setBig(env, key, value) { await env.DB.batch(bigStmts(env, key, value)); }
 async function getBig(env, key) {
   const v = await getKv(env, key);
-  if (!v || !v.startsWith(KV_PART_MARK)) return v;
-  const n = Number(v.slice(KV_PART_MARK.length)) || 0;
+  const mark = v && (v.startsWith(KV_PART_MARK) ? KV_PART_MARK : v.startsWith(KV_PART_MARK_OLD) ? KV_PART_MARK_OLD : null);
+  if (!mark) return v;
+  const n = Number(v.slice(mark.length)) || 0;
   const keys = Array.from({ length: n }, (_, i) => key + '#' + (i + 1));
   const { results } = await env.DB.prepare('SELECT key, value FROM kv WHERE key IN (' + keys.map(() => '?').join(',') + ')').bind(...keys).all();
   const map = new Map(results.map((r) => [r.key, r.value]));

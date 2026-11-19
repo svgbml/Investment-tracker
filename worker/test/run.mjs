@@ -1816,5 +1816,18 @@ await test('vijf jaar, 30 posities: een ronde blijft ruim binnen de D1-daglimiet
   setKv('cf_usage', {});
 });
 
+await test('grote waarde in stukken: de verwijzing bevat geen NUL-teken en komt heel terug', async () => {
+  const T = WM._test;
+  const v = JSON.stringify({ x: 'é'.repeat(2e6) });
+  await T.setBig(env, 'test_groot', v);
+  const mark = kv('test_groot');
+  assert.match(mark, /^~stukken:\d+$/, 'de verwijzing overleeft elke SQLite-koppeling: ' + JSON.stringify(String(mark).slice(0, 20)));
+  assert.equal(await T.getBig(env, 'test_groot'), v);
+  await T.setBig(env, 'test_groot', '{"klein":1}');
+  assert.equal(await T.getBig(env, 'test_groot'), '{"klein":1}');
+  assert.equal(DB.db.prepare("SELECT COUNT(*) AS n FROM kv WHERE key LIKE 'test_groot#%'").get().n, 0, 'oude stukken opgeruimd');
+  DB.db.prepare("DELETE FROM kv WHERE key = 'test_groot'").run();
+});
+
 console.log((failed ? failed + ' fout, ' : '') + passed + ' geslaagd');
 process.exit(failed ? 1 : 0);

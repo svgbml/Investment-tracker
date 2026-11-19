@@ -8,6 +8,9 @@ const FEAT = () => (data && data.features) || { flags: {}, has: {} };
 const offTile = (title, text, fix) => '<section class="tile pad"><h3>' + esc(title) + '</h3><p class="muted">' + esc(text) + '</p>' +
   (demo ? '' : fix ? fixBtn(fix) : '<button type="button" class="linklike small" data-act="links">Koppelingen openen</button>') + '</section>';
 const srcOf = (R, k) => (R && R.src && R.src[k]) || 'finnhub';
+// Namen van de bronnen die de Worker in R.src zet (zie altTask en avTask in de Worker)
+const RS_SRC_NAMES = { finnhub: 'Finnhub', av: 'Alpha Vantage', polygon: 'Polygon (Massive)', marketaux: 'Marketaux', sec: 'de SEC', fmp: 'FMP' };
+const srcNameOf = (R, k) => RS_SRC_NAMES[srcOf(R, k)] || 'Finnhub';
 const INSIDER_CODES = { AQ: 'Verkregen', DS: 'Afgestaan', P: 'Koop', S: 'Verkoop', M: 'Opties omgezet', A: 'Toegekend', F: 'Ingehouden (belasting)', G: 'Geschonken', D: 'Teruggegeven', C: 'Omgezet', X: 'Opties omgezet' };
 const bigNum = (v, unit) => {
   if (!isNum(v)) return '–';
@@ -25,20 +28,23 @@ function companyResearch(c) {
   if (isFund) return ['<section class="tile pad"><h3>Nieuws en cijfers</h3><p class="muted">Voor fondsen zijn er geen bedrijfsnieuws, analisten of jaarcijfers; kijk bij de bedrijven erin (Plannen > Werkelijke spreiding).</p></section>'];
   const R = (data.research || {})[c.tk];
   const tiles = [];
-  const finnhubOff = !F.has.finnhub && !F.has.av && !demo;
+  // Nieuws komt van Finnhub, Polygon, Marketaux of Alpha Vantage; analisten ook van FMP; kwartaalwinst en insiders ook van de SEC
+  const newsOff = !F.has.finnhub && !F.has.polygon && !F.has.mx && !F.has.av && !demo;
+  const opinionOff = newsOff && !F.has.fmp && !F.has.sec;
+  const insiderOff = !F.has.finnhub && !F.has.av && !F.has.sec && !demo;
   const wait = 'De gegevens worden opgehaald buiten de meettijden; kom straks terug.';
   // Nieuws
-  if (finnhubOff) tiles.push(offTile('Nieuws', 'Zet Finnhub aan (gratis sleutel) om het laatste nieuws per aandeel te zien.', 'FINNHUB_KEY'));
+  if (newsOff) tiles.push(offTile('Nieuws', 'Zet Finnhub aan (gratis sleutel) om het laatste nieuws per aandeel te zien. Polygon en Marketaux werken ook, als reserve.', 'FINNHUB_KEY'));
   else if (!R) tiles.push(offTile('Nieuws', wait));
   else {
     const news = R.news || [];
     tiles.push('<section class="tile pad"><h3>Nieuws' + ageTagOf(R, AGE_LIMIT.news) + '</h3>' + (news.length ? '<div class="news">' + news.map((n) =>
       '<a class="news-i" href="' + esc(n.url) + '" target="_blank" rel="noopener"><span class="news-m">' + toneTag(n) + esc(fD.format(n.t) + (n.source ? ', ' + n.source : '')) + '</span><span class="news-t">' + esc(n.headline) + '</span></a>').join('') + '</div>'
-      : '<p class="muted">Geen nieuws in de afgelopen tien dagen' + (c.cur && c.cur !== 'USD' ? ' (Finnhub heeft nieuws alleen voor Noord-Amerikaanse bedrijven)' : '') + '.</p>') +
-      '<p class="sub" style="margin-top:8px">Koppen en links van ' + (srcOf(R, 'news') === 'av' ? 'Alpha Vantage' : 'Finnhub') + '; het artikel opent bij de bron.</p></section>');
+      : '<p class="muted">Geen nieuws in de afgelopen tien dagen' + (c.cur && c.cur !== 'USD' ? ' (de nieuwsbronnen hebben vooral Noord-Amerikaanse bedrijven)' : '') + '.</p>') +
+      '<p class="sub" style="margin-top:8px">Koppen en links van ' + srcNameOf(R, 'news') + '; het artikel opent bij de bron.</p></section>');
   }
   // Analisten
-  if (finnhubOff) tiles.push(offTile('Wat analisten vinden', 'Zet Finnhub aan (gratis sleutel) om aanbevelingen van analisten en kwartaalverrassingen te zien.', 'FINNHUB_KEY'));
+  if (opinionOff) tiles.push(offTile('Wat analisten vinden', 'Zet Finnhub aan (gratis sleutel) om aanbevelingen van analisten en kwartaalverrassingen te zien.', 'FINNHUB_KEY'));
   else if (R) {
     const rec = (R.rec || [])[0], old = (R.rec || [])[3] || (R.rec || [])[R.rec ? R.rec.length - 1 : 0];
     const parts = rec ? [['Sterk kopen', rec.sb, '#0B7A4B'], ['Kopen', rec.b, '#5FB58A'], ['Houden', rec.h, '#C9CED6'], ['Verkopen', rec.s, '#E3A79C'], ['Sterk verkopen', rec.ss, '#B4311F']] : [];
@@ -46,7 +52,10 @@ function companyResearch(c) {
     const buyShare = (r) => { const t = (r.sb || 0) + (r.b || 0) + (r.h || 0) + (r.s || 0) + (r.ss || 0); return t ? ((r.sb || 0) + (r.b || 0)) / t : null; };
     const trend = rec && old && old !== rec && isNum(buyShare(old)) ? buyShare(rec) - buyShare(old) : null;
     const eps = (R.eps || []).slice().reverse();
-    const mx = Math.max(1e-9, ...eps.map((x) => Math.abs(x.pct || 0)));
+    // De SEC geeft alleen de werkelijke winst per aandeel, zonder verwachting: dan tonen we de winst zelf
+    const epsOnly = eps.length > 0 && eps.every((x) => !isNum(x.estimate));
+    const epsV = (x) => (epsOnly ? x.actual : x.pct) || 0;
+    const mx = Math.max(1e-9, ...eps.map((x) => Math.abs(epsV(x))));
     tiles.push('<section class="tile pad"><h3>Wat analisten vinden' + ageTagOf(R, AGE_LIMIT.research) + '</h3>' +
       (rec && tot ? '<div class="rec-bar" role="img" aria-label="' + esc(parts.map((x) => x[0] + ' ' + x[1]).join(', ')) + '">' + parts.filter((x) => x[1]).map((x) =>
           '<i style="flex:' + x[1] + ';background:' + x[2] + '" data-tip="' + esc(x[0] + ': ' + x[1]) + '"></i>').join('') + '</div>' +
@@ -55,19 +64,21 @@ function companyResearch(c) {
         (isNum(trend) ? esc(Math.abs(trend) < 0.01 ? ', gelijk aan enkele maanden eerder.' : ', ' + (trend > 0 ? 'meer' : 'minder') + ' dan enkele maanden eerder (' + spct1(trend).replace('%', ' pp').replace('+', '+') + ').') : '.') + '</p>'
         : '<p class="muted">Geen aanbevelingen gevonden.</p>') +
       targetBlock(R, c) + sentBlock(R) +
-      (eps.length ? '<h3 style="margin-top:14px">Kwartaalcijfers tegenover verwachting</h3><div class="eps">' + eps.map((x) =>
+      (eps.length ? '<h3 style="margin-top:14px">' + (epsOnly ? 'Winst per aandeel per kwartaal' : 'Kwartaalcijfers tegenover verwachting') + '</h3><div class="eps">' + eps.map((x) =>
         '<div class="eps-i"><span class="muted small">' + esc(x.period ? fMonY.format(ymd(x.period)) : '') + '</span>' +
-        '<span class="eps-b"><i class="' + ((x.pct || 0) < 0 ? 'neg' : 'pos') + '" style="height:' + (Math.abs(x.pct || 0) / mx * 50).toFixed(0) + '%"></i></span>' +
-        '<b class="' + tone(x.pct) + '">' + esc(isNum(x.pct) ? spct1(x.pct / 100) : '–') + '</b><span class="muted small">' + esc(isNum(x.actual) ? N2.format(x.actual) + ' / ' + N2.format(x.estimate) : '') + '</span></div>').join('') + '</div>' +
-        '<p class="sub" style="margin-top:6px">Winst per aandeel: werkelijk / verwacht, en het verschil.</p>' : '') + '</section>');
+        '<span class="eps-b"><i class="' + (epsV(x) < 0 ? 'neg' : 'pos') + '" style="height:' + (Math.abs(epsV(x)) / mx * 50).toFixed(0) + '%"></i></span>' +
+        (epsOnly
+          ? '<b class="' + tone(x.actual) + '">' + esc(isNum(x.actual) ? '$' + N2.format(x.actual) : '–') + '</b><span class="muted small"></span>'
+          : '<b class="' + tone(x.pct) + '">' + esc(isNum(x.pct) ? spct1(x.pct / 100) : '–') + '</b><span class="muted small">' + esc(isNum(x.actual) ? N2.format(x.actual) + (isNum(x.estimate) ? ' / ' + N2.format(x.estimate) : '') : '') + '</span>') + '</div>').join('') + '</div>' +
+        '<p class="sub" style="margin-top:6px">' + esc(epsOnly ? 'Verwaterde winst per aandeel uit de kwartaalverslagen, via ' + srcNameOf(R, 'eps') + '; deze bron geeft geen verwachting van analisten.' : 'Winst per aandeel: werkelijk / verwacht, en het verschil.') + '</p>' : '') + '</section>');
   }
   // Analisten door de tijd en kwartaalcijfers die eraan komen (js/21-nieuwsplus.js)
   if (R && typeof revisionTile === 'function') tiles.push(revisionTile(c));
   if (typeof earnPreviewTile === 'function') { const ep = earnPreviewTile(c); if (ep) tiles.push(ep); }
   // Insiders
-  if (finnhubOff) tiles.push(offTile('Insiderhandel', 'Zet Finnhub aan (gratis sleutel) om te zien of bestuurders zelf aandelen kopen of verkopen.', 'FINNHUB_KEY'));
+  if (insiderOff) tiles.push(offTile('Insiderhandel', 'Zet Finnhub aan (gratis sleutel) of vul bij Koppelingen een e-mailadres in voor SEC EDGAR om te zien of bestuurders zelf aandelen kopen of verkopen.', 'FINNHUB_KEY'));
   else if (R) {
-    if ((R.denied || []).includes('insider')) tiles.push(offTile('Insiderhandel', 'Insiderhandel zit niet in je Finnhub-abonnement. Alpha Vantage kan het aanvullen (gratis sleutel).', 'ALPHAVANTAGE_KEY'));
+    if ((R.denied || []).includes('insider')) tiles.push(offTile('Insiderhandel', 'Insiderhandel zit niet in je Finnhub-abonnement. De SEC kan het aanvullen (gratis, alleen een e-mailadres).', 'SEC_CONTACT'));
     else {
       const ins = R.insider || [];
       // Alpha Vantage kent alleen verkregen en afgestaan; kopen en toekenning zijn daar niet te scheiden
@@ -85,7 +96,7 @@ function companyResearch(c) {
           '<div class="tx"><span class="tag' + (x.code === BUY ? ' gain' : x.code === SELL ? ' loss' : '') + '">' + esc(INSIDER_CODES[x.code] || x.code || '?') + '</span>' +
           '<span class="tx-m"><b>' + esc(x.name || '') + '</b><span class="sub">' + esc(x.date ? fD.format(ymd(x.date)) + ' ' + x.date.slice(0, 4) : '') + '</span></span>' +
           '<span class="tx-v">' + esc(isNum(x.change) ? sgn(x.change, NI) + ' st.' : '') + (isNum(x.price) && x.price > 0 ? '<span class="sub">à $' + esc(N2.format(x.price)) + '</span>' : '') + '</span></div>').join('') + '</div>' +
-        '<p class="sub" style="margin-top:8px">Uit meldingen bij de toezichthouder' + (avIns ? ', via Alpha Vantage. Verkregen omvat ook toegekende aandelen en opties, dus niet alleen kopen met eigen geld' : '') + '. Verkopen gebeuren vaak volgens vaste plannen of voor belasting; kopen met eigen geld zegt meestal meer.</p>'
+        '<p class="sub" style="margin-top:8px">Uit meldingen bij de toezichthouder' + (srcOf(R, 'insider') === 'sec' ? ' (Form 4, rechtstreeks van de SEC)' : '') + (avIns ? ', via Alpha Vantage. Verkregen omvat ook toegekende aandelen en opties, dus niet alleen kopen met eigen geld' : '') + '. Verkopen gebeuren vaak volgens vaste plannen of voor belasting; kopen met eigen geld zegt meestal meer.</p>'
         : '<p class="muted">Geen meldingen in de afgelopen 6 maanden.</p>') + '</section>');
     }
   }

@@ -378,12 +378,12 @@ document.addEventListener('change', async (e) => {
 });
 
 // ---------- Statuspagina: verbruik, geschiedenis, fouten van de site en R2 ----------
-const API_LIMITS = { fmp: [250, 'per dag'], alphavantage: [25, 'per dag'], twelvedata: [800, 'per dag'], finnhub: [60, 'per minuut'], fred: [120, 'per minuut'], sec: [10, 'per seconde'] };
-const API_NAMES = { fmp: 'Financial Modeling Prep', finnhub: 'Finnhub', alphavantage: 'Alpha Vantage', twelvedata: 'Twelve Data', sec: 'SEC', fred: 'FRED', ecb: 'ECB', eurostat: 'Eurostat', t212: 'Trading 212', ishares: 'iShares', resend: 'Resend' };
+const API_LIMITS = { fmp: [250, 'per dag'], alphavantage: [25, 'per dag'], twelvedata: [800, 'per dag'], tiingo: [1000, 'per dag'], marketaux: [100, 'per dag'], polygon: [5, 'per minuut'], finnhub: [60, 'per minuut'], fred: [120, 'per minuut'], sec: [10, 'per seconde'] };
+const API_NAMES = { fmp: 'Financial Modeling Prep', finnhub: 'Finnhub', alphavantage: 'Alpha Vantage', twelvedata: 'Twelve Data', tiingo: 'Tiingo', polygon: 'Polygon (Massive)', marketaux: 'Marketaux', sec: 'SEC', fred: 'FRED', ecb: 'ECB', eurostat: 'Eurostat', t212: 'Trading 212', ishares: 'iShares', resend: 'Resend' };
 function statusExtraRows(S) {
   if (demo && !S.usage) {
     const d = new Date().toISOString().slice(0, 10);
-    S = Object.assign({}, S, { usage: { [d]: { t212: 212, fmp: 96, finnhub: 140, sec: 18, fred: 5, ecb: 2 } }, tickHist: Object.fromEntries(Array.from({ length: 30 }, (_, i) => [new Date(Date.now() - (29 - i) * DAY).toISOString().slice(0, 10), [i % 7 === 5 || i % 7 === 6 ? 0 : 84, i === 12 ? 3 : 0]])), siteErrors: [], r2: false });
+    S = Object.assign({}, S, { usage: { [d]: { t212: 212, fmp: 96, finnhub: 140, polygon: 52, tiingo: 38, sec: 18, fred: 5, ecb: 2 } }, tickHist: Object.fromEntries(Array.from({ length: 30 }, (_, i) => [new Date(Date.now() - (29 - i) * DAY).toISOString().slice(0, 10), [i % 7 === 5 || i % 7 === 6 ? 0 : 84, i === 12 ? 3 : 0]])), siteErrors: [], r2: false });
   }
   const U = S.usage || {};
   const days = Object.keys(U).sort();
