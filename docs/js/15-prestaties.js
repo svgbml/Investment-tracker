@@ -60,7 +60,13 @@ async function paintSnap() {
   $('app').hidden = false;
   $('m-main').hidden = false;
   $('demo-banner').hidden = !snapDemo();
+  // De balk met knoppen (instellingen, vernieuwen, bedragen verbergen) staat op de computer in de beginpagina.
+  // Eerst eruit halen: de bewaarde tekening zou hem anders vervangen door een kopie zonder werkende knoppen.
+  const bar = document.querySelector('#shell .topbar');
+  if (bar && host.contains(bar)) $('shell').prepend(bar);
   host.innerHTML = o.html;
+  host.querySelectorAll('.topbar').forEach((x) => x.remove());   // oudere tekeningen bevatten nog zo'n kopie
+  if (typeof placeDeskNav === 'function') placeDeskNav();
   host.dataset.snap = '1';
   host.setAttribute('aria-busy', 'true');
   snapShown = true;
@@ -91,7 +97,10 @@ async function saveSnap() {
   if (ui.page !== 'home' || ui.detail) return;   // alleen de beginpagina, en niet terwijl een bedrijf open staat
   const host = snapHost();
   if (!host || host.hidden || !host.innerHTML) return;
-  try { await idbSet(SNAP_KEY, { stamp: snapStamp(), saved: Date.now(), html: host.innerHTML }); }
+  // Zonder de balk met knoppen: die moet bij de volgende start de echte blijven
+  const copy = /** @type {Element} */ (host.cloneNode(true));
+  copy.querySelectorAll('.topbar').forEach((x) => x.remove());
+  try { await idbSet(SNAP_KEY, { stamp: snapStamp(), saved: Date.now(), html: copy.innerHTML }); }
   catch (e) { /* geen IndexedDB of vol: dan gewoon zonder snelle start */ }
 }
 function snapForget() { snapShown = false; idbDel(SNAP_KEY); }

@@ -5,12 +5,12 @@
  * komt de laatst binnengekomen stand uit die opslag, met de kop X-Tracker-Cached erbij. De site bewaart
  * de laatste stand daarnaast zelf in IndexedDB.
  */
-const CACHE = 'tracker-v65';
+const CACHE = 'tracker-v66';
 // Aparte opslag voor de gegevens van je Worker: die blijft staan als de site zelf een nieuwe versie krijgt
 const API_CACHE = 'tracker-api-v1';
-const FILES = ['./', './index.html', './style.css?v=65', './config.js?v=65', './manifest.webmanifest',
-  './js/00-vroeg.js?v=65', './js/00-kern.js?v=65', './js/01-basis.js?v=65', './js/02-instellingen.js?v=65', './js/03-model.js?v=65', './js/04-grafieken.js?v=65', './js/05-portefeuille.js?v=65', './js/06-plannen.js?v=65', './js/07-onderzoek.js?v=65', './js/08-risico.js?v=65', './js/09-weergaven.js?v=65', './js/10-navigatie.js?v=65', './js/11-uitbreidingen.js?v=65', './js/12-nieuws.js?v=65', './js/13-app.js?v=65', './js/14-demo.js?v=65', './js/15-prestaties.js?v=65', './js/15-ui.js?v=65', './js/15-risico-analyse.js?v=65', './js/15-toon.js?v=65', './js/15-bronnen.js?v=65', './js/16-analyse.js?v=65', './js/17-markt.js?v=65', './js/18-gemak.js?v=65', './js/20-handel.js?v=65', './js/21-toegankelijk.js?v=65', './js/21-privacy.js?v=65', './js/21-markt-extra.js?v=65', './js/22-handel-extra.js?v=65', './js/21-plannen2.js?v=65', './js/21-nieuwsplus.js?v=65', './js/26-posities.js?v=65', './js/27-volglijst.js?v=65', './js/28-tickerkaart.js?v=65', './js/21-overzicht.js?v=65', './js/21-handig.js?v=65', './js/19-start.js?v=65', './js/21-galerij.js?v=65', './js/21-pwa.js?v=65',
-  './js/nieuws-preact.js?v=65', './js/plannen-preact.js?v=65', './vendor/preact-htm.js', './fonts/figtree-latin.woff2', './fonts/figtree-latin-ext.woff2',
+const FILES = ['./', './index.html', './style.css?v=66', './config.js?v=66', './manifest.webmanifest',
+  './js/00-vroeg.js?v=66', './js/00-kern.js?v=66', './js/01-basis.js?v=66', './js/02-instellingen.js?v=66', './js/03-model.js?v=66', './js/04-grafieken.js?v=66', './js/05-portefeuille.js?v=66', './js/06-plannen.js?v=66', './js/07-onderzoek.js?v=66', './js/08-risico.js?v=66', './js/09-weergaven.js?v=66', './js/10-navigatie.js?v=66', './js/11-uitbreidingen.js?v=66', './js/12-nieuws.js?v=66', './js/13-app.js?v=66', './js/14-demo.js?v=66', './js/15-prestaties.js?v=66', './js/15-ui.js?v=66', './js/15-risico-analyse.js?v=66', './js/15-toon.js?v=66', './js/15-bronnen.js?v=66', './js/16-analyse.js?v=66', './js/17-markt.js?v=66', './js/18-gemak.js?v=66', './js/20-handel.js?v=66', './js/21-toegankelijk.js?v=66', './js/21-privacy.js?v=66', './js/21-markt-extra.js?v=66', './js/22-handel-extra.js?v=66', './js/21-plannen2.js?v=66', './js/21-nieuwsplus.js?v=66', './js/26-posities.js?v=66', './js/27-volglijst.js?v=66', './js/28-tickerkaart.js?v=66', './js/21-overzicht.js?v=66', './js/21-handig.js?v=66', './js/19-start.js?v=66', './js/21-galerij.js?v=66', './js/21-pwa.js?v=66',
+  './js/nieuws-preact.js?v=66', './js/plannen-preact.js?v=66', './vendor/preact-htm.js', './fonts/figtree-latin.woff2', './fonts/figtree-latin-ext.woff2',
   './widget-vandaag.json', './widget-vandaag-data.json',
   './icon-192.png', './icon-512.png', './icon-maskable-512.png', './icon-monochrome-512.png', './apple-touch-icon.png', './favicon.png'];
 

@@ -617,6 +617,32 @@ await test('nu controleren en verkopen naar de stand van dit moment (deel of vas
   await req('/api/features', { method: 'POST', body: { features: { trading: false } } });
 });
 
+await test('order met te veel decimalen: met minder decimalen opnieuw, en de reden van Trading 212 in de melding', async () => {
+  await req('/api/features', { method: 'POST', body: { features: { trading: true } } });
+  await req('/api/settings', { method: 'POST', body: { tradeLimits: { perOrder: 5000, perDay: 10000 } } });
+  setKv('trade_day', {}); setKv('trade_ids', {}); setKv('trade_log', []);
+  // Trading 212 staat voor dit instrument hoogstens 2 decimalen toe
+  const sent = [];
+  const PREC = { type: '/api-errors/quantity-precision-mismatch', title: 'Quantity precision mismatch', detail: 'invalid quantity precision 4', status: 400 };
+  routes = [[/t212\.test\/api\/v0\/equity\/orders\/market/, async (u, init) => {
+    const q = JSON.parse(init.body).quantity; sent.push(q);
+    return String(Math.abs(q)).split('.')[1] && String(Math.abs(q)).split('.')[1].length > 2 ? reply(PREC, 400) : reply({ id: 9300, status: 'NEW' });
+  }]];
+  let r = await jsonOf(await req('/api/trade/order', { method: 'POST', body: { side: 'BUY', type: 'market', ticker: 'VUAGl_EQ', quantity: 1.6168, estEur: 209.53, clientId: 'prec-buy-1' } }));
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.deepEqual(sent, [1.6168, 1.616, 1.61], 'telkens één decimaal minder, nooit naar boven');
+  assert.equal(r.qty, 1.61); assert.equal(r.rounded, true);
+  assert.ok(Math.abs(r.entry.estEur - 209.53 * 1.61 / 1.6168) < 0.02, 'bedrag naar het verstuurde aantal');
+  // Een andere weigering: niet opnieuw proberen, wel de reden tonen
+  sent.length = 0;
+  routes = [[/t212\.test\/api\/v0\/equity\/orders\/market/, async (u, init) => { sent.push(JSON.parse(init.body).quantity); return reply({ type: '/api-errors/insufficient-funds', detail: 'Not enough free funds' }, 400); }]];
+  r = await jsonOf(await req('/api/trade/order', { method: 'POST', body: { side: 'BUY', type: 'market', ticker: 'VUAGl_EQ', quantity: 1.5, estEur: 200, clientId: 'prec-buy-2' } }));
+  assert.equal(r.ok, false);
+  assert.equal(sent.length, 1, 'geen tweede poging bij een andere fout');
+  assert.match(r.error, /Not enough free funds/); assert.match(r.error, /vrij saldo/);
+  await req('/api/features', { method: 'POST', body: { features: { trading: false } } });
+});
+
 await test('Trading 212-sleutel vervangen terwijl hij als Cloudflare-geheim staat', async () => {
   setKv('keys', {}); setKv('login_fail', {});
   // env heeft T212_KEY en T212_SECRET als 'geheim'; via de site een nieuwe sleutel opslaan

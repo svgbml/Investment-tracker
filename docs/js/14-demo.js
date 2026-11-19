@@ -16,6 +16,7 @@ function makeDemoData() {
     ['TSM', 'Taiwan Semiconductor', 72, 0.019, 0.029, 262], ['SPCX', 'Voorbeeld Ruimtevaart', 71, 0.03, -0.116, 48], ['AAPL', 'Apple', 68, 0.012, -0.014, 233],
     ['META', 'Meta Platforms', 61, 0.017, -0.063, 612], ['LLY', 'Eli Lilly', 59, 0.016, -0.098, 701], ['PLTR', 'Palantir', 50, 0.03, 0.127, 152],
     ['KO', 'Coca-Cola', 41, 0.007, 0.006, 63], ['TTWO', 'Take-Two Interactive', 39, 0.015, -0.035, 212], ['AMZN', 'Amazon', 34, 0.016, -0.041, 205],
+    ['INTC', 'Intel', 110, 0.02, -0.05, 22],
   ];
   const SLOTS = 88;
   const now = new Date(); now.setSeconds(0, 0); now.setMinutes(Math.floor(now.getMinutes() / 10) * 10);
@@ -38,6 +39,8 @@ function makeDemoData() {
   const r2 = (x) => Math.round(x * 100) / 100;
   /** @type {{ t: Date, net: number } | null} */
   let aaplBuy = null;
+  /** @type {{ t: Date, net: number, qty: number } | null} */
+  let intcSell = null;
 
   book.forEach(([tk, name, target, vol, ret, price]) => {
     const path = [];
@@ -62,7 +65,10 @@ function makeDemoData() {
       // het aantal stuks per meting laat zien dat de sprong een aankoop is en geen koersstijging
       const vuagPre = (s) => tk === 'VUAG' && di === nD - 1 && lastSlots > 14 && s < 12;
       const fac = (s) => (tk === 'KO' && (di < buyDay || (di === buyDay && s < 30)) ? 0.5 : aaplPre(s) ? 0.85 : vuagPre(s) ? 0.6 : 1);
-      const vals = pts.map((x, s) => r2(x * scale * fac(s)));
+      // INTC: vandaag om ± 10:40 helemaal verkocht; daarna komt hij niet meer in de metingen voor
+      const sold = tk === 'INTC' && di === nD - 1 && lastSlots > 18;
+      const vals = pts.map((x, s) => r2(x * scale * fac(s))).filter((_, s) => !sold || s < 16);
+      if (sold) { const t = new Date(day); t.setHours(10, 40, 0, 0); intcSell = { t, net: vals[vals.length - 1], qty: +(Number(target) / Number(price)).toFixed(6) }; }
       if (tk === 'AAPL' && di === nD - 2) { const t = new Date(day); t.setHours(12, 55, 0, 0); aaplBuy = { t, net: r2(pts[30] * scale * 0.15) }; }
       vals.forEach((x) => { ath = Math.max(ath, x); atl = Math.min(atl, x); });
       if (di >= nD - 3) vals.forEach((x, s) => { const t = new Date(day); t.setHours(8, s * 10, 0, 0); const k = iso(t); intraday.push([k, tk, x, +(Number(target) / Number(price) * fac(s)).toFixed(6)]); add(tot.intra, k, { v: x }); });
@@ -87,7 +93,7 @@ function makeDemoData() {
           change: r2(o.close - o.open), changePct: (o.close - o.open) / o.open, allTimeHigh: ath, allTimeLow: atl,
           avgRange: r2(mean(ranges.map((x) => x[0]))), avgRangePct: mean(ranges.map((x) => x[1])), days: ranges.length });
         const cost = r2(o.close / (1 + ret));
-        positions.push({ ticker: tk, name, value: o.close, unrealized: r2(o.close - cost), cost, resultPct: ret, quantity: +(o.close / price).toFixed(6) });
+        if (!sold) positions.push({ ticker: tk, name, value: o.close, unrealized: r2(o.close - cost), cost, resultPct: ret, quantity: +(o.close / price).toFixed(6) });
       }
     });
   });
@@ -224,6 +230,11 @@ function makeDemoData() {
   const dSell2 = new Date(dates[nD - 9]); dSell2.setHours(17, 40, 0, 0);
   orders.push([iso(dSell2), 'PLTR', 'Palantir', 'SELL', 0.05, 158.2, 'USD', 1.15, 6.88, 0.71, 0.01, 0, 'TRADE']);
   if (aaplBuy && posExtra.AAPL) orders.push([iso(aaplBuy.t), 'AAPL', 'Apple', 'BUY', +(aaplBuy.net * 1.16 / posExtra.AAPL.price).toFixed(6), posExtra.AAPL.price, 'USD', 1.16, aaplBuy.net, 0, +(aaplBuy.net * 0.0015).toFixed(2), 0, 'TRADE']);
+  if (intcSell) {
+    const dBuy = new Date(dates[nD - 40]); dBuy.setHours(15, 45, 0, 0);
+    orders.push([iso(dBuy), 'INTC', 'Intel', 'BUY', intcSell.qty, 25.1, 'USD', 1.1, 118.4, 0, 0.18, 0, 'TRADE']);
+    orders.push([iso(intcSell.t), 'INTC', 'Intel', 'SELL', intcSell.qty, +(intcSell.net / intcSell.qty * 1.16).toFixed(2), 'USD', 1.16, intcSell.net, +(intcSell.net - 118.4).toFixed(2), 0.17, 0, 'TRADE']);
+  }
   orders.sort((a, b) => a[0].localeCompare(b[0]));
   const etfRows = (list) => list.map(([tk, nm, sec, w]) => [tk, nm, sec, w]);
   const etf = {

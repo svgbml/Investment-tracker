@@ -83,7 +83,7 @@ function inlegTile() {
     segX('amt', [[50, '€ 50'], [100, '€ 100'], [250, '€ 250'], [500, '€ 500']], plan.amount, 'Bedrag kiezen') + '</div>' + rows +
     '<div class="sug-eff" style="margin-top:12px">' + lvlOf(P.v0) + '<span class="arr" aria-hidden="true">→</span>' + lvlOf(P.v1) + '<span class="small">' +
       (isNum(P.v0) && isNum(P.v1) ? 'beweeglijkheid ' + esc(P1.format(P.v0)) + ' → <b class="' + (P.v1 <= P.v0 + 1e-6 ? 'gain' : 'loss') + '">' + esc(P1.format(P.v1)) + '</b> per jaar' : 'risico nog niet te berekenen: te weinig koershistorie') + '</span></div>' +
-    (P.hasT ? '<p class="small" style="margin-top:6px">Afstand tot je streefverdeling: ' + esc(N1.format(P.d0 * 100)) + ' → <b class="gain">' + esc(N1.format(P.d1 * 100)) + '</b> procentpunt</p>'
+    (P.hasT && isNum(P.d0) && isNum(P.d1) ? '<p class="small" style="margin-top:6px">Afstand tot je streefverdeling: ' + esc(N1.format(P.d0 * 100)) + ' → <b class="gain">' + esc(N1.format(P.d1 * 100)) + '</b> procentpunt</p>'
       : '<p class="small muted" style="margin-top:6px">Nog geen streefverdeling: de assistent kiest nu alleen wat het risico het meest verlaagt, met hoogstens 40% van het bedrag per positie. Vul hierboven doelen in om ook naar je verdeling toe te werken.</p>') +
     '<p class="sub" style="margin-top:8px">Het bedrag wordt in tien stukjes verdeeld. Elk stukje gaat naar de positie die je het dichtst bij je doelen brengt en het risico het meest verlaagt, gerekend met de koersen van het laatste jaar. Je verkoopt niets. Rekenvoorbeeld, geen beleggingsadvies.</p></section>';
 }

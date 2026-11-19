@@ -4543,9 +4543,20 @@ function t212Error(r) {
   if (r.status === 401) return 'Trading 212-sleutel ongeldig (401).';
   if (r.status === 403) return 'Je Trading 212-sleutel mag geen orders plaatsen (403). Maak in de Trading 212-app een sleutel met het recht om orders te plaatsen en sla die op bij Koppelingen.';
   if (r.status === 429) return 'Trading 212 vraagt even te wachten (te veel verzoeken). Er is niets verstuurd; probeer het over een minuut opnieuw.';
-  const m = r.body && (r.body.message || r.body.code || r.body.error || (r.body.errors && JSON.stringify(r.body.errors)));
-  return 'Trading 212 gaf ' + r.status + (m ? ': ' + String(m).slice(0, 200) : '') + '.';
+  const B = r.body && typeof r.body === 'object' ? r.body : null;
+  // Trading 212 zet de reden soms in message/code, soms in type/title/detail (bijvoorbeeld quantity-precision-mismatch)
+  const parts2 = B ? [B.message, B.code, B.error, B.title, B.detail, B.type ? String(B.type).split('/').pop() : null, B.errors ? JSON.stringify(B.errors) : null]
+    .filter((x) => x != null && x !== '').map(String) : [];
+  const m = [...new Set(parts2)].join(' – ') || (r.text || '').trim();
+  const hint = precisionError(r) ? ' Dit instrument staat zoveel decimalen in het aantal niet toe; kies een rond aantal of een kleiner aantal decimalen.'
+    : /insufficient|not enough|funds/i.test(m) ? ' Er staat niet genoeg vrij saldo op je rekening.'
+    : /market.?closed|not.?open|trading.?hours/i.test(m) ? ' De beurs is nu dicht.' : '';
+  return 'Trading 212 gaf ' + r.status + (m ? ': ' + m.slice(0, 200) : '') + '.' + hint;
 }
+// Weigering omdat het aantal te veel decimalen heeft voor dit instrument
+const precisionError = (r) => /precision/i.test(JSON.stringify(r.body || '') + ' ' + (r.text || ''));
+// Aantal decimalen van een aantal stuks (hoogstens 8)
+const qtyDecimals = (q) => { const t = String(Number(q.toFixed(8))); const i = t.indexOf('.'); return i < 0 ? 0 : t.length - i - 1; };
 async function tradeGuard(env) {
   if (!(await featureFlags(env)).trading) throw new Error('Kopen en verkopen staat uit. Zet het aan bij Instellingen, Koppelingen.');
   if (!env.T212_KEY || !env.T212_SECRET) throw new Error('De Trading 212-sleutel is nog niet ingesteld.');
@@ -4634,7 +4645,7 @@ async function placeOrder(env, b) {
   }
   const est = Number(b.estEur);
   const serverEst = held && held.qty > 0 ? held.value / held.qty * qty : null;
-  const eur = side === 'SELL' && (b.fraction != null || b.valueEur != null) && serverEst > 0 ? serverEst : Math.max(isFinite(est) && est > 0 ? est : 0, serverEst || 0);
+  let eur = side === 'SELL' && (b.fraction != null || b.valueEur != null) && serverEst > 0 ? serverEst : Math.max(isFinite(est) && est > 0 ? est : 0, serverEst || 0);
   if (!(eur > 0)) throw new Error('Het geschatte bedrag ontbreekt.');
   if (eur > L.perOrder) throw new Error('Deze order (± €' + eur.toFixed(2) + ') is groter dan je grens per order (€' + L.perOrder + '). Pas de grens aan bij Koppelingen als dat de bedoeling is.');
   const day = parts(new Date()).day;
@@ -4649,17 +4660,26 @@ async function placeOrder(env, b) {
   ids[clientId] = Date.now();
   Object.keys(ids).forEach((k) => { if (ids[k] < Date.now() - 3 * 864e5) delete ids[k]; });
   await setKv(env, 'trade_ids', JSON.stringify(ids));
-  const signed = side === 'SELL' ? -qty : qty;
-  const body = type === 'limit'
-    ? { ticker, quantity: signed, limitPrice, timeValidity: b.validity === 'GTC' ? 'GOOD_TILL_CANCEL' : 'DAY' }
-    : { ticker, quantity: signed };
-  const r = await t212Send(env, 'POST', '/api/v0/equity/orders/' + type, body);
+  const send = (q) => t212Send(env, 'POST', '/api/v0/equity/orders/' + type, type === 'limit'
+    ? { ticker, quantity: side === 'SELL' ? -q : q, limitPrice, timeValidity: b.validity === 'GTC' ? 'GOOD_TILL_CANCEL' : 'DAY' }
+    : { ticker, quantity: side === 'SELL' ? -q : q });
+  let r = await send(qty);
+  // Te veel decimalen voor dit instrument: Trading 212 weigert de order (400) en plaatst dan niets.
+  // Dan opnieuw met telkens één decimaal minder (tot één decimaal), nooit naar boven afgerond.
+  const asked = qty;
+  for (let dec = Math.min(qtyDecimals(qty), 5) - 1, tries = 0; !r.ok && r.status === 400 && precisionError(r) && dec >= 1 && tries < 4; dec--) {
+    const q2 = Math.floor(qty * 10 ** dec + 1e-9) / 10 ** dec;
+    if (!(q2 > 0) || q2 >= qty) continue;
+    qty = q2; tries++;
+    r = await send(qty);
+  }
+  if (qty !== asked) eur = eur * qty / asked;
   const entry = { t: isoLocal(Date.now()), clientId, ticker, side, type, qty, limitPrice: type === 'limit' ? limitPrice : null, estEur: Math.round(eur * 100) / 100,
     ok: r.ok, id: r.body && r.body.id != null ? r.body.id : null, status: r.body && r.body.status ? r.body.status : null, error: r.ok ? null : t212Error(r) };
   await tradeLog(env, entry);
   if (!r.ok) throw new Error(entry.error);
   await setKv(env, 'trade_day', JSON.stringify({ day, eur: used + eur }));
-  return { order: r.body, entry, qty, basis };
+  return { order: r.body, entry, qty, basis, rounded: qty !== asked };
 }
 async function openOrders(env) {
   await tradeGuard(env);

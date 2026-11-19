@@ -70,6 +70,9 @@ function InlegTile({ version }) {
   const pick = (v) => { plan.amount = Math.max(0, Number(v) || 0); setAmount(plan.amount); };
   // Rekent opnieuw bij een ander bedrag of als de doelen veranderen (version)
   const P = useMemo(() => inlegPlan(amount), [amount, version, data]);
+  // Zonder posities valt er niets te verdelen (anders rekent de assistent met lege getallen)
+  if (!M.companies.length) return html`<section class="tile pad full inleg"><h3>Maandelijkse inleg-assistent</h3>
+    <p class="muted">Na je eerste aankoop rekent de assistent hier uit hoe je nieuwe inleg over je posities verdeelt.</p></section>`;
   return html`<section class="tile pad full inleg"><h3>Maandelijkse inleg-assistent</h3>
     <div class="plan-amount"><label for="pp-amount">Ik stort</label>
       <span class="stepper big"><button type="button" aria-label="€ 10 minder" onClick=${() => pick(Math.max(0, amount - 10))}>−</button><span class="eur-in">€<input id="pp-amount" type="number" inputmode="decimal" min="0" step="10" value=${amount} onInput=${(e) => pick(e.currentTarget.value)} /></span><button type="button" aria-label="€ 10 meer" onClick=${() => pick(amount + 10)}>+</button></span>
@@ -83,7 +86,7 @@ function InlegTile({ version }) {
       <span class="small">${isNum(P.v0) && isNum(P.v1)
         ? html`beweeglijkheid ${P1.format(P.v0)} → <b class=${P.v1 <= P.v0 + 1e-6 ? 'gain' : 'loss'}>${P1.format(P.v1)}</b> per jaar`
         : 'risico nog niet te berekenen: te weinig koershistorie'}</span></div>
-    ${P.hasT
+    ${P.hasT && isNum(P.d0) && isNum(P.d1)
       ? html`<p class="small" style="margin-top:6px">Afstand tot je streefverdeling: ${N1.format(P.d0 * 100)} → <b class="gain">${N1.format(P.d1 * 100)}</b> procentpunt</p>`
       : html`<p class="small muted" style="margin-top:6px">Nog geen streefverdeling: de assistent kiest nu alleen wat het risico het meest verlaagt, met hoogstens 40% van het bedrag per positie.</p>`}
     <p class="sub" style="margin-top:8px">Het bedrag wordt in tien stukjes verdeeld. Elk stukje gaat naar de positie die je het dichtst bij je doelen brengt en het risico het meest verlaagt, gerekend met de koersen van het laatste jaar. Je verkoopt niets. Rekenvoorbeeld, geen beleggingsadvies.</p>

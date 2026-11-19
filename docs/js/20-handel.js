@@ -191,7 +191,8 @@ async function openTradeDialog(btn) {
   // Oefenmodus: verkopen kan wat er in je oefenboek staat, niet wat je echt hebt
   if (paperOn()) { const pp = paperPositions().find((o) => o.key === (I.tk || ('~' + I.sym))); I.held = pp ? pp.qty : 0; }
   // last: het veld dat je het laatst invulde (aantal, bedrag of percentage); de andere twee rekent de tracker uit
-  const st = { side: btn.dataset.trade === 'SELL' ? 'SELL' : 'BUY', type: 'market', validity: 'DAY', qty: 0, limit: I.price || 0, id: newOrderId(), busy: false, done: false, choices: null,
+  // Verkopen kan alleen als je iets hebt (in de oefenmodus: in je oefenboek); anders opent het scherm op kopen
+  const st = { side: btn.dataset.trade === 'SELL' && I.held > 0 ? 'SELL' : 'BUY', type: 'market', validity: 'DAY', qty: 0, limit: I.price || 0, id: newOrderId(), busy: false, done: false, choices: null,
     last: 'qty', raw: { qty: '', eur: '', pct: '', limit: I.price ? numOut(I.price, 4) : '' }, sellMode: 'part', live: null, liveBusy: false, liveErr: '', sure: false, big: '' };
   const L = tradeLimitsNow();
   const dlg = document.createElement('div');
@@ -361,7 +362,8 @@ async function openTradeDialog(btn) {
       ordOkNow();
       st.busy = false; st.done = true; draw();
       haptic('order');   // korte trilling op de telefoon, als dat aan staat (zie js/21-pwa.js)
-      const q = isNum(res.qty) && Math.abs(res.qty - st.qty) > 1e-9 ? ' Verstuurd aantal: ' + N4.format(res.qty) + ' stuks' + (res.basis === 'live' ? ', op basis van je positie van dit moment' : '') + '.' : '';
+      const q = isNum(res.qty) && Math.abs(res.qty - st.qty) > 1e-9 ? ' Verstuurd aantal: ' + N4.format(res.qty) + ' stuks' +
+        (res.rounded ? ' (Trading 212 stond voor dit instrument niet zoveel decimalen toe, dus naar beneden afgerond)' : res.basis === 'live' ? ', op basis van je positie van dit moment' : '') + '.' : '';
       say((demo ? 'Voorbeeld: ' : '') + 'Order verstuurd' + (res.order && res.order.status ? ' (status ' + res.order.status + ')' : '') + '.' + q + ' Je ziet hem op Analyse bij Openstaande orders; je posities werken bij met de volgende meting.', 'gain');
       tradeState.open = null;
       liveCache.clear();

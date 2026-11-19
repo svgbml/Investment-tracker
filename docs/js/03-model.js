@@ -67,6 +67,13 @@ function derive() {
     dayChange(c);
     return c;
   }).filter((c) => isNum(c.value));
+  // Vandaag helemaal verkocht: staat niet in de laatste meting (posities), wel in de lijst van vandaag,
+  // met zijn waarde van vóór de verkoop. Dat is geen positie meer; de verkoop staat bij je orders.
+  if (posMap.size && m.lastT != null) {
+    const goneSince = (tk) => { const a = m.intra.get(tk) || []; return a.length > 0 && m.lastT - a[a.length - 1].t > 25 * 60000; };
+    m.soldToday = m.companies.filter((c) => !posMap.has(c.tk) && goneSince(c.tk)).map((c) => c.tk);
+    if (m.soldToday.length) m.companies = m.companies.filter((c) => !m.soldToday.includes(c.tk));
+  } else m.soldToday = [];
 
   const T = todayMap.get(TOTAL) || {};
   m.tot = {
@@ -317,12 +324,14 @@ const marketSeries = (tk, range) => withoutTrades(tk, seriesFor(tk, range)).pts;
 function heroSeries(range) {
   const raw = seriesFor(TOTAL, range);
   if ((range !== 'today' && range !== '3d') || raw.length < 2 || !M.companies.length) return raw;
-  const lines = M.companies.map((c) => {
-    const pts = marketSeries(c.tk, range);
-    return { map: new Map(pts.map((p) => [p.t, p.v])), first: pts.length ? pts[0] : null };
-  }).filter((x) => x.first);
+  const lines = M.companies.map((c) => marketSeries(c.tk, range)).filter((pts) => pts.length);
   if (!lines.length) return raw;
-  const out = raw.map((p) => ({ t: p.t, v: sum(lines.map((x) => (x.map.has(p.t) ? x.map.get(p.t) : p.t < x.first.t ? x.first.v : null)).filter(isNum)) }));
+  // Per positie de waarde op elk tijdstip; vóór de eerste meting de eerste waarde, en mist er een meting, dan de vorige
+  const at = lines.map(() => 0);
+  const out = raw.map((p) => ({ t: p.t, v: sum(lines.map((pts, j) => {
+    while (at[j] + 1 < pts.length && pts[at[j] + 1].t <= p.t) at[j]++;
+    return pts[at[j]].v;
+  })) }));
   return out.every((p) => p.v > 0) ? out : raw;
 }
 

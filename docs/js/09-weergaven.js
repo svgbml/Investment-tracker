@@ -3,9 +3,14 @@
 'use strict';
 
 // ---------- Desktop ----------
+// Het grote bedrag is de waarde van je beleggingen; Trading 212 toont als totaal ook je vrije saldo. Dat staat er daarom bij.
+function heroLabelText() {
+  return 'Waarde beleggingen, ' + (M.lastT ? fDT.format(M.lastT) : 'laatste meting') +
+    (M.cash != null && M.cash > 0 ? ' · met vrij saldo ' + eur(M.accountNow) : '');
+}
 function renderHome() {
   const T = M.tot;
-  $('hero-label').textContent = 'Waarde beleggingen, ' + (M.lastT ? fDT.format(M.lastT) : 'laatste meting');
+  $('hero-label').textContent = heroLabelText();
   countTo($('hero-value'), M.totalValue, eur);
   const ch = $('hero-change');
   if (calmMode()) {
@@ -180,7 +185,7 @@ function mRow(c, pts, right) {
 
 function renderMHome() {
   const T = M.tot;
-  $('m-hero-label').textContent = 'Waarde beleggingen, ' + (M.lastT ? fDT.format(M.lastT) : 'laatste meting');
+  $('m-hero-label').textContent = heroLabelText();
   countTo($('m-hero-value'), M.totalValue, eur);
   $('m-hero-change').innerHTML = calmMode()
     ? '<span class="pill-chg ' + tone(calmChangeValue()) + '">' + esc(calmChangeLine()) + '</span>'
