@@ -58,10 +58,14 @@ function makeDemoData() {
       const day = dates[di];
       // AAPL: bijgekocht eergisteren rond 13:00, zodat de detailgrafiek laat zien dat de aankoop niet als sprong in de lijn staat
       const aaplPre = (s) => tk === 'AAPL' && (di < nD - 2 || (di === nD - 2 && s < 30));
-      const vals = pts.map((x, s) => r2(x * scale * (tk === 'KO' && (di < buyDay || (di === buyDay && s < 30)) ? 0.5 : aaplPre(s) ? 0.85 : 1)));
+      // VUAG: vandaag rond 10:00 bijgekocht, nog zonder order in de geschiedenis (die komt later binnen);
+      // het aantal stuks per meting laat zien dat de sprong een aankoop is en geen koersstijging
+      const vuagPre = (s) => tk === 'VUAG' && di === nD - 1 && lastSlots > 14 && s < 12;
+      const fac = (s) => (tk === 'KO' && (di < buyDay || (di === buyDay && s < 30)) ? 0.5 : aaplPre(s) ? 0.85 : vuagPre(s) ? 0.6 : 1);
+      const vals = pts.map((x, s) => r2(x * scale * fac(s)));
       if (tk === 'AAPL' && di === nD - 2) { const t = new Date(day); t.setHours(12, 55, 0, 0); aaplBuy = { t, net: r2(pts[30] * scale * 0.15) }; }
       vals.forEach((x) => { ath = Math.max(ath, x); atl = Math.min(atl, x); });
-      if (di >= nD - 3) vals.forEach((x, s) => { const t = new Date(day); t.setHours(8, s * 10, 0, 0); const k = iso(t); intraday.push([k, tk, x]); add(tot.intra, k, { v: x }); });
+      if (di >= nD - 3) vals.forEach((x, s) => { const t = new Date(day); t.setHours(8, s * 10, 0, 0); const k = iso(t); intraday.push([k, tk, x, +(Number(target) / Number(price) * fac(s)).toFixed(6)]); add(tot.intra, k, { v: x }); });
       if (day >= cutoffH) {
         for (let h = 0; h < 15; h++) {
           const seg = vals.slice(h * 6, h * 6 + 7);
@@ -437,7 +441,7 @@ function makeDemoData() {
     ok: true, generated: iso(now), currency: 'EUR', weeks, positionsDate: iso(now), positions, today, events, market, marketNews, demoNotes, demoAccounts, demoPrefs, demoViews, demoPriv,
     orders: { columns: ['time', 'ticker', 'name', 'side', 'qty', 'price', 'currency', 'fxRate', 'net', 'realised', 'feeFx', 'feeOther', 'kind'], rows: orders },
     posExtra, etf, peil: peilDemo, settings: {}, demoTrade,
-    intraday: { columns: ['time', 'ticker', 'value'], rows: intraday },
+    intraday: { columns: ['time', 'ticker', 'value', 'qty'], rows: intraday },
     hours: { columns: ['hour', 'ticker', 'open', 'close', 'low', 'high', 'avg'], rows: hours },
     days: { columns: ['date', 'ticker', 'open', 'close', 'low', 'high', 'avg', 'range', 'rangePct'], rows: days },
   }, extraDemo);

@@ -273,6 +273,33 @@ await test('melding bij een grote koersbeweging, één keer per dag', async () =
   assert.ok(!pushes.some((p) => /VUAG/.test(p.title)), 'VUAG bewoog minder dan 5%');
 });
 
+await test('bijkopen is geen koersbeweging: geen melding, en het aantal stuks gaat mee naar de site', async () => {
+  await req('/api/push/subscribe', { method: 'POST', body: { sub: { endpoint: 'https://push.test/abc', keys: { p256dh: b64u(pubRaw), auth: b64u(sub.auth) } } } });
+  await req('/api/settings', { method: 'POST', body: { alerts: { move: 5, earnings: true, insider: true, drift: 5 } } });
+  // Gisteravond: 1,8 AAPL voor € 360 (€ 200 per stuk). Vandaag 2 stuks voor € 400: bijgekocht, de koers is gelijk
+  const now = new Date('2026-11-18T14:00:00Z');
+  DB.db.prepare("INSERT OR REPLACE INTO days (day, ticker, name, open, close, low, high, avg, range, range_pct, n, close_price) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)").run('2026-11-17', 'AAPL', 'Apple', 360, 360, 355, 362, 359, 7, 0.02, 80, 200);
+  DB.db.prepare("INSERT OR REPLACE INTO days (day, ticker, name, open, close, low, high, avg, range, range_pct, n, close_price) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)").run('2026-11-17', 'VUAG', 'Vanguard', 518, 518, 515, 520, 517, 5, 0.01, 80, 9000);
+  const yTs = Date.parse('2026-11-17T20:00:00Z');
+  const ins = DB.db.prepare('INSERT OR REPLACE INTO intraday (ts, ticker, name, value, unrealized, price, qty) VALUES (?,?,?,?,?,?,?)');
+  ins.run(yTs, 'AAPL', 'Apple', 360, 0, 230, 1.8);
+  ins.run(yTs, 'VUAG', 'Vanguard', 518, 0, 9000, 5);
+  ins.run(yTs, 'TOTAAL', 'Totaal', 878, 0, null, null);
+  const pushes = [];
+  routes = t212Routes().concat([[/push\.test/, async (u, init) => { pushes.push(await decryptPush(init.body)); return reply('', 201); }]]);
+  await W.scheduled({ cron: '*/10 * * * *', scheduledTime: now.getTime() }, env, { waitUntil: async (p) => p });
+  await new Promise((r) => setTimeout(r, 50));
+  assert.ok(!pushes.some((p) => /AAPL/.test(p.title)), 'bijkopen gaf toch een melding: ' + JSON.stringify(pushes));
+  assert.ok(!pushes.some((p) => /portefeuille/i.test(p.title)), 'ook het totaal telt de aankoop niet: ' + JSON.stringify(pushes));
+  // De site krijgt per meting het aantal stuks (volledig en als aanvulling)
+  const s = await jsonOf(await req('/api/data?part=series'));
+  assert.deepEqual(s.intraday.columns, ['time', 'ticker', 'value', 'qty']);
+  const row = s.intraday.rows.find((r) => r[1] === 'AAPL' && r[0].startsWith('2026-11-18'));
+  assert.ok(row && row[3] === 2, 'aantal stuks in de meting: ' + JSON.stringify(row));
+  const d = await jsonOf(await req('/api/data?part=series&since=' + (now.getTime() - 60000)));
+  assert.ok(d.delta && d.intraday.rows.some((r) => r[1] === 'AAPL' && r[3] === 2), 'ook in de aanvulling');
+});
+
 await test('weekmail staat standaard uit; test via Resend; bij een fout als melding', async () => {
   const e2 = Object.assign({}, env, { RESEND_KEY: 're_test', MAIL_TO: 'iemand@example.com' });
   DB.db.prepare("INSERT OR REPLACE INTO weeks (date, account_value, net_deposits, cash, cost_basis, source) VALUES (?,?,?,?,?,?)").run('2026-11-07', 900, 850, 50, 800, 'API');
@@ -538,6 +565,55 @@ await test('kopen en verkopen: uit, grenzen, dubbel, verkopen, sleutelrecht, ann
   setKv('instruments', 'null');
   const f = await jsonOf(await req('/api/trade/instruments?q=nvda'));
   assert.equal(f.results[0].ticker, 'NVDA_US_EQ');
+  await req('/api/features', { method: 'POST', body: { features: { trading: false } } });
+});
+
+await test('nu controleren en verkopen naar de stand van dit moment (deel of vast bedrag)', async () => {
+  await req('/api/features', { method: 'POST', body: { features: { trading: true } } });
+  await req('/api/settings', { method: 'POST', body: { tradeLimits: { perOrder: 5000, perDay: 10000 } } });
+  setKv('pos_extra', { AAPL: { t212: 'AAPL_US_EQ', cur: 'USD', price: 230 } });
+  setKv('trade_day', {}); setKv('trade_ids', {}); setKv('trade_log', []);
+  // Trading 212 zegt nu: 3 stuks, € 660 (de meting kan iets anders zeggen)
+  const LIVE = [{ instrument: { ticker: 'AAPL_US_EQ', name: 'Apple', currency: 'USD' }, quantity: 3, quantityAvailableForTrading: 3, currentPrice: 240, walletImpact: { currentValue: 660 } }];
+  const sent = [];
+  routes = [[/t212\.test\/api\/v0\/equity\/positions/, () => reply(LIVE)],
+    [/t212\.test\/api\/v0\/equity\/account\/summary/, () => reply({ currency: 'EUR', cash: { availableToTrade: 125.44, inPies: 0, reservedForOrders: 0 } })],
+    [/t212\.test\/api\/v0\/equity\/orders\/market/, async (u, init) => { sent.push(JSON.parse(init.body)); return reply({ id: 9100 + sent.length, status: 'NEW' }); }]];
+  // Nu controleren: positie op korte of volledige ticker, en het vrije saldo
+  let r = await jsonOf(await req('/api/live?tk=AAPL'));
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(r.position.qty, 3); assert.equal(r.position.value, 660); assert.equal(r.cash, 125.44);
+  r = await jsonOf(await req('/api/live'));
+  assert.equal(r.position, null); assert.equal(r.cash, 125.44);
+  r = await jsonOf(await req('/api/live?tk=MSFT'));
+  assert.equal(r.position, null); assert.equal(r.held, false);
+  assert.equal((await req('/api/live?tk=%3Cx%3E')).status, 400);
+  // Deel van je positie: 100% verkoopt alles wat je nu echt hebt, ook als de site minder dacht
+  r = await jsonOf(await req('/api/trade/order', { method: 'POST', body: { side: 'SELL', type: 'market', ticker: 'AAPL_US_EQ', quantity: 2, fraction: 1, estEur: 400, clientId: 'live-sell-1' } }));
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.deepEqual(sent[0], { ticker: 'AAPL_US_EQ', quantity: -3 });
+  assert.equal(r.basis, 'live');
+  assert.equal(r.entry.estEur, 660, 'het bedrag komt uit de stand van dit moment');
+  // Half: de helft van de echte positie
+  r = await jsonOf(await req('/api/trade/order', { method: 'POST', body: { side: 'SELL', type: 'market', ticker: 'AAPL_US_EQ', quantity: 1, fraction: 0.5, estEur: 200, clientId: 'live-sell-2' } }));
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(sent[1].quantity, -1.5);
+  // Vast bedrag: € 110 bij € 220 per stuk is 0,5 stuks, wat de site ook dacht
+  r = await jsonOf(await req('/api/trade/order', { method: 'POST', body: { side: 'SELL', type: 'market', ticker: 'AAPL_US_EQ', quantity: 0.6, valueEur: 110, estEur: 110, clientId: 'live-sell-3' } }));
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(sent[2].quantity, -0.5);
+  // Vast bedrag groter dan wat je hebt: nooit meer dan je hebt
+  r = await jsonOf(await req('/api/trade/order', { method: 'POST', body: { side: 'SELL', type: 'market', ticker: 'AAPL_US_EQ', quantity: 3, valueEur: 2000, estEur: 2000, clientId: 'live-sell-4' } }));
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(sent[3].quantity, -3);
+  // Ongeldig deel
+  r = await jsonOf(await req('/api/trade/order', { method: 'POST', body: { side: 'SELL', type: 'market', ticker: 'AAPL_US_EQ', quantity: 1, fraction: 1.5, estEur: 200, clientId: 'live-sell-5' } }));
+  assert.equal(r.ok, false); assert.match(r.error, /deel/);
+  // Trading 212 meldt de positie niet meer: verkopen kan niet
+  LIVE.length = 0;
+  r = await jsonOf(await req('/api/trade/order', { method: 'POST', body: { side: 'SELL', type: 'market', ticker: 'AAPL_US_EQ', quantity: 1, fraction: 1, estEur: 200, clientId: 'live-sell-6' } }));
+  assert.equal(r.ok, false); assert.match(r.error, /niet/);
+  assert.equal(sent.length, 4);
   await req('/api/features', { method: 'POST', body: { features: { trading: false } } });
 });
 
@@ -1029,6 +1105,8 @@ await test('dagbundel: alles samen, één keer per dag vanaf het gekozen uur', a
   await req('/api/settings', { method: 'POST', body: { alerts: { move: 5, earnings: true, insider: true, drift: 5, digest: true, digestHour: 20 } } });
   const y = '2026-11-18';
   DB.db.prepare("INSERT OR REPLACE INTO days (day, ticker, name, open, close, low, high, avg, range, range_pct, n, close_price) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)").run(y, 'AAPL', 'Apple', 360, 360, 355, 362, 359, 7, 0.02, 80, 200);
+  // Laatste meting van gisteren: dezelfde 2 stuks voor € 360, dus vandaag (€ 400) is echt een koersstijging
+  DB.db.prepare('INSERT OR REPLACE INTO intraday (ts, ticker, name, value, unrealized, price, qty) VALUES (?,?,?,?,?,?,?)').run(Date.parse('2026-11-18T20:00:00Z'), 'AAPL', 'Apple', 360, 0, 207, 2);
   const pushes = [];
   routes = t212Routes().concat([[/push\.test/, async (u, init) => { pushes.push(await decryptPush(init.body)); return reply('', 201); }]]);
   // 14:00 UTC = 15:00 plaatselijk: nog voor het bundeluur

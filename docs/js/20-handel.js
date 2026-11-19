@@ -77,11 +77,122 @@ function tradeFacts(I) {
 
 const newOrderId = () => (window.crypto && crypto.randomUUID ? crypto.randomUUID() : 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10));
 
+// ---------- Invoer: tekstvelden met komma of punt; de cursor blijft staan ----------
+// Getal uit een invoerveld: "12,5", "12.5", "1.234,56" en "€ 20" werken allemaal
+function numIn(s) {
+  let t = String(s == null ? '' : s).replace(/[\s€%]/g, '');
+  if (!t) return 0;
+  if (t.includes(',') && t.includes('.')) t = t.lastIndexOf(',') > t.lastIndexOf('.') ? t.replace(/\./g, '').replace(',', '.') : t.replace(/,/g, '');
+  else t = t.replace(',', '.');
+  const n = Number(t);
+  return isFinite(n) && n > 0 ? n : 0;
+}
+// Getal voor in een invoerveld: met komma, zonder duizendtallen
+const numOut = (x, dec) => (isNum(x) && x > 0 ? String(Math.round(x * 10 ** dec) / 10 ** dec).replace('.', ',') : '');
+const floorQty = (x) => Math.floor(x * 10000 + 1e-9) / 10000;
+// Een deel van het scherm opnieuw tekenen zonder het veld te vervangen waarin je typt
+function morphDom(live, fresh) {
+  // Alleen het tekstveld waarin je typt blijft onaangeroerd (knoppen en vinkjes volgen gewoon de stand)
+  if (live === document.activeElement && live.nodeName === fresh.nodeName && (/^(TEXTAREA|SELECT)$/.test(live.nodeName) || (live.nodeName === 'INPUT' && /** @type {HTMLInputElement} */ (live).type !== 'checkbox'))) return;
+  if (live.nodeType === 3 && fresh.nodeType === 3) { if (live.nodeValue !== fresh.nodeValue) live.nodeValue = fresh.nodeValue; return; }
+  const a = /** @type {HTMLInputElement} */ (live), b = /** @type {HTMLInputElement} */ (fresh);
+  const syncAttrs = () => {
+    [...a.attributes].forEach((x) => { if (!b.hasAttribute(x.name)) a.removeAttribute(x.name); });
+    [...b.attributes].forEach((x) => { if (a.getAttribute(x.name) !== x.value) a.setAttribute(x.name, x.value); });
+  };
+  // Invoervelden houden zelf hun waarde bij: die zetten we los van het attribuut (een PIN zonder value blijft staan)
+  if (live.nodeName === 'INPUT' && fresh.nodeName === 'INPUT' && a.type === b.type) {
+    syncAttrs();
+    if (a.type === 'checkbox') a.checked = b.hasAttribute('checked');
+    else if (b.hasAttribute('value') && a.value !== b.getAttribute('value')) a.value = b.getAttribute('value');
+    return;
+  }
+  // Gelijke opbouw overslaan, behalve als er invoervelden in zitten: hun waarde staat niet in de attributen
+  if (live.isEqualNode(fresh) && !(live.nodeType === 1 && /** @type {Element} */ (live).querySelector('input'))) return;
+  if (live.nodeType !== 1 || live.nodeName !== fresh.nodeName || live.childNodes.length !== fresh.childNodes.length || /^(SELECT|TEXTAREA)$/.test(live.nodeName)) {
+    live.parentNode.replaceChild(fresh, live);
+    return;
+  }
+  syncAttrs();
+  const kids = [...live.childNodes], nk = [...fresh.childNodes];
+  kids.forEach((n, i) => morphDom(n, nk[i]));
+}
+function patchDialog(dlg, html) {
+  const act = /** @type {HTMLInputElement} */ (document.activeElement);
+  const key = act && act !== document.body && dlg.contains(act) && act.dataset ? act.dataset.t : null;
+  const val = key ? act.value : '';
+  let s0 = null, s1 = null;
+  try { s0 = act.selectionStart; s1 = act.selectionEnd; } catch (e) { /* geen tekstveld */ }
+  const tmp = document.createElement('div');
+  tmp.innerHTML = html;
+  if (dlg.children.length !== 1 || !tmp.firstElementChild || dlg.firstElementChild.className !== tmp.firstElementChild.className) dlg.innerHTML = html;
+  else morphDom(dlg.firstElementChild, tmp.firstElementChild);
+  // Was het veld toch vervangen (andere opbouw), dan focus, waarde en cursor terugzetten
+  if (key && !dlg.contains(act)) {
+    const again = /** @type {HTMLInputElement} */ (dlg.querySelector('[data-t="' + key + '"]'));
+    if (again) { if (again.type !== 'checkbox') again.value = val; again.focus(); try { if (s0 != null) again.setSelectionRange(s0, s1); } catch (e) { /* geen tekstveld */ } }
+  }
+}
+
+// ---------- Nu bij Trading 212 kijken (positie en vrij saldo) ----------
+// De meting is tot tien minuten oud; dit vraagt de stand van dit moment op via je eigen Worker.
+const liveCache = new Map();
+const LIVE_WAIT = 6000;   // Trading 212 staat het saldo maar eens per paar seconden toe
+async function liveFetch(tk) {
+  const k = tk || '';
+  const had = liveCache.get(k);
+  if (had && Date.now() - had.t < LIVE_WAIT) return had;
+  let r;
+  if (demo) {
+    await new Promise((x) => setTimeout(x, 400));
+    const c = tk ? (M.byTk.get(tk) || M.byTk.get(String(tk).split('_')[0])) : null;
+    const f = 1 + (Math.random() - 0.4) * 0.03;
+    r = { at: new Date().toISOString(), cash: isNum(M.cash) ? Math.round(M.cash * 100) / 100 : 0, errors: [],
+      position: c && c.qty ? { qty: c.qty, avail: c.qty, value: Math.round(c.value * f * 100) / 100, price: isNum(c.priceNative) ? c.priceNative * f : null } : null, held: !!(c && c.qty) };
+  } else r = await workerCall('/api/live' + (tk ? '?tk=' + encodeURIComponent(tk) : ''), { method: 'GET' });
+  r.t = Date.now();
+  liveCache.set(k, r);
+  if (k && isNum(r.cash)) liveCache.set('', Object.assign({}, r, { position: null }));
+  return r;
+}
+const liveTime = (r) => fHM.format(r && r.t ? r.t : Date.now()) + ':' + String(new Date(r && r.t ? r.t : Date.now()).getSeconds()).padStart(2, '0');
+// Knop "Nu controleren" bij een positie (tk) of bij het vrije saldo (zonder tk)
+function liveCheckBlock(tk) {
+  if (sharedView || (!demo && !(isWorker() && getToken()))) return '';
+  const k = tk || '';
+  return '<div class="live-chk" data-live-key="' + esc(k) + '"><button type="button" class="btn ghost" data-live-go="' + esc(k) + '">Nu controleren</button>' +
+    '<span class="small live-out muted" role="status">' + esc(liveCache.has(k) ? liveText(k, liveCache.get(k)) : tk ? 'Vraagt je positie nu op bij Trading 212.' : 'Vraagt je vrije saldo nu op bij Trading 212.') + '</span></div>';
+}
+function liveText(tk, r) {
+  const at = 'Bij Trading 212 om ' + liveTime(r) + ': ';
+  if (!tk) return isNum(r.cash) ? at + eur(r.cash) + ' vrij saldo' + (isNum(M.cash) ? ' (tracker: ' + eur(M.cash) + ')' : '') + '.' : 'Het saldo kon niet worden opgevraagd. ' + (r.errors || []).join(' ');
+  const c = M.byTk.get(tk);
+  const p = r.position;
+  if (!p) return (r.errors || []).length ? 'De positie kon niet worden opgevraagd. ' + r.errors.join(' ') : at + 'geen positie meer (verkocht of in een pie).';
+  const diff = c && c.value > 0 ? p.value / c.value - 1 : null;
+  return at + N4.format(p.qty) + ' stuks, ' + eur(p.value) + (c ? ' (tracker: ' + eur(c.value) + (isNum(diff) && Math.abs(diff) >= 0.0005 ? ', ' + spct1(diff) : '') + ')' : '') +
+    (isNum(r.cash) ? '; vrij saldo ' + eur(r.cash) : '') + '.';
+}
+document.addEventListener('click', async (e) => {
+  const b = near(e, '[data-live-go]');
+  if (!b) return;
+  const box = b.closest('.live-chk');
+  const out = /** @type {HTMLElement} */ (box && box.querySelector('.live-out'));
+  const k = b.dataset.liveGo;
+  b.disabled = true;
+  if (out) { out.textContent = 'Bezig met opvragen…'; out.className = 'small live-out muted'; }
+  try { const r = await liveFetch(k); if (out) { out.textContent = liveText(k, r); out.className = 'small live-out'; } }
+  catch (err) { if (out) { out.textContent = foutTekst('Opvragen lukte niet', err, 'Trading 212 staat maar een paar verzoeken per minuut toe; probeer het zo opnieuw.'); out.className = 'small live-out loss'; } }
+  setTimeout(() => { b.disabled = false; }, 1500);
+});
+
 async function openTradeDialog(btn) {
   const I = tradeInfo(btn);
   // Oefenmodus: verkopen kan wat er in je oefenboek staat, niet wat je echt hebt
   if (paperOn()) { const pp = paperPositions().find((o) => o.key === (I.tk || ('~' + I.sym))); I.held = pp ? pp.qty : 0; }
-  const st = { side: btn.dataset.trade === 'SELL' ? 'SELL' : 'BUY', type: 'market', validity: 'DAY', qty: 0, limit: I.price || 0, id: newOrderId(), busy: false, done: false, choices: null };
+  // last: het veld dat je het laatst invulde (aantal, bedrag of percentage); de andere twee rekent de tracker uit
+  const st = { side: btn.dataset.trade === 'SELL' ? 'SELL' : 'BUY', type: 'market', validity: 'DAY', qty: 0, limit: I.price || 0, id: newOrderId(), busy: false, done: false, choices: null,
+    last: 'qty', raw: { qty: '', eur: '', pct: '', limit: I.price ? numOut(I.price, 4) : '' }, sellMode: 'part', live: null, liveBusy: false, liveErr: '', sure: false, big: '' };
   const L = tradeLimitsNow();
   const dlg = document.createElement('div');
   dlg.className = 'overlay-dlg trade-dlg' + (paperOn() ? ' paper' : '');
@@ -99,35 +210,81 @@ async function openTradeDialog(btn) {
     } catch (e) { dlg.innerHTML = '<div class="dlg-card"><p class="loss">' + esc(e.message) + '</p><div class="dlg-actions"><button type="button" class="btn primary" data-x>Sluiten</button></div></div>'; /** @type {HTMLElement} */ (dlg.querySelector('[data-x]')).onclick = close; return; }
   }
   if ((demo || paperOn()) && !I.t212) I.t212 = (I.sym || I.tk) + '_US_EQ';
+  const fxRate = () => (I.cur !== 'EUR' ? FX_FEE : 0);
   const priceEurAt = (native) => (I.eurPer && I.price ? native * I.eurPer / I.price : null);
-  const draw = () => {
-    const per = st.type === 'limit' && st.limit > 0 ? priceEurAt(st.limit) : I.eurPer;
+  const perNow = () => (st.type === 'limit' && st.limit > 0 ? priceEurAt(st.limit) : I.eurPer);
+  const cashNow = () => (paperOn() ? paperState().cash : st.live && isNum(st.live.cash) ? st.live.cash : isNum(M.cash) ? M.cash : null);
+  const isSell = () => st.side === 'SELL';
+  // Aantal uitrekenen uit het veld dat je het laatst invulde
+  const recalc = () => {
+    const v = numIn(st.raw[st.last]);
+    const per = perNow();
+    if (st.last === 'qty') st.qty = v;
+    else if (st.last === 'eur') st.qty = per && v ? floorQty(v / per) : 0;
+    else if (st.last === 'pct') {
+      const p = Math.min(v, 100) / 100;
+      if (isSell()) st.qty = p >= 0.99995 ? I.held : floorQty(p * I.held);
+      else {
+        // Kopen met een deel van je saldo: 1% marge voor koersbewegingen tot de order is uitgevoerd
+        const cash = cashNow();
+        const use = cash > 0 ? Math.min(p * cash, cash * 0.99) : 0;
+        st.qty = per && use ? floorQty(use / (per * (1 + fxRate()))) : 0;
+      }
+    }
+    if (isSell() && st.qty > I.held && I.held > 0 && st.last !== 'qty') st.qty = I.held;
+  };
+  const pctOfNow = (amount, fee) => {
+    if (isSell()) return I.held > 0 && st.qty > 0 ? st.qty / I.held * 100 : 0;
+    const cash = cashNow();
+    return cash > 0 && amount > 0 ? (amount + fee) / cash * 100 : 0;
+  };
+  const liveRow = () => {
+    if (paperOn()) return '';
+    const r = st.live;
+    const txt = st.liveBusy ? 'bezig met opvragen bij Trading 212…' : st.liveErr ? st.liveErr : r ? 'live om ' + liveTime(r) : 'cijfers van de laatste meting';
+    return '<div><dt>Stand</dt><dd><span class="small ' + (st.liveErr ? 'loss' : r ? 'gain' : 'muted') + '">' + esc(txt) + '</span> <button type="button" class="linklike small" data-t="live"' + (st.liveBusy ? ' disabled' : '') + '>Nu controleren</button></dd></div>';
+  };
+  const html = () => {
+    const per = perNow();
     const amount = per && st.qty ? per * st.qty : 0;
-    const fee = I.cur !== 'EUR' ? amount * FX_FEE : 0;
+    const fee = amount * fxRate();
     const over = !paperOn() && amount > L.perOrder;
     const canSell = I.held > 0;
-    const ok = st.qty > 0 && amount > 0 && !over && (st.side === 'BUY' || (canSell && st.qty <= I.held + 1e-9)) && (st.type === 'market' || st.limit > 0);
-    const cash = paperOn() ? paperState().cash : isNum(M.cash) ? M.cash : null;
-    const short = st.side === 'BUY' && cash != null && amount + fee > cash + 0.005;
-    dlg.innerHTML = '<div class="dlg-card" role="dialog" aria-modal="true" aria-label="Order plaatsen">' +
-      '<h3>' + (st.side === 'BUY' ? 'Kopen' : 'Verkopen') + (paperOn() ? ' (oefenen)' : '') + ': ' + esc(I.label) + '</h3><p class="small muted">' + esc(I.name) + (I.t212 ? ' · ' + esc(I.t212) : '') + '</p>' + tradeModeBanner() +
+    const ok = st.qty > 0 && amount > 0 && !over && (!isSell() || (canSell && st.qty <= I.held + 1e-9)) && (st.type === 'market' || st.limit > 0);
+    const cash = cashNow();
+    const short = !isSell() && cash != null && amount + fee > cash + 0.005;
+    const fixed = isSell() && st.sellMode === 'fixed' && st.type === 'market' && !paperOn();
+    const val = (k, computed) => (st.last === k ? st.raw[k] : computed);
+    const pctNow = pctOfNow(amount, fee);
+    const chips = [25, 50, 75, 100].map((n) => '<button type="button" data-t="pctq" data-v="' + n + '" aria-pressed="' + (st.last === 'pct' && numIn(st.raw.pct) === n) + '">' + n + '%</button>').join('');
+    return '<div class="dlg-card" role="dialog" aria-modal="true" aria-label="Order plaatsen">' +
+      '<h3>' + (isSell() ? 'Verkopen' : 'Kopen') + (paperOn() ? ' (oefenen)' : '') + ': ' + esc(I.label) + '</h3><p class="small muted">' + esc(I.name) + (I.t212 ? ' · ' + esc(I.t212) : '') + '</p>' + tradeModeBanner() +
       (st.choices ? '<label class="wm-l">Beurs<select data-t="choice">' + st.choices.map((h) => '<option value="' + esc(h.ticker) + '"' + (h.ticker === I.t212 ? ' selected' : '') + '>' + esc(h.ticker + ' (' + h.cur + ')') + '</option>').join('') + '</select></label>' : '') +
-      '<div class="seg light" role="group" aria-label="Kopen of verkopen"><button type="button" data-t="side" data-v="BUY" aria-pressed="' + (st.side === 'BUY') + '">Kopen</button><button type="button" data-t="side" data-v="SELL" aria-pressed="' + (st.side === 'SELL') + '"' + (canSell ? '' : ' disabled') + '>Verkopen</button></div>' +
+      '<div class="seg light" role="group" aria-label="Kopen of verkopen"><button type="button" data-t="side" data-v="BUY" aria-pressed="' + !isSell() + '">Kopen</button><button type="button" data-t="side" data-v="SELL" aria-pressed="' + isSell() + '"' + (canSell ? '' : ' disabled') + '>Verkopen</button></div>' +
       '<div class="seg light" role="group" aria-label="Soort order" style="margin-top:8px"><button type="button" data-t="type" data-v="market" aria-pressed="' + (st.type === 'market') + '">Markt</button><button type="button" data-t="type" data-v="limit" aria-pressed="' + (st.type === 'limit') + '">Limiet</button></div>' +
-      '<div class="plan-inputs" style="margin-top:10px"><label>Aantal<input type="number" inputmode="decimal" min="0" step="any" data-t="qty" value="' + (st.qty || '') + '" placeholder="0"></label>' +
-      '<label>of bedrag<span class="eur-in">€<input type="number" inputmode="decimal" min="0" step="1" data-t="eur" value="' + (st.eurTyped != null ? st.eurTyped : amount ? Math.round(amount * 100) / 100 : '') + '" placeholder="0"></span></label>' +
-      (st.type === 'limit' ? '<label>Limietprijs<span class="eur-in">' + esc(CUR_SYM[I.cur] || I.cur) + '<input type="number" inputmode="decimal" min="0" step="any" data-t="limit" value="' + (st.limit || '') + '"></span></label>' : '') + '</div>' +
+      '<div class="plan-inputs trade-in" style="margin-top:10px"><label>Aantal<input type="text" inputmode="decimal" autocomplete="off" spellcheck="false" data-t="qty" value="' + esc(val('qty', numOut(st.qty, 4))) + '" placeholder="0"></label>' +
+      '<label>of bedrag<span class="eur-in">€<input type="text" inputmode="decimal" autocomplete="off" spellcheck="false" data-t="eur" value="' + esc(val('eur', numOut(amount, 2))) + '" placeholder="0"></span></label>' +
+      '<label>of percentage<span class="eur-in pct-in"><input type="text" inputmode="decimal" autocomplete="off" spellcheck="false" data-t="pct" value="' + esc(val('pct', numOut(pctNow, 1))) + '" placeholder="0">%</span></label>' +
+      (st.type === 'limit' ? '<label>Limietprijs<span class="eur-in">' + esc(CUR_SYM[I.cur] || I.cur) + '<input type="text" inputmode="decimal" autocomplete="off" spellcheck="false" data-t="limit" value="' + esc(st.raw.limit) + '"></span></label>' : '') + '</div>' +
+      '<div class="seg light pct-chips" role="group" aria-label="' + (isSell() ? 'Deel van je positie' : 'Deel van je vrije saldo') + '" style="margin-top:8px">' + chips + '</div>' +
+      '<p class="small muted" style="margin-top:4px">' + (isSell() ? 'Percentage van je positie' + (canSell ? ' (' + esc(N4.format(I.held)) + ' stuks)' : '') : 'Percentage van je ' + (paperOn() ? 'oefensaldo' : 'vrije saldo') + (cash != null ? ' (' + esc(eur(cash)) + ')' : '') + '; bij kopen houdt de tracker 1% marge aan voor koersbewegingen en de wisselkosten') + '.</p>' +
       (st.type === 'limit' ? '<div class="seg light" role="group" aria-label="Geldig" style="margin-top:8px"><button type="button" data-t="validity" data-v="DAY" aria-pressed="' + (st.validity === 'DAY') + '">Vandaag</button><button type="button" data-t="validity" data-v="GTC" aria-pressed="' + (st.validity === 'GTC') + '">Tot je annuleert</button></div>' : '') +
-      (canSell && st.side === 'SELL' ? '<p class="small muted" style="margin-top:6px">Je hebt ' + esc(N4.format(I.held)) + ' stuks. <button type="button" class="linklike" data-t="all">Alles verkopen</button></p>' : '') +
-      '<dl class="kv" style="margin-top:10px">' +
-      '<div><dt>' + (paperOn() ? 'Oefensaldo' : 'Vrij saldo') + '</dt><dd>' + (cash != null ? esc(eur(cash)) + (!paperOn() && M.cashAt ? ' <span class="small muted">(stand ' + esc(fDT.format(M.cashAt)) + ')</span>' : '') : '<span class="muted">volgt na de volgende meting</span>') + '</dd></div>' +
+      (isSell() && !paperOn() ? '<div class="seg light" role="group" aria-label="Hoe verkopen" style="margin-top:10px"><button type="button" data-t="sellMode" data-v="part" aria-pressed="' + !fixed + '">Deel van je positie</button>' +
+        '<button type="button" data-t="sellMode" data-v="fixed" aria-pressed="' + fixed + '"' + (st.type === 'market' ? '' : ' disabled') + '>Vast bedrag</button></div>' +
+        '<p class="small muted" style="margin-top:4px">' + esc(fixed
+          ? 'Vast bedrag: bij het versturen kijkt de Worker naar de koers van dat moment en verkoopt zoveel stuks dat het ± ' + eur(amount) + ' oplevert, ongeacht hoe de koers intussen bewoog (nooit meer dan je hebt).'
+          : 'Deel van je positie: je invoer telt als ' + P1.format(Math.min(1, pctNow / 100)) + ' van je positie. Bij het versturen kijkt de Worker bij Trading 212 wat je nu echt hebt en verkoopt hetzelfde deel. Is je positie intussen meer of minder waard dan de tracker toont, dan verkoop je voor die echte waarde.') + '</p>' : '') +
+      '<dl class="kv" style="margin-top:10px">' + liveRow() +
+      '<div><dt>' + (paperOn() ? 'Oefensaldo' : 'Vrij saldo') + '</dt><dd>' + (cash != null ? esc(eur(cash)) + (!paperOn() && !st.live && M.cashAt ? ' <span class="small muted">(stand ' + esc(fDT.format(M.cashAt)) + ')</span>' : '') : '<span class="muted">volgt na de volgende meting</span>') + '</dd></div>' +
+      (canSell ? '<div><dt>Je hebt</dt><dd>' + esc(N4.format(I.held) + ' stuks' + (I.eurPer ? ', ± ' + eur(I.held * I.eurPer) : '')) + '</dd></div>' : '') +
       '<div><dt>Koers nu</dt><dd>' + esc(isNum(I.price) ? money(I.price, I.cur) : 'onbekend') + '</dd></div>' +
-      '<div><dt>Geschat bedrag</dt><dd>' + esc(amount ? eur(amount) : '–') + '</dd></div>' +
+      '<div><dt>Geschat bedrag</dt><dd>' + esc(amount ? eur(amount) + (st.qty ? ' (' + N4.format(st.qty) + ' stuks)' : '') : '–') + '</dd></div>' +
       '<div><dt>Wisselkosten (0,15%)</dt><dd>' + esc(fee ? '± ' + eur(fee) : I.cur === 'EUR' ? 'geen' : '–') + '</dd></div>' +
       '<div><dt>Jouw grenzen</dt><dd>' + (paperOn() ? '<span class="muted">gelden niet in de oefenmodus</span>' : esc(eur(L.perOrder) + ' per order, ' + eur(L.perDay) + ' per dag')) + '</dd></div>' +
       tradeFacts(I) + tradeAfterRows(I, st.side, amount) + '</dl>' +
       (short ? '<p class="small loss">' + (paperOn() ? 'Meer dan je oefensaldo.' : 'Meer dan je vrije saldo. Trading 212 weigert de order als er niet genoeg geld op je rekening staat.') + '</p>' : '') +
       (over ? '<p class="small loss">Groter dan je grens per order. Pas die aan bij Instellingen, Koppelingen.</p>' : '') +
+      (isSell() && st.qty > I.held + 1e-9 ? '<p class="small loss">Meer dan je hebt.</p>' : '') +
       (st.type === 'market' ? '<p class="small muted">Een marktorder wordt uitgevoerd tegen de koers op dat moment; buiten de beurstijden wacht hij tot de beurs opent. De echte prijs kan afwijken.</p>' : '') +
       sellQuestions(I, st.side) +
       bigOrderBlock(st, amount) +
@@ -136,41 +293,78 @@ async function openTradeDialog(btn) {
       '<p class="small plan-status" data-t="msg" role="status"></p>' +
       '<div class="dlg-actions"><button type="button" class="btn ghost" data-t="cancel">' + (st.done ? 'Sluiten' : 'Annuleren') + '</button>' +
       (st.done ? '' : '<button type="button" class="btn primary" data-t="go"' + (ok && st.sure && !st.busy && bigOrderOk(st, amount) && !ordLockNeeded() ? '' : ' disabled') + '>' +
-        (st.busy ? 'Bezig…' : (paperOn() ? 'Oefenorder plaatsen' : st.side === 'BUY' ? 'Kopen' : 'Verkopen') + (amount ? ' voor ± ' + eur(amount + (st.side === 'BUY' ? fee : -fee)) : '')) + '</button>') + '</div>' +
+        (st.busy ? 'Bezig…' : (paperOn() ? 'Oefenorder plaatsen' : isSell() ? 'Verkopen' : 'Kopen') + (amount ? ' voor ± ' + eur(amount + (isSell() ? -fee : fee)) : '')) + '</button>') + '</div>' +
       '<p class="sub" style="margin-top:8px">Geen beleggingsadvies. ' + (paperOn() ? 'Deze order gaat naar je oefenboek; er wordt niets naar Trading 212 gestuurd.' : 'De order gaat via je eigen Worker naar Trading 212.') + '</p></div>';
   };
-  const say = (t, cls) => { const m = /** @type {HTMLElement} */ (dlg.querySelector('[data-t="msg"]')); if (m) { m.textContent = t; m.className = 'small plan-status ' + (cls || ''); } };
+  // Het statusbericht blijft staan als het scherm opnieuw getekend wordt
+  let msg = { t: '', cls: '' };
+  const say = (t, cls) => { msg = { t, cls: cls || '' }; const m = /** @type {HTMLElement} */ (dlg.querySelector('[data-t="msg"]')); if (m) { m.textContent = t; m.className = 'small plan-status ' + msg.cls; } };
+  const draw = () => { patchDialog(dlg, html()); if (msg.t) say(msg.t, msg.cls); };
+  // De stand van dit moment bij Trading 212: hoeveel je hebt, wat het waard is en je vrije saldo
+  const checkLive = async () => {
+    if (paperOn() || st.liveBusy) return;
+    st.liveBusy = true; st.liveErr = ''; draw();
+    try {
+      const r = await liveFetch(I.tk || I.t212);
+      st.live = r;
+      const p = r.position;
+      if (p) {
+        I.held = p.avail;
+        if (p.qty > 0 && p.value > 0) I.eurPer = p.value / p.qty;
+        if (isNum(p.price) && p.price > 0) I.price = p.price;
+      } else if (I.tk && r.held === false && !(r.errors || []).length) I.held = 0;
+      if ((r.errors || []).length && !p && I.tk) st.liveErr = 'positie niet opgevraagd, de tracker rekent met de laatste meting';
+      if (!(I.held > 0) && isSell()) st.side = 'BUY';
+    } catch (err) { st.liveErr = 'opvragen lukte niet; de tracker rekent met de laatste meting'; }
+    st.liveBusy = false;
+    if (!st.done && !st.busy) { recalc(); draw(); }
+  };
   draw();
+  checkLive();
   dlg.addEventListener('click', async (e) => {
     if (e.target === dlg && !st.busy) { close(); return; }
     const b = near(e, '[data-t]');
-    if (!b) return;
+    if (!b || b.tagName === 'INPUT') return;
     const t = b.dataset.t;
     if (t === 'cancel') { close(); return; }
-    if (t === 'side' || t === 'type' || t === 'validity') { st[t] = b.dataset.v; st.sure = false; draw(); return; }
-    if (t === 'all') { st.qty = I.held; draw(); return; }
+    if (t === 'live') { liveCache.delete(I.tk || I.t212 || ''); await checkLive(); return; }
+    if (t === 'side' || t === 'type' || t === 'validity' || t === 'sellMode') {
+      st[t] = b.dataset.v; st.sure = false;
+      // Een percentage blijft een percentage (nu van je positie of van je saldo); anders blijft het aantal staan
+      if (t === 'side' && st.last === 'eur') { st.last = 'qty'; st.raw.qty = numOut(st.qty, 4); }
+      recalc(); draw(); return;
+    }
+    if (t === 'pctq') { st.last = 'pct'; st.raw.pct = b.dataset.v; st.sure = false; recalc(); draw(); return; }
     if (t === 'unlock') { await orderUnlockRun(dlg, draw); return; }
     if (t !== 'go' || st.busy) return;
     st.busy = true; draw();
-    const per = st.type === 'limit' && st.limit > 0 ? priceEurAt(st.limit) : I.eurPer;
-    const body = { side: st.side, type: st.type, ticker: I.t212, quantity: st.qty, limitPrice: st.type === 'limit' ? st.limit : undefined, validity: st.validity, estEur: Math.round(per * st.qty * 100) / 100, clientId: st.id };
+    const per = perNow();
+    const est = Math.round(per * st.qty * 100) / 100;
+    const body = { side: st.side, type: st.type, ticker: I.t212, quantity: st.qty, limitPrice: st.type === 'limit' ? st.limit : undefined, validity: st.validity, estEur: est, clientId: st.id };
+    // Verkopen: de Worker rekent met wat je op dat moment echt hebt
+    if (isSell() && I.held > 0) {
+      if (st.sellMode === 'fixed' && st.type === 'market') body.valueEur = st.last === 'eur' ? numIn(st.raw.eur) : est;
+      else body.fraction = Math.min(1, st.last === 'pct' ? numIn(st.raw.pct) / 100 : st.qty / I.held);
+    }
     try {
       // Oefenmodus: alleen bijschrijven in je eigen oefenboek, nooit versturen
       if (paperOn()) {
-        await paperExec(I, st.side, st.qty, Math.round(per * st.qty * 100) / 100);
+        await paperExec(I, st.side, st.qty, est);
         st.busy = false; st.done = true; draw();
         say('Oefenorder bijgeschreven in je oefenboek. Er is niets naar Trading 212 gestuurd.', 'gain');
         refresh('analyse');
         return;
       }
       let res;
-      if (demo) { await new Promise((x) => setTimeout(x, 500)); res = { order: { id: 1, status: 'NEW' } }; }
+      if (demo) { await new Promise((x) => setTimeout(x, 500)); res = { order: { id: 1, status: 'NEW' }, qty: st.qty, basis: 'live' }; }
       else res = await workerCall('/api/trade/order', { method: 'POST', body: JSON.stringify(body) });
       ordOkNow();
       st.busy = false; st.done = true; draw();
       haptic('order');   // korte trilling op de telefoon, als dat aan staat (zie js/21-pwa.js)
-      say((demo ? 'Voorbeeld: ' : '') + 'Order verstuurd' + (res.order && res.order.status ? ' (status ' + res.order.status + ')' : '') + '. Je ziet hem op Analyse bij Openstaande orders; je posities werken bij met de volgende meting.', 'gain');
+      const q = isNum(res.qty) && Math.abs(res.qty - st.qty) > 1e-9 ? ' Verstuurd aantal: ' + N4.format(res.qty) + ' stuks' + (res.basis === 'live' ? ', op basis van je positie van dit moment' : '') + '.' : '';
+      say((demo ? 'Voorbeeld: ' : '') + 'Order verstuurd' + (res.order && res.order.status ? ' (status ' + res.order.status + ')' : '') + '.' + q + ' Je ziet hem op Analyse bij Openstaande orders; je posities werken bij met de volgende meting.', 'gain');
       tradeState.open = null;
+      liveCache.clear();
       if (!demo) setTimeout(() => load(), 20000);
     } catch (err) {
       st.busy = false; st.id = newOrderId(); draw();
@@ -181,19 +375,14 @@ async function openTradeDialog(btn) {
   dlg.addEventListener('input', (e) => {
     const el = near(e, '[data-t]');
     if (!el) return;
-    const t = el.dataset.t, v = Number(el.value);
-    st.eurTyped = t === 'eur' ? el.value : null;
-    if (t === 'qty') st.qty = v > 0 ? v : 0;
-    else if (t === 'eur') { const per = st.type === 'limit' && st.limit > 0 ? priceEurAt(st.limit) : I.eurPer; st.qty = per && v > 0 ? Math.floor(v / per * 10000) / 10000 : 0; }
-    else if (t === 'limit') st.limit = v > 0 ? v : 0;
+    const t = el.dataset.t;
+    if (t === 'qty' || t === 'eur' || t === 'pct') { st.last = t; st.raw[t] = el.value; }
+    else if (t === 'limit') { st.raw.limit = el.value; st.limit = numIn(el.value); }
     else if (t === 'big') st.big = el.value;   // tweede bevestiging bij een grote order
     else return;
     if (t !== 'big') st.sure = false;
-    // Alleen de bedragen en de knop bijwerken; het invoerveld behoudt de focus
-    const keep = el.dataset.t, pos = el.selectionStart;
-    draw();
-    const again = /** @type {HTMLInputElement} */ (dlg.querySelector('[data-t="' + keep + '"]'));
-    if (again) { again.focus(); try { again.setSelectionRange(pos, pos); } catch (er) { /* type number */ } }
+    recalc();
+    draw();   // het veld waarin je typt blijft staan, met cursor en komma
   });
   dlg.addEventListener('change', (e) => {
     const el = near(e, '[data-t]');

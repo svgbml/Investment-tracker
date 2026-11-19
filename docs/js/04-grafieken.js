@@ -590,7 +590,7 @@ function segButtons(host, opts, current, onPick) {
 
 function drawHero(p, animate) {
   const r = heroRangeNow();
-  const pts = seriesFor(TOTAL, r);
+  const pts = heroSeries(r);
   // Periodekeuze (bewaard per apparaat) en de keuze voor een vergelijkingslijn: zie js/21-overzicht.js
   segButtons($(p + 'hero-ranges'), heroRangeList(), r, (k) => { ui.heroRange = k; saveHeroRange(k); if (typeof heroCmpFitRange === 'function') heroCmpFitRange(k); drawHero(p, true); });
   heroCmpButtons(p);
@@ -599,7 +599,10 @@ function drawHero(p, animate) {
     animate, markers: heroMarkers(pts, r), xl: $(p + 'hero-x'), xfmt: xFmt(r, pts), tfmt: tFmt(r, pts),
     empty: 'Nog te weinig metingen voor deze periode. De tracker meet op werkdagen tussen 08:00 en 22:30.',
   });
-  $(p + 'hero-note').textContent = [cmp.note, coverageNote(r, pts)].filter(Boolean).join(' ');
+  // Zei de lijn iets anders dan de waarde zelf, dan staat erbij dat aan- en verkopen eruit zijn gehaald
+  const raw = seriesFor(TOTAL, r);
+  const tradesOut = pts !== raw && pts.some((x, i) => raw[i] && Math.abs(x.v - raw[i].v) > 0.5);
+  $(p + 'hero-note').textContent = [cmp.note, coverageNote(r, pts), tradesOut ? 'Aan- en verkopen tellen niet mee: de lijn toont de koersbeweging van je huidige posities.' : ''].filter(Boolean).join(' ');
   setMini();
 }
 
@@ -652,7 +655,7 @@ function companyInfo(c) {
     ['Ingelegd', eur(c.cost)],
     ['Ongerealiseerd', isNum(c.unreal) ? seur(c.unreal) + ' (' + spct1(c.resultPct) + ')' : '–', tone(c.unreal)],
     ['Bijdrage aan dagresultaat', contrib, tone(c.change)],
-  ]) + tradeButtons(c) + '</section>';
+  ]) + liveCheckBlock(c.tk) + tradeButtons(c) + '</section>';
   const histTile = '<section class="tile pad"><h3>Historie</h3>' + kvList([
     ['Gemeten dagen', S.n ? S.n + ' sinds ' + fDM.format(S.returns[0].t) : '–'],
     ['Gestegen en gedaald', S.n ? S.up + ' en ' + days(S.down) : '–'],

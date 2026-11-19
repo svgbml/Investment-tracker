@@ -322,7 +322,7 @@ function renderLinks(msg) {
               (KEY_TEST_OK.includes(String(k)) ? '<span class="small key-test muted" data-keytest-out="' + k + '"></span>' : '') + '</div>';
         }).join('') +
         (L.flag ? '<label class="check small"><input type="checkbox" data-flag="' + L.flag + '"' + (F.flags[L.flag] ? ' checked' : '') + '> Gebruiken</label>' : '') +
-        (L.id === 'trading' && F.flags.trading ? tradeLimitsRow() : '') +
+        (L.id === 'trading' && F.flags.trading ? tradeLimitsRow() + ordPinBox() : '') +
         (L.id === 'mail' ? '<label class="check small"><input type="checkbox" data-mail-amounts' + (M && M.settings && M.settings.mailAmounts === false ? '' : ' checked') + '> Met bedragen</label> <button type="button" class="btn ghost" data-mail-test>Testmail sturen</button>' : '') + '</div>';
     }).join('') + calendarRow(calUrl || (() => { try { return localStorage.getItem('tracker.cal'); } catch (e) { return null; } })()) +
     '<p class="small plan-status" id="links-status" role="status">' + esc(msg || '') + '</p>';
@@ -531,7 +531,10 @@ function mergeRows(old, add, keepFrom) {
 }
 async function fetchSeries(url, token) {
   const S = dataParts.series;
-  if (S && dataParts.seriesTs && S.intraday) {
+  // Bewaarde metingen zonder aantal stuks (van voor v65): één keer alles opnieuw ophalen
+  const needQty = !!(S && S.intraday && !(S.intraday.columns || []).includes('qty') && !dataParts.qtyTried);
+  if (needQty) dataParts.qtyTried = true;
+  if (S && dataParts.seriesTs && S.intraday && !needQty) {
     const res = await fetch(url + (url.includes('?') ? '&' : '?') + 'part=series&since=' + dataParts.seriesTs, { cache: 'no-store', headers: { Authorization: 'Bearer ' + token } });
     const json = await res.json().catch(() => null);
     if (res.ok && json && json.ok && json.delta) {

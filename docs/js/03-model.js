@@ -18,7 +18,8 @@ function derive() {
     return g;
   };
   const ohlc = (r) => (isNum(r[3]) ? { t: parse(r[0]), open: r[2], close: r[3], low: r[4], high: r[5], avg: r[6], v: r[3] } : null);
-  m.intra = group(data.intraday && data.intraday.rows, (r) => (isNum(r[2]) ? { t: parse(r[0]), v: r[2] } : null));
+  // q: aantal stuks bij die meting (oudere gegevens hebben dat niet)
+  m.intra = group(data.intraday && data.intraday.rows, (r) => (isNum(r[2]) ? { t: parse(r[0]), v: r[2], q: isNum(r[3]) && r[3] > 0 ? r[3] : null } : null));
   m.hours = group(data.hours && data.hours.rows, ohlc);
   m.days = group(data.days && data.days.rows, ohlc);
 
@@ -74,12 +75,13 @@ function derive() {
     avgRange: T.avgRange, avgRangePct: T.avgRangePct,
   };
   dayChange(m.tot);
+  totalDayChange(m);
   m.totalValue = m.tot.value;
   m.companies.forEach((c) => { c.weight = m.totalValue ? c.value / m.totalValue : null; });
   m.byTk = new Map(m.companies.map((c) => [c.tk, c]));
   m.weeks = (data.weeks || []).filter((w) => isNum(w.accountValue)).map((w) => Object.assign({}, w, { t: parse(w.date) }));
   const lw = m.weeks[m.weeks.length - 1];
-  if (m.tot.base && m.tot.base.kind === 'open' && lw && isNum(lw.cash) && m.lastT && lw.t < dayStart(m.lastT) && dayStart(m.lastT) - lw.t <= 4 * DAY) {
+  if (m.tot.base && m.tot.base.kind === 'open' && !m.tot.fromPositions && lw && isNum(lw.cash) && m.lastT && lw.t < dayStart(m.lastT) && dayStart(m.lastT) - lw.t <= 4 * DAY) {
     const prevInv = lw.accountValue - lw.cash;
     if (prevInv > 0 && Math.abs(m.tot.value / prevInv - 1) <= MAX_DAY_MOVE) {
       m.tot.change = m.tot.value - prevInv;
@@ -136,15 +138,34 @@ function seriesOf(tk) {
 }
 
 // Wijziging van vandaag: tegen het slot van de vorige handelsdag als dat er is, anders sinds de eerste meting
+// Bij een positie telt alleen de koersbeweging: wat je vandaag bijkocht of verkocht, telt niet als winst of verlies.
 function dayChange(o) {
   const s = seriesOf(o.tk);
   const tk0 = M.lastT == null ? null : dayKey(M.lastT);
   const prev = s.daily.filter((d) => dayKey(d.t) !== tk0 && d.t < (M.lastT || 0)).pop();
-  const todayPts = (M.intra.get(o.tk) || []).filter((p) => dayKey(p.t) === tk0);
+  const intra = M.intra.get(o.tk) || [];
+  const todayPts = intra.filter((p) => dayKey(p.t) === tk0);
   const allDaily = s.daily;
   o.ath = allDaily.length ? Math.max(...allDaily.map((d) => d.high)) : o.high;
   o.atl = allDaily.length ? Math.min(...allDaily.map((d) => d.low)) : o.low;
   o.histDays = allDaily.length;
+  if (o.tk !== TOTAL && todayPts.length && isNum(o.value)) {
+    // Laatste meting van de vorige handelsdag (hoogstens vier dagen terug) plus de metingen van vandaag, zonder aan- en verkopen
+    const from = dayStart(M.lastT);
+    const before = intra.filter((p) => p.t < from && p.t >= from - 4 * DAY).pop();
+    const pts = (before ? [before] : []).concat(todayPts);
+    const W = pts.length >= 2 ? withoutTrades(o.tk, pts).pts : pts;
+    const a = W[0], b = W[W.length - 1];
+    if (a && b && a.v > 0 && b.v > 0) {
+      const pct = b.v / a.v - 1;
+      if (Math.abs(pct) <= MAX_DAY_MOVE) {
+        o.changePct = pct;
+        o.change = o.value - o.value / (1 + pct);
+        o.base = before && a.t === before.t ? { kind: 'close', t: dayStart(before.t) } : { kind: 'open', t: a.t };
+        return;
+      }
+    }
+  }
   if (prev && prev.close > 0 && isNum(o.value) && Math.abs(o.value / prev.close - 1) <= MAX_DAY_MOVE) {
     o.change = o.value - prev.close;
     o.changePct = o.value / prev.close - 1;
@@ -152,6 +173,21 @@ function dayChange(o) {
   } else {
     o.base = { kind: 'open', t: todayPts.length ? todayPts[0].t : null };
   }
+}
+
+// Dagwijziging van het totaal: de som van de posities, zodat aan- en verkopen (en geld van je vrije saldo) niet meetellen
+function totalDayChange(m) {
+  const list = m.companies.filter((c) => isNum(c.change) && isNum(c.value));
+  if (!list.length || list.length < m.companies.length * 0.8) return;
+  const change = sum(list.map((c) => c.change));
+  const before = sum(list.map((c) => c.value)) - change;
+  if (!(before > 0)) return;
+  m.tot.change = change;
+  m.tot.changePct = change / before;
+  m.tot.fromPositions = true;
+  const close = list.every((c) => c.base && c.base.kind === 'close');
+  const ts = list.map((c) => c.base && c.base.t).filter(isNum);
+  m.tot.base = close && ts.length ? { kind: 'close', t: Math.max(...ts) } : { kind: 'open', t: ts.length ? Math.min(...ts) : null };
 }
 
 function baseText(o) {
@@ -236,12 +272,20 @@ function withoutTrades(tk, raw) {
   const gaps = pts.slice(1).map((p, i) => p.t - pts[i].t).sort((a, b) => a - b);
   const gap = gaps[gaps.length >> 1];
   const before = gap > 12 * HOUR ? DAY : 0, after = Math.max(2 * gap, 30 * 60000);
+  // Aantal stuks bekend bij beide metingen: het verschil is een aan- of verkoop tegen de koers van dat moment
+  const known = new Array(n).fill(false);
+  for (let k = 1; k < n; k++) {
+    const qa = pts[k - 1].q, qb = pts[k].q;
+    if (!(qa > 0 && qb > 0)) continue;
+    known[k] = true;
+    if (Math.abs(qb - qa) > 1e-9 * Math.max(qa, qb)) { flow[k] = (qb - qa) * pts[k].v / qb; has[k] = true; }
+  }
   const tx = M.tx && M.tx.has ? (M.tx.byTk.get(tk) || []).filter((x) => (!x.kind || x.kind === 'TRADE') && isNum(x.net) && x.net > 0) : [];
   tx.forEach((x) => {
     const f = x.side === 'SELL' ? -x.net : x.net;
     let best = -1, err = Infinity;
     for (let k = 1; k < n; k++) {
-      if (pts[k].t < x.t - before || pts[k - 1].t > x.t + after) continue;
+      if (known[k] || pts[k].t < x.t - before || pts[k - 1].t > x.t + after) continue;
       const e = Math.abs(pts[k].v - pts[k - 1].v - flow[k] - f);
       if (e < err) { err = e; best = k; }
     }
@@ -267,16 +311,45 @@ function withoutTrades(tk, raw) {
 }
 // Koerslijn van een positie zonder de sprongen van aan- en verkopen
 const marketSeries = (tk, range) => withoutTrades(tk, seriesFor(tk, range)).pts;
+// Lijn van je beleggingen voor vandaag en 3 dagen: de som van je huidige posities, elk zonder aan- en verkopen.
+// Zo springt de lijn niet omhoog als je geld van je vrije saldo in een aandeel stopt. Langere periodes tonen
+// de waarde zelf (met je stortingen), zoals voorheen.
+function heroSeries(range) {
+  const raw = seriesFor(TOTAL, range);
+  if ((range !== 'today' && range !== '3d') || raw.length < 2 || !M.companies.length) return raw;
+  const lines = M.companies.map((c) => {
+    const pts = marketSeries(c.tk, range);
+    return { map: new Map(pts.map((p) => [p.t, p.v])), first: pts.length ? pts[0] : null };
+  }).filter((x) => x.first);
+  if (!lines.length) return raw;
+  const out = raw.map((p) => ({ t: p.t, v: sum(lines.map((x) => (x.map.has(p.t) ? x.map.get(p.t) : p.t < x.first.t ? x.first.v : null)).filter(isNum)) }));
+  return out.every((p) => p.v > 0) ? out : raw;
+}
 
 // ---------- Statistiek ----------
+// Geld dat op een dag in of uit een positie ging door aan- en verkopen (bij TOTAAL: alle posities)
+function tradeFlowByDay(tk) {
+  const f = new Map();
+  if (!M.tx || !M.tx.has) return f;
+  const list = tk === TOTAL ? M.tx.list : (M.tx.byTk.get(tk) || []);
+  list.forEach((x) => {
+    if ((x.kind && x.kind !== 'TRADE') || !isNum(x.net) || !(x.net > 0)) return;
+    const k = dayKey(x.t);
+    f.set(k, (f.get(k) || 0) + (x.side === 'SELL' ? -x.net : x.net));
+  });
+  return f;
+}
 function dailyReturns(tk) {
   const d = seriesOf(tk).daily;
   const k0 = M.lastT == null ? null : dayKey(M.lastT);
+  const flow = tradeFlowByDay(tk);
   const out = [];
   d.forEach((x, i) => {
     let pct = null;
     const p = d[i - 1];
-    if (p && p.close > 0) { const r = x.close / p.close - 1; if (Math.abs(r) <= MAX_DAY_MOVE) pct = r; }
+    // Een aankoop maakt de positie groter zonder dat de koers stijgt: dat bedrag telt niet mee
+    const fl = flow.get(dayKey(x.t)) || 0;
+    if (p && p.close > 0) { const r = (x.close - fl) / p.close - 1; if (Math.abs(r) <= MAX_DAY_MOVE) pct = r; }
     if (pct == null && x.open > 0) { const r = x.close / x.open - 1; if (Math.abs(r) <= MAX_DAY_MOVE) pct = r; }
     if (pct != null) out.push({ t: x.t, pct, today: dayKey(x.t) === k0 });
   });

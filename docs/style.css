@@ -1827,6 +1827,12 @@ html[data-motion="off"] .hm-c:hover, html[data-motion="off"] .hm-c:focus-visible
 .ord-big, .ord-lock { margin-top: 10px; padding: 10px 12px; border-radius: 12px; background: var(--bg); border: 1px solid var(--rule); }
 .ord-big p, .ord-lock p { margin: 0 0 6px; }
 .ord-lock .wm-l { margin-top: 6px; }
+.trade-dlg .trade-in .eur-in input { width: 96px; }
+.trade-dlg .trade-in .pct-in input { width: 64px; }
+.trade-dlg .pct-chips button { min-width: 56px; }
+.live-chk { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 10px; }
+.live-chk .live-out { flex: 1 1 200px; }
+.ord-safety .seg { margin-top: 4px; }
 .ord-safety .seg.light { flex-wrap: wrap; }
 
 /* Vragenlijst bij verkopen (74) */

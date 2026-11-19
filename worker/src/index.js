@@ -327,6 +327,10 @@ const WORKER = {
         try { const b = await request.json().catch(() => ({})); const out = await cancelOrder(env, b.id); await auditLog(env, 'order', 'order ingetrokken'); return json(Object.assign({ ok: true }, out), 200, cors); }
         catch (e) { return json({ ok: false, error: String(e && e.message || e) }, 400, cors); }
       }
+      if (url.pathname === '/api/live' && request.method === 'GET') {
+        try { return json(Object.assign({ ok: true }, await liveCheck(env, url.searchParams.get('tk'))), 200, cors); }
+        catch (e) { return json({ ok: false, error: String(e && e.message || e) }, 400, cors); }
+      }
       if (url.pathname === '/api/trade/instruments' && request.method === 'GET') {
         try { return json({ ok: true, results: await searchInstruments(env, url.searchParams.get('q')) }, 200, cors); }
         catch (e) { return json({ ok: false, error: String(e && e.message || e) }, 400, cors); }
@@ -1672,7 +1676,8 @@ async function buildData(env) {
     positions,
     cashNow: await cashNowOf(env),
     today,
-    intraday: { columns: ['time', 'ticker', 'value'], rows: intra.map((r) => [isoLocal(r.ts), r.ticker, r.value]) },
+    // Met het aantal stuks per meting, zodat de site aan- en verkopen uit koersbewegingen kan halen
+    intraday: { columns: ['time', 'ticker', 'value', 'qty'], rows: intra.map((r) => [isoLocal(r.ts), r.ticker, r.value, r.qty == null ? null : r.qty]) },
     hours: { columns: ['hour', 'ticker', 'open', 'close', 'low', 'high', 'avg'],
       rows: hrs.map((r) => [isoLocal(r.hour), r.ticker, r.open, r.close, r.low, r.high, r.avg]) },
     days: { columns: ['date', 'ticker', 'open', 'close', 'low', 'high', 'avg', 'range', 'rangePct'],
@@ -3309,11 +3314,23 @@ async function alertMoves(env, rows, now) {
   const day = parts(now).day;
   const { results } = await env.DB.prepare('SELECT ticker, close FROM days WHERE day = (SELECT MAX(day) FROM days WHERE day < ?)').bind(day).all();
   const prev = new Map(results.map((r) => [r.ticker, r.close]));
+  // Waarde per stuk bij de laatste meting van vóór vandaag: dan telt alleen de koers, niet wat je bijkocht of verkocht
+  const per = new Map();
+  try {
+    const midnight = hourStart(now.getTime()) - parts(now).hour * HOUR_MS;
+    const { results: pq } = await env.DB.prepare('SELECT ticker, value, qty FROM intraday WHERE ts = (SELECT MAX(ts) FROM intraday WHERE ts < ?)').bind(midnight).all();
+    pq.forEach((p) => { if (p.qty > 0 && p.value > 0) per.set(p.ticker, p.value / p.qty); });
+  } catch (e) { /* dan zoals voorheen tegen het dagslot */ }
+  // Totaal: je huidige posities tegen hun koers van gisteren
+  let totNow = 0, totPrev = 0, totVal = 0;
+  rows.forEach((r) => { if (r.ticker === TOTAL || !(r.value > 0)) return; totVal += r.value; if (per.has(r.ticker) && r.qty > 0) { totNow += r.value; totPrev += per.get(r.ticker) * r.qty; } });
   const hits = [];
   for (const r of rows) {
     const c = prev.get(r.ticker);
-    if (!(c > 0) || !(r.value > 0)) continue;
-    const ch = r.value / c - 1;
+    let ch = null;
+    if (r.ticker === TOTAL) { if (totPrev > 0 && totNow >= totVal * 0.8) ch = totNow / totPrev - 1; }
+    else if (per.has(r.ticker) && r.qty > 0 && r.value > 0) ch = r.value / r.qty / per.get(r.ticker) - 1;
+    if (ch == null) { if (!(c > 0) || !(r.value > 0)) continue; ch = r.value / c - 1; }
     const need = r.ticker === TOTAL ? lim / 2 : lim;
     // Meer dan 25% is bijna altijd een aankoop of verkoop, geen koersbeweging
     if (Math.abs(ch) * 100 >= need && Math.abs(ch) < 0.25) hits.push({ r, ch });
@@ -3826,13 +3843,13 @@ async function seriesDelta(env, since) {
   const s = Number(since);
   if (!isFinite(s) || s <= 0) return null;
   const dayOf = (ms) => parts(new Date(ms)).day;
-  const { results: intra } = await env.DB.prepare('SELECT ts, ticker, value FROM intraday WHERE ts > ? ORDER BY ts').bind(s).all();
+  const { results: intra } = await env.DB.prepare('SELECT ts, ticker, value, qty FROM intraday WHERE ts > ? ORDER BY ts').bind(s).all();
   const { results: hrs } = await env.DB.prepare('SELECT hour, ticker, open, close, low, high, avg FROM hours WHERE hour >= ? ORDER BY hour').bind(s - 2 * HOUR_MS).all();
   const { results: dys } = await env.DB.prepare('SELECT day, ticker, open, close, low, high, avg, range, range_pct FROM days WHERE day >= ? ORDER BY day').bind(dayOf(s - 864e5)).all();
   const last = await env.DB.prepare('SELECT MAX(ts) AS ts FROM intraday').first();
   return {
     ok: true, part: 'series', delta: true, since: s, seriesTs: (last && last.ts) || s,
-    intraday: { rows: intra.map((r) => [isoLocal(r.ts), r.ticker, r.value]) },
+    intraday: { rows: intra.map((r) => [isoLocal(r.ts), r.ticker, r.value, r.qty == null ? null : r.qty]) },
     hours: { rows: hrs.map((r) => [isoLocal(r.hour), r.ticker, r.open, r.close, r.low, r.high, r.avg]) },
     days: { rows: dys.map((r) => [r.day + 'T00:00:00', r.ticker, r.open, r.close, r.low, r.high, r.avg, r.range, r.range_pct]) },
   };
@@ -4539,13 +4556,44 @@ async function tradeLog(env, entry) {
   log.push(entry);
   await setKv(env, 'trade_log', JSON.stringify(log.slice(-50)));
 }
+// Nu bij Trading 212 kijken: één positie (aantal, waarde in euro, koers) en/of het vrije saldo.
+// Zonder herhaalpogingen: bij een limiet (429) volgt een duidelijke melding, de site probeert het niet in een lus opnieuw.
+function livePosOf(list, tk) {
+  const q = String(tk || '');
+  const p = (Array.isArray(list) ? list : []).find((x) => x && x.instrument && (x.instrument.ticker === q || shortTicker(x.instrument.ticker) === q));
+  if (!p) return null;
+  const qty = num(p.quantity);
+  const avail = typeof p.quantityAvailableForTrading === 'number' ? p.quantityAvailableForTrading : qty;
+  return { ticker: p.instrument.ticker, qty, avail, value: r2(num(p.walletImpact && p.walletImpact.currentValue)), price: num(p.currentPrice), cur: p.instrument.currency || null };
+}
+async function livePosition(env, tk) {
+  const r = await t212Send(env, 'GET', '/api/v0/equity/positions');
+  if (!r.ok) throw new Error(t212Error(r));
+  return { found: livePosOf(r.body, tk) };
+}
+async function liveCheck(env, tk) {
+  if (!env.T212_KEY || !env.T212_SECRET) throw new Error('De Trading 212-sleutel is nog niet ingesteld.');
+  const out = { at: isoLocal(Date.now()), position: null, cash: null, errors: [] };
+  if (tk) {
+    if (!/^[A-Za-z0-9.\-_]{1,30}$/.test(String(tk))) throw new Error('Ongeldige ticker.');
+    try { const L = await livePosition(env, tk); out.position = L.found; out.held = !!L.found; }
+    catch (e) { out.errors.push('positie: ' + String(e && e.message || e).slice(0, 160)); }
+  }
+  const s = await t212Send(env, 'GET', '/api/v0/equity/account/summary');
+  if (s.ok && s.body) out.cash = r2(num(s.body.cash && s.body.cash.availableToTrade));
+  else out.errors.push('saldo: ' + t212Error(s));
+  if (out.position == null && out.cash == null && out.errors.length) throw new Error(out.errors.join(' '));
+  return out;
+}
+const floor4 = (x) => Math.floor(x * 10000 + 1e-9) / 10000;
+
 async function placeOrder(env, b) {
   await tradeGuard(env);
   const L = tradeLimits(await getSettings(env));
   const side = b && b.side === 'SELL' ? 'SELL' : b && b.side === 'BUY' ? 'BUY' : null;
   if (!side) throw new Error('Kies kopen of verkopen.');
   const type = b.type === 'limit' ? 'limit' : 'market';
-  const qty = Number(b.quantity);
+  let qty = Number(b.quantity);
   if (!(qty > 0) || qty > 1e6) throw new Error('Ongeldig aantal.');
   const ticker = String(b.ticker || '');
   if (!T212_TICKER.test(ticker)) throw new Error('Onbekend instrument (' + ticker.slice(0, 30) + ').');
@@ -4559,13 +4607,34 @@ async function placeOrder(env, b) {
   const short = Object.keys(pe).find((k) => pe[k] && pe[k].t212 === ticker) || null;
   let held = null;
   if (short) held = await env.DB.prepare('SELECT value, qty FROM intraday WHERE ticker = ? ORDER BY ts DESC LIMIT 1').bind(short).first().catch(() => null);
+  // Verkopen: eerst bij Trading 212 kijken wat je nu echt hebt en wat het waard is (de meting kan tien minuten oud zijn).
+  // Lukt dat niet, dan geldt de laatste meting.
+  let basis = 'meting';
   if (side === 'SELL') {
-    if (!held || !(held.qty > 0)) throw new Error('Je hebt dit aandeel niet; verkopen kan niet.');
+    try {
+      const L = await livePosition(env, ticker);
+      if (L.found) { held = { qty: L.found.avail, value: L.found.qty > 0 ? L.found.value * L.found.avail / L.found.qty : 0 }; basis = 'live'; }
+      else held = { qty: 0, value: 0 };
+    } catch (e) { /* laatste meting gebruiken */ }
+    if (!held || !(held.qty > 0)) throw new Error('Je hebt dit aandeel niet (of het zit in een pie); verkopen kan niet.');
+    const fraction = Number(b.fraction), valueEur = Number(b.valueEur);
+    if (b.fraction != null) {
+      // Deel van je positie: hetzelfde deel van wat je nu echt hebt
+      if (!(fraction > 0 && fraction <= 1)) throw new Error('Ongeldig deel van je positie.');
+      qty = fraction >= 0.99995 ? held.qty : floor4(fraction * held.qty);
+    } else if (b.valueEur != null && type === 'market') {
+      // Vast bedrag: zoveel stuks als dat bedrag nu waard is, nooit meer dan je hebt
+      if (!(valueEur > 0)) throw new Error('Ongeldig bedrag.');
+      const per = held.value / held.qty;
+      if (!(per > 0)) throw new Error('De koers is nu onbekend; probeer het zo opnieuw.');
+      qty = Math.min(held.qty, floor4(valueEur / per));
+    }
+    if (!(qty > 0)) throw new Error('Het aantal komt uit op 0; maak de order groter.');
     if (qty > held.qty * 1.000001) throw new Error('Je hebt maar ' + held.qty + ' stuks.');
   }
   const est = Number(b.estEur);
   const serverEst = held && held.qty > 0 ? held.value / held.qty * qty : null;
-  const eur = Math.max(isFinite(est) && est > 0 ? est : 0, serverEst || 0);
+  const eur = side === 'SELL' && (b.fraction != null || b.valueEur != null) && serverEst > 0 ? serverEst : Math.max(isFinite(est) && est > 0 ? est : 0, serverEst || 0);
   if (!(eur > 0)) throw new Error('Het geschatte bedrag ontbreekt.');
   if (eur > L.perOrder) throw new Error('Deze order (± €' + eur.toFixed(2) + ') is groter dan je grens per order (€' + L.perOrder + '). Pas de grens aan bij Koppelingen als dat de bedoeling is.');
   const day = parts(new Date()).day;
@@ -4590,7 +4659,7 @@ async function placeOrder(env, b) {
   await tradeLog(env, entry);
   if (!r.ok) throw new Error(entry.error);
   await setKv(env, 'trade_day', JSON.stringify({ day, eur: used + eur }));
-  return { order: r.body, entry };
+  return { order: r.body, entry, qty, basis };
 }
 async function openOrders(env) {
   await tradeGuard(env);

@@ -32,7 +32,7 @@ function renderHome() {
       '<span class="nm">' + esc(c.name) + '</span>' +
       '<span class="v big ' + tone(c.changePct) + '">' + esc(spct(c.changePct)) + '</span>' +
       '<span class="sub"><b class="' + tone(c.change) + '">' + esc(seur(c.change)) + '</b> op ' + esc(eur(c.value)) + '</span>' +
-      spark(seriesFor(c.tk, 'today'), toneColor(c.changePct), 'spark tall') + '</button>';
+      spark(marketSeries(c.tk, 'today'), toneColor(c.changePct), 'spark tall') + '</button>';
   fill('movers', mv.up.length ? mv.up.map((c) => moverTile(c, c.changePct > 0 ? 'Stijger' : 'Beste')).concat([marketTile(mv)], mv.down.map((c) => moverTile(c, c.changePct < 0 ? 'Daler' : 'Zwakste')))
     : ['<p class="empty">Nog geen metingen van vandaag.</p>']);
 
@@ -82,7 +82,7 @@ function marketTile(mv) {
     '<span class="nm">gemeten via ' + esc(b.tk) + ', in euro</span>' +
     '<span class="v big ' + tone(b.changePct) + '">' + esc(spct(b.changePct)) + '</span>' +
     '<span class="sub">' + esc(vsMarket(mv)) + '</span>' +
-    spark(seriesFor(b.tk, 'today'), C.accent, 'spark tall') + '</button>';
+    spark(marketSeries(b.tk, 'today'), C.accent, 'spark tall') + '</button>';
 }
 
 const SORTS = [['move', 'Verandering'], ['value', 'Waarde'], ['result', 'Sinds aankoop'], ['name', 'Naam']];
@@ -196,13 +196,13 @@ function renderMHome() {
   $('m-breadth').innerHTML = withChange.length ? split(up, down) + esc(up + ' omhoog, ' + down + ' omlaag') : '';
   $('m-movers-title').textContent = 'Stijgers, markt en dalers';
   const mv = moversModel();
-  const row = (c) => mRow(c, seriesFor(c.tk, 'today'), { top: spct(c.changePct), bottom: seur(c.change), tone: c.changePct });
+  const row = (c) => mRow(c, marketSeries(c.tk, 'today'), { top: spct(c.changePct), bottom: seur(c.change), tone: c.changePct });
   let market = '';
   if (mv.bench) {
     const b = mv.bench.c;
     market = '<button type="button" class="m-row market" data-ticker="' + esc(b.tk) + '" aria-label="' + esc('Markt, ' + mv.bench.label + ', ' + spct(b.changePct)) + '">' +
       '<span class="l"><span class="tk">Markt: ' + esc(mv.bench.label) + '</span><span class="nm">' + esc(isNum(mv.diff) ? 'Jij ' + spct(mv.mine) + ', ' + N2.format(Math.abs(mv.diff * 100)) + ' pp ' + (mv.diff >= 0 ? 'beter' : 'slechter') : 'via ' + b.tk) + '</span></span>' +
-      spark(seriesFor(b.tk, 'today'), C.accent, 'mspark') +
+      spark(marketSeries(b.tk, 'today'), C.accent, 'mspark') +
       '<span class="rt"><b class="' + tone(b.changePct) + '">' + esc(spct(b.changePct)) + '</b><span class="chip-chg">via ' + esc(b.tk) + '</span></span></button>';
   }
   fill('m-movers', (mv.up.length ? mv.up.map(row).concat(market ? [market] : [], mv.down.map(row))
@@ -314,7 +314,7 @@ function setMini() {
     (calmMode()
       ? (cal && isNum(cal.pct) ? '<span class="mini-c ' + tone(cal.v) + '">' + esc(spct(cal.pct)) + '<span class="mini-w"> ' + esc(mo.cur ? 'deze maand' : fMonLong.format(cal.t)) + '</span></span>' : '')
       : isNum(T.changePct) ? '<span class="mini-c ' + tone(T.change) + '">' + esc(spct(T.changePct)) + '<span class="mini-w"> ' + esc(M.dayWord) + '</span></span>' : '') +
-    spark(seriesFor(TOTAL, ui.heroRange), C.accent, 'mini-spark');
+    spark(heroSeries(ui.heroRange), C.accent, 'mini-spark');
   ['top-mini', 'm-mini'].forEach((id) => { const el = $(id); if (el) el.innerHTML = html; });
   heroPast();
 }
@@ -471,7 +471,7 @@ function renderAccount() {
     '<section class="tile pad"><h3>Soort belegging</h3>' + donut(kinds.filter((k) => k.v > 0), pctOf(etf), 'in fondsen', 'Verdeling over fondsen, losse aandelen en vrij saldo') + kindLegend +
       '<p class="sub" style="margin-top:10px">Fondsen herkend aan de naam (ETF, UCITS, iShares, Vanguard en dergelijke).</p></section>',
     '<section class="tile pad"><h3>Winst en verlies per positie</h3>' + plBars + '<p class="sub" style="margin-top:10px">Ongerealiseerd resultaat ten opzichte van wat je erin hebt gestoken. Klik op een positie voor de details.</p></section>',
-    '<section class="tile pad"><h3>In cijfers</h3>' + facts + '</section>',
+    '<section class="tile pad"><h3>In cijfers</h3>' + facts + liveCheckBlock('') + '</section>',
   ];
   const head = '<p class="hero-label">Accountwaarde nu</p><h2 id="d-title" class="' + (mode === 'm' ? 'm-value' : 'hero-value') + '">' + esc(eur(total)) + '</h2>' +
     '<p class="' + (mode === 'm' ? 'base' : 'hero-change muted') + '" style="' + (mode === 'm' ? 'padding:6px 0 0' : '') + '">' +

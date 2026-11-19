@@ -91,8 +91,9 @@ function bigOrderBlock(st, amountEur) {
   const ok = bigOrderOk(st, amountEur);
   return '<div class="ord-big"><p class="small"><b>Grote order.</b> Dit is ongeveer ' + esc(P1.format(bigShareOf(amountEur))) + ' van je beleggingen' +
     (M.accountNow > 0 ? ' (' + esc(P1.format(amountEur / M.accountNow)) + ' van je accountwaarde)' : '') + '. Typ het bedrag in hele euro\'s (' + esc(NI.format(want)) + ') om te bevestigen.</p>' +
-    '<label class="wm-l">Bedrag ter bevestiging<span class="eur-in">€<input type="number" inputmode="numeric" step="1" data-t="big" value="' + esc(typed) + '" placeholder="' + esc(String(want)) + '"></span></label>' +
-    (typed && !ok ? '<p class="small loss">Dat is niet hetzelfde bedrag.</p>' : ok ? '<p class="small gain">Bedrag bevestigd.</p>' : '') + '</div>';
+    '<label class="wm-l">Bedrag ter bevestiging<span class="eur-in">€<input type="text" inputmode="numeric" autocomplete="off" data-t="big" value="' + esc(typed) + '" placeholder="' + esc(String(want)) + '"></span></label>' +
+    // Altijd dezelfde opbouw (ook zonder melding), zodat het veld bij het typen niet vervangen wordt
+    '<p class="small ' + (ok ? 'gain' : typed ? 'loss' : '') + '">' + (typed && !ok ? 'Dat is niet hetzelfde bedrag.' : ok ? 'Bedrag bevestigd.' : '') + '</p></div>';
 }
 
 // ---------- 158. Extra controle na een tijd zonder bevestiging ----------
@@ -120,18 +121,27 @@ async function pinMatches(pin) {
   return (await sha256Hex(L.salt + ':' + pin)) === L.hash;
 }
 function orderLockBlock(st) {
-  if (demo) return '<p class="small muted" style="margin-top:8px">Buiten de demo vraagt de tracker hier een extra controle (een PIN op dit apparaat of opnieuw inloggen met je Trading 212-sleutel) als je een tijd geen order bevestigd hebt. Zie Analyse, Orderbeveiliging.</p>';
+  if (demo) return '<p class="small muted" style="margin-top:8px">Buiten de demo vraagt de tracker hier je PIN als je een tijd geen order bevestigd hebt. Heb je nog geen PIN, dan stel je er hier een in. Zie Instellingen, Koppelingen of Analyse, Orderbeveiliging.</p>';
   if (!ordLockNeeded()) return '';
   const mins = ordLock().mins;
   const pin = ordHasPin();
   return '<div class="ord-lock"><p class="small"><b>Extra controle.</b> Je hebt op dit apparaat ' + mins + ' minuten of langer geen order bevestigd. ' +
-    (pin ? 'Vul je PIN in om deze order te kunnen plaatsen.' : 'Log opnieuw in met je Trading 212-sleutel om deze order te kunnen plaatsen. Je kunt ook een PIN instellen bij Analyse, Orderbeveiliging.') + '</p>' +
+    (pin ? 'Vul je PIN in om deze order te kunnen plaatsen.' : 'Stel een PIN in voor orders op dit apparaat (4 tot 12 cijfers). Daarna vraagt de tracker deze PIN voor je volgende orders.') + '</p>' +
     (pin ? '<label class="wm-l">PIN<input type="password" inputmode="numeric" autocomplete="off" maxlength="12" data-t="pin"></label>'
-      : '<label class="wm-l">Trading 212 API-sleutel<input type="password" autocomplete="off" spellcheck="false" data-t="lk"></label>' +
-        '<label class="wm-l">API-secret<input type="password" autocomplete="off" spellcheck="false" data-t="ls"></label>') +
-    '<div class="exp"><button type="button" class="btn ghost" data-t="unlock">Ontgrendelen</button><span class="small ord-lock-st" role="status"></span></div></div>';
+      : '<div class="plan-inputs"><label>Nieuwe PIN<input type="password" inputmode="numeric" autocomplete="new-password" maxlength="12" data-t="pinnew"></label>' +
+        '<label>Nog een keer<input type="password" inputmode="numeric" autocomplete="new-password" maxlength="12" data-t="pinnew2"></label></div>') +
+    '<div class="exp"><button type="button" class="btn ghost" data-t="unlock">' + (pin ? 'Ontgrendelen' : 'PIN instellen en doorgaan') + '</button><span class="small ord-lock-st" role="status"></span></div></div>';
 }
-// Ontgrendelen: met de PIN van dit apparaat, of door opnieuw in te loggen bij je eigen Worker
+// Een nieuwe PIN controleren en bewaren; geeft een foutmelding terug of '' als het gelukt is
+async function ordPinSet(pin, pin2) {
+  if (!/^\d{4,12}$/.test(pin)) return 'Een PIN van 4 tot 12 cijfers.';
+  if (pin !== pin2) return 'De twee invoervelden zijn niet gelijk.';
+  if (!window.crypto || !crypto.subtle) return 'Deze browser kan geen PIN bewaren.';
+  const salt = randHex(16);
+  ordLockSave({ salt, hash: await sha256Hex(salt + ':' + pin) });
+  return '';
+}
+// Ontgrendelen met de PIN van dit apparaat, of eerst een PIN instellen als die er nog niet is
 async function orderUnlockRun(dlg, after) {
   const st = /** @type {HTMLElement} */ (dlg.querySelector('.ord-lock-st'));
   const val = (k) => { const el = /** @type {HTMLInputElement} */ (dlg.querySelector('[data-t="' + k + '"]')); return el ? el.value.trim() : ''; };
@@ -143,50 +153,60 @@ async function orderUnlockRun(dlg, after) {
     say('Die PIN klopt niet.', 'loss');
     return;
   }
-  if (!val('lk') || !val('ls')) { say('Vul je sleutel en secret in.', 'loss'); return; }
-  say('Bezig met inloggen…');
-  try {
-    const res = await fetch(getUrl().replace(/\/api\/data$/, '/api/login'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: val('lk'), secret: val('ls') }) });
-    const j = await res.json().catch(() => null);
-    if (!res.ok || !j || !j.ok || !j.token) throw new Error((j && j.error) || 'de Worker gaf status ' + res.status);
-    ordOkNow();
-    after();
-  } catch (err) { say('Inloggen is mislukt: ' + err.message + '.', 'loss'); }
+  const err = await ordPinSet(val('pinnew'), val('pinnew2'));
+  if (err) { say(err, 'loss'); return; }
+  ordOkNow();
+  after();
+}
+// Opnieuw tekenen waar de PIN-instellingen staan (Analyse en Instellingen, Koppelingen)
+function ordRedraw() {
+  refresh('analyse');
+  if (linkState && $('links-body')) renderLinks();
+}
+// Wachttijd en PIN; staat op Analyse (Orderbeveiliging) en bij Instellingen, Koppelingen
+function ordPinBox() {
+  const L = ordLock();
+  const has = !!L.hash;
+  return '<div class="ord-safety">' +
+    '<p class="small" style="margin:8px 0 4px"><b>Order-PIN</b> · ' + esc(has ? 'ingesteld op dit apparaat' : 'nog niet ingesteld; de eerste order vraagt je er een in te stellen') + '</p>' +
+    '<div class="seg light" role="group" aria-label="Wachttijd">' + ORD_MINS.map((m) => '<button type="button" data-ord-mins="' + m + '" aria-pressed="' + (m === L.mins) + '">' + m + ' min</button>').join('') + '</div>' +
+    '<div class="plan-inputs" style="margin-top:10px">' +
+    (has ? '<label>Huidige PIN<input type="password" inputmode="numeric" autocomplete="current-password" maxlength="12" data-ord-pin0></label>' : '') +
+    '<label>' + (has ? 'Nieuwe PIN' : 'PIN (4 tot 12 cijfers)') + '<input type="password" inputmode="numeric" autocomplete="new-password" maxlength="12" data-ord-pin></label>' +
+    '<label>Nog een keer<input type="password" inputmode="numeric" autocomplete="new-password" maxlength="12" data-ord-pin2></label>' +
+    '<button type="button" class="btn primary" data-ord-set>' + (has ? 'PIN wijzigen' : 'PIN bewaren') + '</button>' + (has ? '<button type="button" class="btn ghost danger" data-ord-clear>PIN wissen</button>' : '') + '</div>' +
+    '<span class="small plan-status ord-st" role="status"></span>' +
+    (has ? '<p class="small muted" style="margin-top:6px">Wijzigen en wissen vragen je huidige PIN. PIN vergeten? Wis de sitegegevens van deze browser; daarna stel je bij de volgende order een nieuwe in.</p>' : '') +
+    '</div>';
 }
 function orderSafetyTile() {
   if (!tradingOn() || sharedView) return '';
   const L = ordLock();
   const left = Math.max(0, L.mins * 60000 - (Date.now() - ordOkAt()));
-  return '<section class="tile pad ord-safety"><h3>Orderbeveiliging</h3>' +
+  return '<section class="tile pad"><h3>Orderbeveiliging</h3>' +
     kvList([
       ['Extra controle na', L.mins + ' minuten zonder bevestiging'],
-      ['Controle met', L.hash ? 'PIN op dit apparaat' : 'opnieuw inloggen met je Trading 212-sleutel'],
+      ['Controle met', L.hash ? 'PIN op dit apparaat' : 'nog geen PIN: de eerste order vraagt je er een in te stellen'],
       ['Nu', demo ? 'in de demo vraagt de tracker geen extra controle' : ordLockNeeded() ? 'de volgende order vraagt een extra controle' : 'bevestigd, nog ' + Math.ceil(left / 60000) + ' minuten geldig', demo || ordLockNeeded() ? '' : 'gain'],
-    ]) +
-    '<div class="seg light" role="group" aria-label="Wachttijd" style="margin-top:10px">' + ORD_MINS.map((m) => '<button type="button" data-ord-mins="' + m + '" aria-pressed="' + (m === L.mins) + '">' + m + ' min</button>').join('') + '</div>' +
-    '<div class="plan-inputs" style="margin-top:10px"><label>' + (L.hash ? 'Nieuwe PIN' : 'PIN (minstens 4 cijfers)') + '<input type="password" inputmode="numeric" autocomplete="off" maxlength="12" data-ord-pin></label>' +
-    '<label>Nog een keer<input type="password" inputmode="numeric" autocomplete="off" maxlength="12" data-ord-pin2></label>' +
-    '<button type="button" class="btn primary" data-ord-set>PIN bewaren</button>' + (L.hash ? '<button type="button" class="btn ghost danger" data-ord-clear>PIN wissen</button>' : '') + '</div>' +
-    '<span class="small plan-status ord-st" role="status"></span>' +
-    '<p class="sub" style="margin-top:8px">De PIN blijft op dit apparaat (in de browser) en versleutelt niets: hij voorkomt vooral een order per ongeluk of door iemand die je telefoon even in handen heeft. Zonder PIN vraagt de tracker je Trading 212-sleutel opnieuw; die wordt niet bewaard. Deze controle geldt niet in de oefenmodus en niet in de demo, want daar gaat er niets naar Trading 212.</p></section>';
+    ]) + ordPinBox() +
+    '<p class="sub" style="margin-top:8px">De PIN blijft op dit apparaat (in de browser) en versleutelt niets: hij voorkomt vooral een order per ongeluk of door iemand die je telefoon even in handen heeft. Je Trading 212-sleutel is er niet voor nodig. Deze controle geldt niet in de oefenmodus en niet in de demo, want daar gaat er niets naar Trading 212.</p></section>';
 }
 document.addEventListener('click', async (e) => {
   const m = near(e, '[data-ord-mins]');
-  if (m) { ordLockSave({ mins: Number(m.dataset.ordMins) }); refresh('analyse'); return; }
+  if (m) { ordLockSave({ mins: Number(m.dataset.ordMins) }); ordRedraw(); return; }
   const box = near(e, '.ord-safety');
   if (!box) return;
   const st = /** @type {HTMLElement} */ (box.querySelector('.ord-st'));
   const say = (t, cls) => { if (st) { st.textContent = t; st.className = 'small plan-status ord-st ' + (cls || ''); } };
-  if (near(e, '[data-ord-clear]')) { ordLockSave({ salt: '', hash: '' }); refresh('analyse'); return; }
-  if (!near(e, '[data-ord-set]')) return;
   const v = (sel) => { const el = /** @type {HTMLInputElement} */ (box.querySelector(sel)); return el ? el.value.trim() : ''; };
-  const pin = v('[data-ord-pin]'), pin2 = v('[data-ord-pin2]');
-  if (!/^\d{4,12}$/.test(pin)) { say('Een PIN van 4 tot 12 cijfers.', 'loss'); return; }
-  if (pin !== pin2) { say('De twee invoervelden zijn niet gelijk.', 'loss'); return; }
-  if (!crypto.subtle) { say('Deze browser kan geen PIN bewaren; gebruik opnieuw inloggen.', 'loss'); return; }
-  const salt = randHex(16);
-  ordLockSave({ salt, hash: await sha256Hex(salt + ':' + pin) });
-  refresh('analyse');
+  const clear = near(e, '[data-ord-clear]'), set = near(e, '[data-ord-set]');
+  if (!clear && !set) return;
+  // Wijzigen of wissen kan alleen met de huidige PIN
+  if (ordHasPin() && !(await pinMatches(v('[data-ord-pin0]')))) { say(v('[data-ord-pin0]') ? 'De huidige PIN klopt niet.' : 'Vul je huidige PIN in.', 'loss'); return; }
+  if (clear) { ordLockSave({ salt: '', hash: '' }); ordRedraw(); return; }
+  const err = await ordPinSet(v('[data-ord-pin]'), v('[data-ord-pin2]'));
+  if (err) { say(err, 'loss'); return; }
+  ordRedraw();
 });
 
 // ---------- 56. Oefenmodus: orders tegen de echte koers, in een eigen schaduwboek ----------
