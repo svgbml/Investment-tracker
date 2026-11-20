@@ -76,6 +76,9 @@ let n = 0;
 for (const size of ['desktop', 'telefoon']) {
   for (const theme of ['light', 'dark']) {
     const { page, ctx } = await openSite(browser, base, { size, theme, fixedTime: VAST_MOMENT });
+    // Secties met content-visibility: auto tekent de browser pas als ze in beeld komen; een schermafbeelding van
+    // de hele pagina zou ze leeg laten. Voor de afbeeldingen dus alles tekenen (op de site zelf verandert niets).
+    await page.addStyleTag({ content: '.dash-sec { content-visibility: visible !important; }' });
     for (const p of PAGES) {
       await gotoPage(page, size, p);
       await page.waitForTimeout(250);

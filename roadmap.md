@@ -105,7 +105,7 @@ Secties onder de vouw (`.dash-sec`) krijgen `content-visibility: auto` met een `
 - Winst: goedkoop om te proberen, alleen CSS.
 - Let op: `foldAll` meet tegelhoogtes; voor secties buiten beeld geeft de browser dan een geschatte hoogte. Ook kan de pagina verspringen als de geschatte hoogte niet klopt. Meten voor en na.
 
-**Gebouwd (v68).** `.dash-sec { content-visibility: auto; contain-intrinsic-size: auto 640px }` en in de afdruk `visible`. Het opvouwen gaf precies dezelfde uitkomst (zelfde ingeklapte tegels en hoogtes, nagemeten) en de zoom naar en van een detailpagina onderaan Start werkt. Wel knipte `content-visibility` de focusring en schaduw van een tegel aan de rand van de sectie af; `overflow-clip-margin: 40px` lost dat op. Op desktop: `renderAll` 52 → 43 ms, `foldAll` 21 → 16 ms. Start op de telefoon heeft geen `.dash-sec`, dus daar verandert niets.
+**Gebouwd (v68).** `.dash-sec { content-visibility: auto; contain-intrinsic-size: auto 640px }` en in de afdruk `visible`. Het opvouwen gaf precies dezelfde uitkomst (zelfde ingeklapte tegels en hoogtes, nagemeten) en de zoom naar en van een detailpagina onderaan Start werkt. Wel knipte `content-visibility` de focusring en schaduw van een tegel aan de rand van de sectie af; `overflow-clip-margin: 40px` lost dat op. Een schermafbeelding van de hele pagina (Playwright `fullPage`) laat secties buiten beeld leeg; `tools/visual.mjs` zet daarom voor zijn afbeeldingen `content-visibility` uit. Op desktop: `renderAll` 52 → 43 ms, `foldAll` 21 → 16 ms. Start op de telefoon heeft geen `.dash-sec`, dus daar verandert niets.
 
 ### 6. Meten en wijzigen scheiden bij het opvouwen
 
