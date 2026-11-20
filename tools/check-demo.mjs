@@ -34,17 +34,28 @@ for (const size of ['desktop', 'telefoon']) {
   const { page, ctx, errors } = await openSite(browser, base, { size, theme: 'light' });
   for (const p of PAGES) {
     const sel = await gotoPage(page, size, p);
-    // Alle secties uitklappen: ingeklapte tegels verbergen hun inhoud
-    await page.evaluate(() => { try { document.querySelectorAll('.tile.folded').forEach((t) => t.classList.remove('folded')); } catch (e) { /* niets */ } });
-    const found = await page.evaluate((s) => {
-      const root = document.querySelector(s);
-      if (!root) return [];
-      const list = [...root.querySelectorAll('.tile, .m-card, section.tile')].filter((t) => !t.querySelector('.tile'));
-      return list.map((t) => {
-        const h = t.querySelector('h2, h3, h4, .m-head h2');
-        return { kop: (h ? h.textContent : (t.id || t.className)).trim().slice(0, 70), tekst: t.textContent.replace(/\s+/g, ' ').trim().slice(0, 600) };
-      });
-    }, sel);
+    const collect = async () => {
+      // Alle secties uitklappen: ingeklapte tegels verbergen hun inhoud
+      await page.evaluate(() => { try { document.querySelectorAll('.tile.folded').forEach((t) => t.classList.remove('folded')); } catch (e) { /* niets */ } });
+      return page.evaluate((s) => {
+        const root = document.querySelector(s);
+        if (!root) return [];
+        const list = [...root.querySelectorAll('.tile, .m-card, section.tile')].filter((t) => !t.querySelector('.tile'));
+        return list.map((t) => {
+          const h = t.querySelector('h2, h3, h4, .m-head h2');
+          return { kop: (h ? h.textContent : (t.id || t.className)).trim().slice(0, 70), tekst: t.textContent.replace(/\s+/g, ' ').trim().slice(0, 600) };
+        });
+      }, sel);
+    };
+    let found = await collect();
+    // Op de telefoon tekenen Analyse en Plannen alleen het open tabblad: elk tabblad een keer openen
+    const tabs = await page.evaluate((s) => [...document.querySelectorAll(s + ' .sec-tabs:not([hidden]) [data-sectab]')].map((b) => /** @type {HTMLElement} */ (b).dataset.sectab), sel);
+    for (const tab of tabs) {
+      await page.evaluate(([s, t]) => { const b = [...document.querySelectorAll(s + ' [data-sectab]')].find((x) => /** @type {HTMLElement} */ (x).dataset.sectab === t); if (b) /** @type {HTMLElement} */ (b).click(); }, [sel, tab]);
+      await page.waitForTimeout(250);
+      const seen = new Set(found.map((f) => f.kop + '|' + f.tekst));
+      (await collect()).forEach((f) => { if (!seen.has(f.kop + '|' + f.tekst)) found.push(f); });
+    }
     tiles += found.length;
     if (show) console.log('  ' + size + ' ' + p.key + ': ' + found.length + ' tegels — ' + found.map((f) => f.kop).join(' | '));
     found.forEach((f) => {

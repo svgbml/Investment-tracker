@@ -116,20 +116,35 @@ document.addEventListener('input', (e) => {
 });
 
 // ---------- De pagina Analyse ----------
+// Op de telefoon staat Analyse in tabbladen (secTabs) en is maar één onderdeel tegelijk te zien. Alleen dat
+// onderdeel wordt dan echt gevuld; de andere krijgen alleen hun kop (voor de tabbladen en "Pagina aanpassen").
+// Voor het rapport (pdf) zet analyseAll alles tijdelijk aan.
+let analyseAll = false;
 function renderAnalyse() {
   const host = mode === 'm' ? $('m-analyse-body') : $('analyse-body');
   if (!host || !M) return;
   const sec = (id, title, sub, tiles) => '<div class="dash-sec" data-sec="' + id + '"><div class="section-head"><h2>' + esc(title) + '</h2>' + (sub ? '<p class="muted small">' + esc(sub) + '</p>' : '') + '</div><div class="plan-grid">' + tiles.filter(Boolean).join('') + '</div></div>';
-  const AX = typeof analyseExtraTiles === 'function' ? analyseExtraTiles() : [];
+  const AX = () => (typeof analyseExtraTiles === 'function' ? analyseExtraTiles() : []);
+  const SECS = [
+    ['an-ret', 'Rendement', 'Wat je echt verdiende, tegenover een maatstaf, en met welk risico', () => { const X = AX(); return [returnsTile(), benchTile(), ratiosTile(), drawdownTile(), X[0], X[1], contribTile(), X[2], concTile(), periodCmpTile(), yearHeatTile(), realUnrealTile(), fxFeeTile(), X[3], piesTile(), wrappedTile()]; }],
+    ['an-exp', 'Doorkijk en kosten', 'Waar je geld werkelijk in zit, en wat het omwisselen kost', () => [typeof lookAllTile === 'function' ? lookAllTile() : '', typeof fxCalcTile === 'function' ? fxCalcTile() : '']],
+    ['an-mkt', 'Markt en onderzoek', 'Indexen, rentes, agenda, en wat insiders en grote beleggers doen', () => [mkOverviewTile(), econTile(), heatmapTile(), sectorRotTile(), insiderClusterTile(), earningsMoveTile(), filingsTile(), screenerTile(), etfFinderTile(), f13Tile()]],
+    ['an-trade', 'Kopen, verkopen en dagboek', 'Oefenen, beveiliging, vragen voor je verkoopt en wat je besloot', () => [paperTile(), orderSafetyTile(), sellCheckTile(), orderHistoryTile(), decJournalTile(), decYearTile()]],
+    ['an-tx', 'Transacties en begrippen', 'Alles wat er op je rekening gebeurde, en uitleg van de termen', () => [openOrdersTile(), ledgerTile(), glossaryTile()]],
+  ];
+  const lazy = mode === 'm' && !analyseAll;
   host.innerHTML = (typeof reportHead === 'function' ? reportHead() : '') +
-    sec('an-ret', 'Rendement', 'Wat je echt verdiende, tegenover een maatstaf, en met welk risico', [returnsTile(), benchTile(), ratiosTile(), drawdownTile(), AX[0], AX[1], contribTile(), AX[2], concTile(), periodCmpTile(), yearHeatTile(), realUnrealTile(), fxFeeTile(), AX[3], piesTile(), wrappedTile()]) +
-    sec('an-exp', 'Doorkijk en kosten', 'Waar je geld werkelijk in zit, en wat het omwisselen kost', [typeof lookAllTile === 'function' ? lookAllTile() : '', typeof fxCalcTile === 'function' ? fxCalcTile() : '']) +
-    sec('an-mkt', 'Markt en onderzoek', 'Indexen, rentes, agenda, en wat insiders en grote beleggers doen', [mkOverviewTile(), econTile(), heatmapTile(), sectorRotTile(), insiderClusterTile(), earningsMoveTile(), filingsTile(), screenerTile(), etfFinderTile(), f13Tile()]) +
-    sec('an-trade', 'Kopen, verkopen en dagboek', 'Oefenen, beveiliging, vragen voor je verkoopt en wat je besloot', [paperTile(), orderSafetyTile(), sellCheckTile(), orderHistoryTile(), decJournalTile(), decYearTile()]) +
-    sec('an-tx', 'Transacties en begrippen', 'Alles wat er op je rekening gebeurde, en uitleg van de termen', [openOrdersTile(), ledgerTile(), glossaryTile()]) +
+    SECS.map(([id, title, sub, tiles]) => sec(id, title, sub, lazy ? [] : tiles())).join('') +
     '<div class="dash-foot"><button type="button" class="btn ghost" data-dash-edit="analyse">Pagina aanpassen</button>' +
     '<button type="button" class="btn ghost" data-report-print title="Afdrukken of opslaan als pdf; in het rapport staan alle secties, ook de verborgen">Rapport (pdf)</button></div>';
   dashApply(host, 'analyse');
+  if (lazy) {
+    // Hetzelfde onderdeel als secTabs kiest: het gekozen tabblad, anders het eerste in de volgorde van de gebruiker
+    const first = /** @type {HTMLElement|null} */ (host.querySelector(':scope > .dash-sec'));
+    const pick = SECS.find((x) => x[1] === secPick.analyse) || SECS.find((x) => first && x[0] === first.dataset.sec) || SECS[0];
+    const grid = host.querySelector('.dash-sec[data-sec="' + pick[0] + '"] .plan-grid');
+    if (grid) grid.innerHTML = pick[3]().filter(Boolean).join('');
+  }
   drawBench(host); drawDrawdown(host); drawPeriodCmp(host); mountLedger(host);
   if (typeof mountAnalyseExtra === 'function') mountAnalyseExtra(host);
   secTabs('analyse');
@@ -211,7 +226,9 @@ function dashApply(root, key) {
     const z = sizes[sec.dataset.sec];
     if (z === 's' || z === 'l') sec.dataset.size = z; else delete sec.dataset.size;
   });
-  foldSoon();
+  // Opvouwen vóór de volgende tekening van het scherm, niet meteen: meteen dwingt de browser de hele pagina
+  // op te meten terwijl de tekenfunctie nog bezig is (en renderAll vouwt aan het eind toch op)
+  rafWork('fold', foldAll);
 }
 const DASH_SIZES = [['s', 'Klein'], ['m', 'Normaal'], ['l', 'Groot']];
 // Slepen om een sectie te verplaatsen (werkt met de muis en met een vinger)

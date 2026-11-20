@@ -691,7 +691,15 @@ function reportHead() {
 function startReport() {
   const root = document.documentElement;
   root.dataset.report = '1';
-  const done = () => { delete root.dataset.report; window.removeEventListener('afterprint', done); };
+  // Op de telefoon tekent Analyse alleen het open tabblad; voor het rapport tijdelijk alle onderdelen
+  const full = mode === 'm' && typeof analyseAll === 'boolean' && !analyseAll;
+  if (full) { analyseAll = true; refresh('analyse'); }
+  let over = false;
+  const done = () => {
+    if (over) return; over = true;
+    delete root.dataset.report; window.removeEventListener('afterprint', done);
+    if (full) { analyseAll = false; refresh('analyse'); }
+  };
   window.addEventListener('afterprint', done);
   setTimeout(() => { try { window.print(); } catch (err) { done(); } }, 60);
   setTimeout(done, 30000); // valnet: als afterprint niet komt (sommige browsers)
