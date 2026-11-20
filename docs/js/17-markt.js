@@ -378,8 +378,8 @@ document.addEventListener('change', async (e) => {
 });
 
 // ---------- Statuspagina: verbruik, geschiedenis, fouten van de site en R2 ----------
-const API_LIMITS = { fmp: [250, 'per dag'], alphavantage: [25, 'per dag'], twelvedata: [800, 'per dag'], tiingo: [1000, 'per dag'], marketaux: [100, 'per dag'], polygon: [5, 'per minuut'], finnhub: [60, 'per minuut'], fred: [120, 'per minuut'], sec: [10, 'per seconde'] };
-const API_NAMES = { fmp: 'Financial Modeling Prep', finnhub: 'Finnhub', alphavantage: 'Alpha Vantage', twelvedata: 'Twelve Data', tiingo: 'Tiingo', polygon: 'Polygon (Massive)', marketaux: 'Marketaux', sec: 'SEC', fred: 'FRED', ecb: 'ECB', eurostat: 'Eurostat', t212: 'Trading 212', ishares: 'iShares', resend: 'Resend' };
+const API_LIMITS = { fmp: [250, 'per dag'], alphavantage: [25, 'per dag'], twelvedata: [800, 'per dag'], tiingo: [1000, 'per dag'], marketaux: [100, 'per dag'], polygon: [5, 'per minuut'], openfigi: [25, 'per minuut'], gdelt: [12, 'per minuut'], finnhub: [60, 'per minuut'], fred: [120, 'per minuut'], sec: [10, 'per seconde'] };
+const API_NAMES = { fmp: 'Financial Modeling Prep', finnhub: 'Finnhub', alphavantage: 'Alpha Vantage', twelvedata: 'Twelve Data', tiingo: 'Tiingo', polygon: 'Polygon (Massive)', marketaux: 'Marketaux', openfigi: 'OpenFIGI', gdelt: 'GDELT', sec: 'SEC', fred: 'FRED', ecb: 'ECB', eurostat: 'Eurostat', t212: 'Trading 212', ishares: 'iShares', resend: 'Resend' };
 function statusExtraRows(S) {
   if (demo && !S.usage) {
     const d = new Date().toISOString().slice(0, 10);

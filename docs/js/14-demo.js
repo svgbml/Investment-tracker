@@ -215,6 +215,10 @@ function makeDemoData() {
     const nativeNow = cur === 'USD' ? pp.value / pp.quantity * 1.16 : cur === 'GBX' ? pp.value / pp.quantity * 85 : pp.value / pp.quantity;
     const fxImp = cur === 'USD' ? +(-pp.cost * (0.01 + rnd() * 0.03)).toFixed(2) : cur === 'GBX' ? +(pp.cost * (rnd() - 0.5) * 0.02).toFixed(2) : null;
     posExtra[pp.ticker] = { avg: +(nativeNow / (1 + pp.resultPct) * (cur === 'USD' ? 1.02 : 1)).toFixed(2), price: +nativeNow.toFixed(2), cur, fx: fxImp, cost: pp.cost };
+    // Noteringen zoals OpenFIGI ze geeft (beurscodes); ASML noteert in Amsterdam en de VS, de fondsen alleen in Europa
+    const FX_EX = { ASML: ['NA', 'US', 'UW', 'GY'], VUAG: ['LN', 'GY'], SXRV: ['GY', 'LN'] };
+    posExtra[pp.ticker].figi = FX_EX[pp.ticker] ? { us: pp.ticker === 'ASML' ? 'ASML' : null, fund: pp.ticker !== 'ASML', type: pp.ticker === 'ASML' ? 'Common Stock' : 'Mutual Fund', ex: FX_EX[pp.ticker] }
+      : { us: pp.ticker, fund: false, type: 'Common Stock', ex: ['US', 'UN', 'GY'] };
     const nBuys = 1 + (i % 3);
     for (let k = 0; k < nBuys; k++) {
       const d = new Date(dates[Math.max(0, nD - 60 + k * 17 + i)]); d.setHours(15, 30 + i, 0, 0);
@@ -332,6 +336,8 @@ function makeDemoData() {
       { name: 'Voorbeeld, D.', date: dIn(-33), code: 'M', change: 15000, price: 12.4, shares: 435000 }];
     P.src = { news: 'polygon', sent: 'polygon', eps: 'sec', insider: 'sec' };
   }
+  // ASML laat het nieuws van GDELT zien (geen sleutel, geen stemming)
+  if (research.ASML) research.ASML.src = Object.assign({}, research.ASML.src || {}, { news: 'gdelt' });
   const marketNews = { updated: iso(now), items: [1, 3, 5, 8, 12, 20, 26, 30].map((h, k) => ({ t: now.getTime() - h * HOUR,
     headline: ['Voorbeeld: centrale bank houdt rente gelijk', 'Voorbeeld: techaandelen stijgen na sterke cijfers', 'Voorbeeld: olieprijs daalt', 'Voorbeeld: euro sterker tegenover dollar',
       'Voorbeeld: chipmakers onder druk', 'Voorbeeld: inflatie in de VS lager dan verwacht', 'Voorbeeld: beurzen in Azië gemengd', 'Voorbeeld: overname in de zorgsector'][k] + ' (geen echt nieuws)',
@@ -353,7 +359,7 @@ function makeDemoData() {
     fx: { updated: iso(now), source: 'Voorbeeld', rates: fxRates },
     hicp: { updated: iso(now), source: 'Voorbeeld', series: { NL: hser(0.034, 101.9), U2: hser(0.026, 101.3) } },
     idx: { updated: iso(now), source: 'Voorbeeld', series: { SP500: idxSer(6100, 0.0004, 0.009), NASDAQ100: idxSer(21000, 0.0005, 0.012) } },
-    features: { flags: { fx: true, inflation: true, sec: true, etfAuto: true }, has: { fmp: true, finnhub: true, sec: true, tiingo: true, polygon: true, t212: true } },
+    features: { flags: { fx: true, inflation: true, sec: true, etfAuto: true, openfigi: true, gdelt: true }, has: { fmp: true, finnhub: true, sec: true, tiingo: true, polygon: true, t212: true } },
   };
 
   // Marktoverzicht, maatstaven, deponeringen, 13F, economische agenda, pies, cijferdata en rente (voorbeelden)

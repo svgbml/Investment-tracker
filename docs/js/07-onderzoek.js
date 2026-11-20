@@ -9,7 +9,7 @@ const offTile = (title, text, fix) => '<section class="tile pad"><h3>' + esc(tit
   (demo ? '' : fix ? fixBtn(fix) : '<button type="button" class="linklike small" data-act="links">Koppelingen openen</button>') + '</section>';
 const srcOf = (R, k) => (R && R.src && R.src[k]) || 'finnhub';
 // Namen van de bronnen die de Worker in R.src zet (zie altTask en avTask in de Worker)
-const RS_SRC_NAMES = { finnhub: 'Finnhub', av: 'Alpha Vantage', polygon: 'Polygon (Massive)', marketaux: 'Marketaux', sec: 'de SEC', fmp: 'FMP' };
+const RS_SRC_NAMES = { finnhub: 'Finnhub', av: 'Alpha Vantage', polygon: 'Polygon (Massive)', marketaux: 'Marketaux', sec: 'de SEC', fmp: 'FMP', gdelt: 'GDELT' };
 const srcNameOf = (R, k) => RS_SRC_NAMES[srcOf(R, k)] || 'Finnhub';
 const INSIDER_CODES = { AQ: 'Verkregen', DS: 'Afgestaan', P: 'Koop', S: 'Verkoop', M: 'Opties omgezet', A: 'Toegekend', F: 'Ingehouden (belasting)', G: 'Geschonken', D: 'Teruggegeven', C: 'Omgezet', X: 'Opties omgezet' };
 const bigNum = (v, unit) => {
@@ -29,7 +29,7 @@ function companyResearch(c) {
   const R = (data.research || {})[c.tk];
   const tiles = [];
   // Nieuws komt van Finnhub, Polygon, Marketaux of Alpha Vantage; analisten ook van FMP; kwartaalwinst en insiders ook van de SEC
-  const newsOff = !F.has.finnhub && !F.has.polygon && !F.has.mx && !F.has.av && !demo;
+  const newsOff = !F.has.finnhub && !F.has.polygon && !F.has.mx && !F.has.av && !(F.flags && F.flags.gdelt !== false) && !demo;
   const opinionOff = newsOff && !F.has.fmp && !F.has.sec;
   const insiderOff = !F.has.finnhub && !F.has.av && !F.has.sec && !demo;
   const wait = 'De gegevens worden opgehaald buiten de meettijden; kom straks terug.';

@@ -1,0 +1,20 @@
+[
+  {
+    "data": [
+      { "figi": "BBG000BMXD95", "name": "COCA-COLA CO/THE", "ticker": "KO", "exchCode": "US", "compositeFIGI": "BBG000BMX289", "securityType": "Common Stock", "marketSector": "Equity", "shareClassFIGI": "BBG001S5TD05", "securityType2": "Common Stock", "securityDescription": "KO" },
+      { "figi": "BBG000BMX4N8", "name": "COCA-COLA CO/THE", "ticker": "KO", "exchCode": "UN", "compositeFIGI": "BBG000BMX289", "securityType": "Common Stock", "marketSector": "Equity", "shareClassFIGI": "BBG001S5TD05", "securityType2": "Common Stock", "securityDescription": "KO" },
+      { "figi": "BBG000BMX7Y1", "name": "COCA-COLA CO/THE", "ticker": "CCC3", "exchCode": "GY", "compositeFIGI": "BBG000BMX7X2", "securityType": "Common Stock", "marketSector": "Equity", "shareClassFIGI": "BBG001S5TD05", "securityType2": "Common Stock", "securityDescription": "CCC3" }
+    ]
+  },
+  {
+    "data": [
+      { "figi": "BBG000BC2V72", "name": "RANDSTAD NV", "ticker": "RAND", "exchCode": "NA", "compositeFIGI": "BBG000BC2T23", "securityType": "Common Stock", "marketSector": "Equity", "shareClassFIGI": "BBG001S5Y9P4", "securityType2": "Common Stock", "securityDescription": "RAND" }
+    ]
+  },
+  {
+    "data": [
+      { "figi": "BBG00LYT7PH6", "name": "VANGUARD S&P 500 UCITS ACC", "ticker": "VUAG", "exchCode": "LN", "compositeFIGI": "BBG00LYT7PG7", "securityType": "ETP", "marketSector": "Equity", "shareClassFIGI": "BBG00LYT7PJ4", "securityType2": "Mutual Fund", "securityDescription": "VUAG" }
+    ]
+  },
+  { "warning": "No identifier found." }
+]

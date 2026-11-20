@@ -1,8 +1,9 @@
 # Voorbeeldantwoorden van de externe bronnen
 
 Deze bestanden zijn **nagemaakte** antwoorden in de vorm die de bronnen volgens hun documentatie teruggeven:
-Trading 212, Finnhub, Financial Modeling Prep, Alpha Vantage, Tiingo, Polygon (sinds 2025 Massive), Marketaux en de
-SEC (EDGAR: XBRL-gegevens, de lijst met meldingen en een Form 4 als XML). `worker/test/contract.mjs` voert ze aan de
+Trading 212, Finnhub, Financial Modeling Prep, Alpha Vantage, Tiingo, Polygon (sinds 2025 Massive), Marketaux, de
+SEC (EDGAR: XBRL-gegevens, de lijst met meldingen en een Form 4 als XML), OpenFIGI (ISIN naar beurs en ticker) en GDELT
+(nieuws, ArtList). `worker/test/contract.mjs` voert ze aan de
 Worker en controleert of hij ze nog goed leest. Verandert een bron de naam van een veld, dan valt die test om
 in plaats van dat de site stilletjes lege tegels toont.
 

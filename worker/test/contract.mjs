@@ -1,7 +1,7 @@
 // Contracttests: leest de Worker de antwoorden van de bronnen nog goed?
 //
 // De bewaarde voorbeeldantwoorden in worker/test/fixtures/ hebben de vorm die Trading 212, Finnhub,
-// Financial Modeling Prep, Alpha Vantage, Tiingo, Polygon (Massive), Marketaux en de SEC volgens hun documentatie teruggeven (verzonnen getallen,
+// Financial Modeling Prep, Alpha Vantage, Tiingo, Polygon (Massive), Marketaux, de SEC, OpenFIGI en GDELT volgens hun documentatie teruggeven (verzonnen getallen,
 // geen sleutels of eigen gegevens). Deze tests voeren ze aan de Worker en kijken of er aan de andere kant
 // uitkomt wat de site verwacht. Verandert een bron de naam van een veld, dan valt dit om in plaats van dat
 // er stilletjes lege tegels verschijnen.
@@ -402,6 +402,53 @@ await test('SEC: kwartaalwinst uit companyconcept en insiders uit Form 4', async
   assert.equal(rs.insider[1].change, 1000, 'A blijft positief');
   assert.ok(!calls.some((c) => /form4_old/.test(c.url)), 'een melding van jaren terug wordt niet opgehaald');
   assert.ok(!calls.some((c) => /\.htm$/.test(c.url)), 'alleen Form 4, geen kwartaalverslag');
+});
+
+// ================= OpenFIGI en GDELT (geen sleutel nodig) =================
+await test('OpenFIGI: per ISIN de beurzen, de Amerikaanse ticker en of het een fonds is', async () => {
+  setKv('pos_extra', { KO: { isin: 'US1912161007' }, RAND: { isin: 'NL0000379121' }, VUAG: { isin: 'IE00BFMXXD54' }, XYZ: { isin: 'XS0000000001' } });
+  setKv('figi', {});
+  setKv('src_health', {});
+  setKv('mkt_queue', ['figi']);
+  routes = [[/api\.openfigi\.com\/v3\/mapping/, (u, init) => {
+    assert.deepEqual(JSON.parse(init.body).map((j) => j.idValue).sort(), ['IE00BFMXXD54', 'NL0000379121', 'US1912161007', 'XS0000000001']);
+    // Het antwoord volgt de volgorde van de vragen; het voorbeeld staat in de volgorde KO, RAND, VUAG, onbekend
+    const order = ['US1912161007', 'NL0000379121', 'IE00BFMXXD54', 'XS0000000001'];
+    const fxList = fx('openfigi-mapping');
+    return reply(JSON.parse(init.body).map((j) => fxList[order.indexOf(j.idValue)]));
+  }]];
+  await req('/api/market', { method: 'POST' });
+  const m = JSON.parse(kv('figi'));
+  assert.equal(m.US1912161007.us, 'KO', 'exchCode US is het samengestelde Amerikaanse symbool');
+  assert.deepEqual(m.US1912161007.ex.map((e) => e[0]), ['US', 'UN', 'GY']);
+  assert.equal(m.US1912161007.name, 'COCA-COLA CO/THE');
+  assert.equal(m.NL0000379121.us, null);
+  assert.equal(m.IE00BFMXXD54.fund, true, 'securityType ETP');
+  assert.equal(m.US1912161007.fund, false);
+  assert.equal(m.XS0000000001.none, true, 'warning: No identifier found.');
+  setKv('pos_extra', {}); setKv('figi', {}); setKv('figi_sym', {});
+});
+
+await test('GDELT DOC: koppen uit ArtList, seendate als tijd', async () => {
+  const body = fx('gdelt-artlist');
+  // Alleen de laatste tien dagen tellen: de datums schuiven naar gisteren en eergisteren
+  const stamp = (n) => daysAgo(n).replace(/[-:]/g, '').slice(0, 15) + 'Z';
+  body.articles[0].seendate = stamp(1);
+  body.articles[1].seendate = stamp(2);
+  await WM._test.ensureMarketTables(env);
+  DB.db.prepare('INSERT OR REPLACE INTO ext_profile (symbol, data, updated) VALUES (?,?,?)').run('RAND', JSON.stringify({ name: 'Randstad N.V.' }), '2026-01-01');
+  setKv('rs_RAND', {});
+  setKv('settings', {});
+  setKv('src_health', {});
+  setKv('mkt_queue', ['alt:RAND']);
+  routes = [[/api\.gdeltproject\.org\/api\/v2\/doc\/doc\?query=/, reply(body)]];
+  await req('/api/market', { method: 'POST' });
+  const rs = JSON.parse(kv('rs_RAND'));
+  assert.equal(rs.src.news, 'gdelt');
+  assert.equal(rs.news[0].headline, 'Randstad ziet vraag naar personeel stabiliseren', 'kop uit title, nieuwste eerst');
+  assert.equal(rs.news[0].source, 'example.com', 'bron uit domain');
+  assert.equal(rs.news[1].url, 'https://example.org/news/g2');
+  assert.ok(Math.abs(rs.news[0].t - Date.parse(daysAgo(1).slice(0, 19) + 'Z')) < 1000, 'seendate (jjjjmmddTuummssZ) wordt een tijd in ms');
 });
 
 // ================= Volledigheid =================

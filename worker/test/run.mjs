@@ -1122,6 +1122,141 @@ await test('sleutels van Tiingo, Polygon en Marketaux testen zonder ze te laten 
   routes = [];
 });
 
+await test('OpenFIGI: ISIN naar beurzen; Amerikaanse bronnen alleen voor effecten die in de VS noteren', async () => {
+  const T = WM._test;
+  setKv('src_health', {});
+  setKv('figi', {});
+  setKv('pos_extra', { AAPL: { isin: 'US0378331005', t212: 'AAPL_US_EQ' }, RAND: { isin: 'NL0000379121', t212: 'RANDa_EQ' }, VUAG: { isin: 'IE00BFMXXD54', t212: 'VUAGl_EQ' }, ONB: { isin: 'XS0000000001' } });
+  setKv('mkt_queue', ['figi']);
+  routes = [[/api\.openfigi\.com\/v3\/mapping/, (u, init) => {
+    assert.equal(init.method, 'POST');
+    assert.ok(!init.headers['X-OPENFIGI-APIKEY'], 'zonder sleutel geen sleutelkop');
+    const jobs = JSON.parse(init.body);
+    assert.ok(jobs.every((j) => j.idType === 'ID_ISIN'));
+    return reply(jobs.map((j) => ({
+      US0378331005: { data: [{ figi: 'BBG000B9XRY4', name: 'APPLE INC', ticker: 'AAPL', exchCode: 'US', securityType: 'Common Stock', securityType2: 'Common Stock' }, { ticker: 'APC', exchCode: 'GY', name: 'APPLE INC', securityType: 'Common Stock' }] },
+      NL0000379121: { data: [{ name: 'RANDSTAD NV', ticker: 'RAND', exchCode: 'NA', securityType: 'Common Stock', securityType2: 'Common Stock' }] },
+      IE00BFMXXD54: { data: [{ name: 'VANGUARD S&P 500 UCITS ETF', ticker: 'VUAG', exchCode: 'LN', securityType: 'ETP', securityType2: 'Mutual Fund' }] },
+      XS0000000001: { warning: 'No identifier found.' },
+    })[j.idValue]));
+  }]];
+  await req('/api/market', { method: 'POST' });
+  const map = JSON.parse(kv('figi'));
+  assert.equal(map.US0378331005.us, 'AAPL');
+  assert.deepEqual(map.US0378331005.ex, [['US', 'AAPL'], ['GY', 'APC']]);
+  assert.equal(map.NL0000379121.us, null, 'Randstad noteert niet in de VS');
+  assert.equal(map.IE00BFMXXD54.fund, true, 'ETP is een fonds');
+  assert.equal(map.XS0000000001.none, true);
+  const fs = JSON.parse(kv('figi_sym'));
+  assert.equal(fs.RAND.us, null);
+  assert.equal(fs.VUAG.fund, true);
+  assert.deepEqual(fs.AAPL.ex, ['US', 'GY']);
+  const e2 = Object.create(env);
+  assert.equal(await T.usTicker(e2, 'AAPL'), 'AAPL');
+  assert.equal(await T.usTicker(e2, 'RAND'), null, 'geen Amerikaanse bron voor Randstad');
+  assert.equal(await T.usTicker(e2, 'ONB'), 'ONB', 'onbekend bij OpenFIGI: de oude regel');
+  assert.equal(await T.usTicker(e2, 'WATCH'), 'WATCH', 'volglijst zonder ISIN: de oude regel');
+  // Tiingo vraagt niet naar Randstad (anders kreeg je een Amerikaans bedrijf met dezelfde letters)
+  calls = [];
+  routes = [];
+  setKv('mkt_queue', ['eod2:RAND']);
+  await req('/api/market', { method: 'POST', env: Object.assign({}, env, { TIINGO_KEY: 'ti', POLYGON_KEY: 'pg' }) });
+  assert.ok(!calls.some((c) => /tiingo|massive/.test(c.url)), JSON.stringify(calls.map((c) => c.url)));
+  // Een tweede keer vandaag: niets te doen
+  calls = [];
+  setKv('mkt_queue', ['figi']);
+  await req('/api/market', { method: 'POST' });
+  assert.ok(!calls.some((c) => /openfigi/.test(c.url)), 'binnen 30 dagen niet opnieuw');
+  // Te veel verzoeken: korte pauze, niets overschreven
+  setKv('figi', {});
+  setKv('mkt_queue', ['figi']);
+  routes = [[/api\.openfigi\.com/, reply({ error: 'Too many requests' }, 429)]];
+  await req('/api/market', { method: 'POST' });
+  const h = JSON.parse(kv('src_health')).openfigi;
+  assert.ok(h && h.minute === true && h.until > Date.now(), JSON.stringify(h));
+  assert.equal(JSON.parse(kv('figi_sym')).RAND.us, null, 'de vorige korte vorm blijft staan');
+  // Met sleutel: grotere partij en de sleutel in de kop
+  setKv('src_health', {});
+  setKv('mkt_queue', ['figi']);
+  routes = [[/api\.openfigi\.com/, (u, init) => { assert.equal(init.headers['X-OPENFIGI-APIKEY'], 'of'); return reply(JSON.parse(init.body).map(() => ({ warning: 'No identifier found.' }))); }]];
+  await req('/api/market', { method: 'POST', env: Object.assign({}, env, { OPENFIGI_KEY: 'of' }) });
+  assert.ok(calls.some((c) => /openfigi/.test(c.url)));
+  routes = [];
+  setKv('figi', {}); setKv('figi_sym', {}); setKv('pos_extra', {}); setKv('src_health', {}); setKv('mkt_queue', '[]');
+});
+
+await test('GDELT: nieuws per aandeel op bedrijfsnaam en marktnieuws, zonder sleutel; uit te zetten', async () => {
+  const T = WM._test;
+  assert.equal(T.gdeltName('Randstad N.V.'), 'Randstad');
+  assert.equal(T.gdeltName('Apple Inc.'), 'Apple');
+  assert.equal(T.gdeltName('The Coca-Cola Company'), 'Coca-Cola');
+  assert.equal(T.gdeltName('Co'), null, 'te kort: geen zoekvraag');
+  await T.ensureMarketTables(env);
+  DB.db.prepare('INSERT OR REPLACE INTO ext_profile (symbol, data, updated) VALUES (?,?,?)').run('RAND', JSON.stringify({ name: 'Randstad N.V.' }), '2026-01-01');
+  setKv('figi_sym', { RAND: { us: null, fund: false, ex: ['NA'] } });
+  setKv('src_health', {});
+  setKv('settings', {});
+  setKv('rs_RAND', {});
+  const seen = (d) => new Date(Date.now() - d * 864e5).toISOString().replace(/[-:]/g, '').slice(0, 15) + 'Z';
+  routes = [[/api\.gdeltproject\.org\/api\/v2\/doc\/doc/, (u) => {
+    const q = decodeURIComponent(new URL(u).searchParams.get('query'));
+    assert.match(q, /"Randstad"/);
+    assert.match(u, /mode=ArtList/);
+    assert.match(u, /format=json/);
+    return reply({ articles: [
+      { url: 'https://nieuws.test/r1', title: 'Randstad ziet minder vraag naar uitzendkrachten', seendate: seen(1), domain: 'nieuws.test', language: 'Dutch', sourcecountry: 'Netherlands' },
+      { url: 'http://onveilig.test/r2', title: 'Zonder https', seendate: seen(1), domain: 'onveilig.test' },
+      { url: 'https://nieuws.test/r3', title: 'Randstad koopt bureau', seendate: seen(3), domain: 'nieuws.test' },
+    ] });
+  }]];
+  setKv('mkt_queue', ['alt:RAND']);
+  await req('/api/market', { method: 'POST', env: Object.assign({}, env, { POLYGON_KEY: 'pg' }) });
+  const R = JSON.parse(kv('rs_RAND'));
+  assert.equal(R.src.news, 'gdelt');
+  assert.equal(R.news.length, 2, 'alleen https-links');
+  assert.equal(R.news[0].headline, 'Randstad ziet minder vraag naar uitzendkrachten');
+  assert.equal(R.news[0].source, 'nieuws.test');
+  assert.ok(!R.sent, 'GDELT geeft geen stemming per aandeel');
+  assert.ok(!calls.some((c) => /massive/.test(c.url)), 'Polygon niet gevraagd: Randstad noteert niet in de VS');
+  // Marktnieuws: Finnhub aan zijn limiet, geen andere sleutels: GDELT met het thema aandelenmarkt
+  setKv('mkt_queue', ['fhnews']);
+  routes = [
+    [/finnhub\.io\/api\/v1\/news/, reply({ error: 'limit' }, 429)],
+    [/api\.gdeltproject\.org/, (u) => { assert.match(decodeURIComponent(u), /theme:ECON_STOCKMARKET/); return reply({ articles: [{ url: 'https://nieuws.test/m1', title: 'Beurzen hoger', seendate: seen(0.2), domain: 'nieuws.test' }] }); }],
+  ];
+  await req('/api/market', { method: 'POST', env: Object.assign({}, env, { FINNHUB_KEY: 'fh' }) });
+  const mn = JSON.parse(kv('market_news'));
+  assert.match(mn.source, /GDELT/);
+  assert.equal(mn.items[0].headline, 'Beurzen hoger');
+  assert.match(JSON.parse(kv('src_health')).finnhub.backup, /GDELT/);
+  // GDELT vraagt om rustiger aan te doen (platte tekst): korte pauze, geen fout op de site
+  setKv('src_health', {});
+  setKv('mkt_queue', ['fhnews']);
+  routes = [[/api\.gdeltproject\.org/, reply('Please limit requests to one every 5 seconds.')]];
+  await req('/api/market', { method: 'POST' });
+  assert.equal(JSON.parse(kv('src_health')).gdelt.minute, true);
+  // Uitgezet in de instellingen: geen verzoek naar GDELT
+  setKv('src_health', {});
+  setKv('settings', { features: { gdelt: false } });
+  setKv('rs_RAND', {});
+  setKv('mkt_queue', ['alt:RAND', 'fhnews']);
+  calls = [];
+  routes = [];
+  await req('/api/market', { method: 'POST' });
+  assert.ok(!calls.some((c) => /gdeltproject/.test(c.url)), JSON.stringify(calls.map((c) => c.url)));
+  setKv('settings', {}); setKv('figi_sym', {}); setKv('src_health', {}); setKv('mkt_queue', '[]');
+  routes = [];
+});
+
+await test('sleutel van OpenFIGI testen', async () => {
+  routes = [[/api\.openfigi\.com/, (u, init) => (init.headers['X-OPENFIGI-APIKEY'] === 'goed-of' ? reply([{ data: [{ ticker: 'AAPL', exchCode: 'US' }] }]) : reply({ error: 'Invalid API key.' }, 401))]];
+  let r = await jsonOf(await req('/api/keytest', { method: 'POST', body: { name: 'OPENFIGI_KEY', value: 'goed-of' } }));
+  assert.equal(r.result.state, 'ok', JSON.stringify(r));
+  r = await jsonOf(await req('/api/keytest', { method: 'POST', body: { name: 'OPENFIGI_KEY', value: 'fout-of' } }));
+  assert.equal(r.result.state, 'fout');
+  routes = [];
+});
+
 await test('budget per bron en databasegrootte (ideeën 151, 152)', async () => {
   const T = WM._test;
   const day = T.parts(new Date()).day;
