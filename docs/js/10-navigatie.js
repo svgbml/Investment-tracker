@@ -357,38 +357,50 @@ function ensurePage(p) {
 // ---------- Panelen inklappen: lange tegels op de beginpagina's starten compact ----------
 // Tegels in dezelfde rij krijgen ingeklapt dezelfde hoogte; een klik op een leeg stuk van de tegel klapt hem uit of in.
 function foldSoon() {
-  foldAll();
+  // Vóór de volgende tekening van het scherm (requestAnimationFrame), niet meteen: dan rekent de browser de
+  // opmaak één keer uit voor opvouwen én tekenen, in plaats van midden in het werk een extra keer
+  rafWork('fold', foldAll);
   // Nog één keer als de browser alles heeft neergezet (webfont, afbeeldingen); samengevoegd, dus hoogstens één keer per frame
   cancelAnimationFrame(foldTimer);
   foldTimer = requestAnimationFrame(() => rafWork('fold', foldAll));
 }
+// Eerst alles meten, daarna alles aanpassen: om en om meten en wijzigen dwingt de browser telkens de hele
+// opmaak opnieuw uit te rekenen (bij ± 25 tegels op Start was dat 25 keer per opvouwbeurt, nu drie keer).
 function foldAll() {
   const H = mode === 'm' ? 300 : 320;
-  FOLD_ROOTS.forEach((rid) => {
-    const root = $(rid);
-    if (!root || root.hidden || !root.offsetParent) return;
-    if (root.querySelector('.fold-anim')) return; // midden in een animatie: niet opnieuw meten
-    root.classList.add('no-tr'); // meten en instellen zonder overgangen, anders "ademen" de grafieken bij elke meting
-    const tiles = [...root.querySelectorAll('.tile.pad, .m-stack > .tile')].filter((t) => !t.closest(FOLD_SKIP) && !t.classList.contains('fold-anim'));
-    // Eerst alles op natuurlijke hoogte meten
-    tiles.forEach((t) => { t.classList.remove('folded', 'fit'); t.style.minHeight = ''; t.style.maxHeight = ''; t.querySelectorAll('.fit-chart').forEach((c) => c.classList.remove('fit-chart')); });
-    const info = tiles.map((t, i) => {
+  // 1. Lezen: welke wortels zijn zichtbaar en niet midden in een animatie
+  const roots = FOLD_ROOTS.map((rid) => ({ rid, root: $(rid) }))
+    .filter((x) => x.root && !x.root.hidden && x.root.offsetParent && !x.root.querySelector('.fold-anim'));
+  if (!roots.length) return;
+  // 2. Schrijven: alles terug naar de natuurlijke hoogte, zonder overgangen (anders "ademen" de grafieken)
+  roots.forEach((x) => {
+    x.root.classList.add('no-tr');
+    x.tiles = [...x.root.querySelectorAll('.tile.pad, .m-stack > .tile')].filter((t) => !t.closest(FOLD_SKIP) && !t.classList.contains('fold-anim'));
+    x.tiles.forEach((t) => { t.classList.remove('folded', 'fit'); t.style.minHeight = ''; t.style.maxHeight = ''; t.querySelectorAll('.fit-chart').forEach((c) => c.classList.remove('fit-chart')); });
+  });
+  // 3. Lezen: hoogtes, rijen en waar de grafiek staat (één keer opmaak uitrekenen voor alles)
+  roots.forEach((x) => {
+    x.info = x.tiles.map((t, i) => {
       const h3 = t.querySelector('h3');
-      return { t, key: rid + ':' + (h3 ? h3.textContent : i), full: t.scrollHeight, row: (t.parentElement.id || '') + ':' + t.offsetTop };
+      const full = t.scrollHeight;
+      return { t, key: x.rid + ':' + (h3 ? h3.textContent : i), full, row: (t.parentElement.id || '') + ':' + t.offsetTop, fit: full > H + 24 ? fitMeasure(t, H) : null };
     });
+  });
+  // 4. Schrijven: opvouwen, gelijke hoogte per rij, grafieken passend maken
+  roots.forEach((x) => {
     const rows = new Map();
-    info.forEach((x) => { const r = rows.get(x.row) || []; r.push(x); rows.set(x.row, r); });
+    x.info.forEach((o) => { const r = rows.get(o.row) || []; r.push(o); rows.set(o.row, r); });
     rows.forEach((row) => {
-      const even = row.length > 1 ? Math.min(H, Math.max(...row.map((x) => x.full))) : 0;
-      row.forEach((x) => {
-        const t = x.t;
+      const even = row.length > 1 ? Math.min(H, Math.max(...row.map((o) => o.full))) : 0;
+      row.forEach((o) => {
+        const t = o.t;
         t.style.setProperty('--fold-h', H + 'px');
         if (even) t.style.minHeight = even + 'px';
-        if (x.full <= H + 24) { t.classList.remove('fold'); t.removeAttribute('data-fold'); const b = t.querySelector(':scope > .fold-btn'); if (b) b.remove(); return; }
+        if (o.full <= H + 24) { t.classList.remove('fold'); t.removeAttribute('data-fold'); const b = t.querySelector(':scope > .fold-btn'); if (b) b.remove(); return; }
         t.classList.add('fold');
-        t.dataset.fold = x.key;
-        const open = unfolded.has(x.key);
-        fitChart(t, H);
+        t.dataset.fold = o.key;
+        const open = unfolded.has(o.key);
+        fitApply(t, o.fit);
         t.classList.toggle('folded', !open);
         if (t.tagName === 'BUTTON') return; // een klikbare tegel opent zijn eigen pagina met alles
         let b = t.querySelector(':scope > .fold-btn');
@@ -397,17 +409,19 @@ function foldAll() {
         b.textContent = open ? 'Minder tonen' : 'Meer tonen';
       });
     });
-    void root.offsetHeight;
-    root.classList.remove('no-tr');
   });
+  // 5. De nieuwe stand vastleggen zonder overgangen, daarna mogen ze weer
+  void roots[0].root.offsetHeight;
+  roots.forEach((x) => x.root.classList.remove('no-tr'));
 }
 // Ingeklapt moet een grafiek met zijn labels helemaal zichtbaar zijn: maak hem zo nodig lager (de y-as wordt dan samengedrukt)
 const CHART_SEL = '.bars, .chart, svg.dual, .donut, .fin-bars';
-function fitChart(t, H) {
+// Alleen meten (in de natuurlijke stand van de tegel); fitApply zet het daarna
+function fitMeasure(t, H) {
   const ch = t.querySelector(CHART_SEL);
-  if (!ch) return;
+  if (!ch) return null;
   const tr = t.getBoundingClientRect(), cr = ch.getBoundingClientRect();
-  if (cr.top - tr.top > H - 120 || cr.height < 40) return;
+  if (cr.top - tr.top > H - 120 || cr.height < 40) return null;
   let end = ch, sib = ch.nextElementSibling;
   while (sib && sib.matches('.bar-labels, .xlabels, .legend, .heat-key, .srri-l')) { end = sib; sib = sib.nextElementSibling; }
   if (end === ch && ch.parentElement !== t) { // labels kunnen naast de omhullende staan
@@ -416,12 +430,17 @@ function fitChart(t, H) {
   }
   const bottom = end.getBoundingClientRect().bottom - tr.top;
   const limit = H - 44;
-  t.classList.add('fit');
-  if (bottom <= limit) return;
-  const nh = Math.max(48, cr.height - (bottom - limit));
-  ch.style.setProperty('--fit-h', Math.floor(nh) + 'px');
-  ch.classList.add('fit-chart');
+  return { ch, h: bottom <= limit ? null : Math.floor(Math.max(48, cr.height - (bottom - limit))) };
 }
+function fitApply(t, f) {
+  if (!f) return;
+  t.classList.add('fit');
+  if (f.h == null) return;
+  f.ch.style.setProperty('--fit-h', f.h + 'px');
+  f.ch.classList.add('fit-chart');
+}
+// Losse aanroep (meten en meteen zetten), voor wie één tegel passend wil maken
+function fitChart(t, H) { fitApply(t, fitMeasure(t, H)); }
 function toggleFold(t) {
   if (t.classList.contains('fold-anim')) return;
   const key = t.dataset.fold;
