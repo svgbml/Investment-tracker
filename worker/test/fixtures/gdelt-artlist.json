@@ -1,0 +1,24 @@
+{
+  "articles": [
+    {
+      "url": "https://example.com/nieuws/g1",
+      "url_mobile": "",
+      "title": "Randstad ziet vraag naar personeel stabiliseren",
+      "seendate": "20261118T091500Z",
+      "socialimage": "https://example.com/g1.jpg",
+      "domain": "example.com",
+      "language": "Dutch",
+      "sourcecountry": "Netherlands"
+    },
+    {
+      "url": "https://example.org/news/g2",
+      "url_mobile": "https://m.example.org/news/g2",
+      "title": "Staffing firm Randstad reports lower quarterly revenue",
+      "seendate": "20261117T143000Z",
+      "socialimage": "",
+      "domain": "example.org",
+      "language": "English",
+      "sourcecountry": "United Kingdom"
+    }
+  ]
+}

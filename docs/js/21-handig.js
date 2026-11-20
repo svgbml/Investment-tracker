@@ -8,6 +8,14 @@
 // (gemaakt met node tools/changelog.mjs); hieronder staat alleen wat de gebruiker merkt.
 // Bij een nieuwe versie: zet de regels van die versie bovenaan, met VERSION uit js/01-basis.js als sleutel.
 const WHATS_NEW = {
+  v67: [
+    'Nieuwe gratis reserves bij Koppelingen: Tiingo en Polygon (Massive) voor koersgeschiedenis, Polygon en Marketaux voor nieuws.',
+    'Met een SEC-e-mailadres komen de winst per aandeel per kwartaal en insiderhandel (Form 4) rechtstreeks van de SEC; FMP vult analisten en koersdoel aan.',
+    'OpenFIGI zoekt per ISIN op op welke beurzen een effect noteert; Amerikaanse bronnen worden alleen nog gevraagd naar effecten die in de VS noteren. De bedrijfspagina toont de noteringen.',
+    'GDELT is een nieuwe reserve voor nieuws, zonder sleutel. Beide staan aan en zijn bij Koppelingen uit te zetten.',
+    'De Worker leest elk uur minder uit zijn database: het opruimen van oude metingen laat de dagen van eerdere jaren nu met rust.',
+    'Alpha Vantage is nu de laatste reserve en vult alleen aan wat de andere bronnen niet leveren, zodat zijn 25 verzoeken per dag langer meegaan.',
+  ],
   v64: [
     'Spaarstand: raakt de database van je Worker 85% van zijn gratis daglimiet, dan blijft hij meten maar ververst hij minder vaak tot middernacht (UTC). Bij 70% krijg je een melding.',
     'Als er niets nieuws is, leest de Worker nu één rij in plaats van het hele overzicht.',
@@ -133,6 +141,9 @@ const FIX_LABEL = {
   FMP_KEY: 'FMP-sleutel invullen',
   ALPHAVANTAGE_KEY: 'Alpha Vantage-sleutel invullen',
   TWELVEDATA_KEY: 'Twelve Data-sleutel invullen',
+  TIINGO_KEY: 'Tiingo-sleutel invullen',
+  POLYGON_KEY: 'Polygon-sleutel invullen',
+  MARKETAUX_KEY: 'Marketaux-sleutel invullen',
   FRED_KEY: 'FRED-sleutel invullen',
   SEC_CONTACT: 'E-mailadres voor SEC invullen',
   T212_KEY: 'Trading 212-sleutel invullen',
@@ -140,13 +151,15 @@ const FIX_LABEL = {
   'flag:inflation': 'Inflatie aanzetten',
   'flag:indices': 'Indexen aanzetten',
   'flag:sec': 'SEC EDGAR aanzetten',
+  'flag:gdelt': 'GDELT aanzetten',
+  'flag:openfigi': 'OpenFIGI aanzetten',
   'flag:trading': 'Kopen en verkopen aanzetten',
   'sec:import': 'Geschiedenis overnemen',
   'sec:account': 'Toegang en Worker openen',
   'sec:links': 'Koppelingen openen',
 };
 // Bij welke sleutel hoort welke functie: staat die al aan, dan is er niets op te lossen
-const FIX_HAS = { FMP_KEY: 'fmp', FINNHUB_KEY: 'finnhub', ALPHAVANTAGE_KEY: 'av', TWELVEDATA_KEY: 'td', SEC_CONTACT: 'sec', T212_KEY: 't212' };
+const FIX_HAS = { FMP_KEY: 'fmp', FINNHUB_KEY: 'finnhub', ALPHAVANTAGE_KEY: 'av', TWELVEDATA_KEY: 'td', TIINGO_KEY: 'tiingo', POLYGON_KEY: 'polygon', MARKETAUX_KEY: 'mx', SEC_CONTACT: 'sec', T212_KEY: 't212' };
 // Heeft een knop zin? Niet in de voorbeeldweergave, en niet als de sleutel of schakelaar al aanstaat
 function fixShow(fix) {
   if (demo || !fix) return false;

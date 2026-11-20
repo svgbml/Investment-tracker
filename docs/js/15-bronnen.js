@@ -36,7 +36,7 @@ function demoHealth() {
   const now = Date.now();
   return {
     now: new Date(now).toISOString(), day: nlDay(), tradingDay: tradingDayNL(), usDay: nlShiftDay(tradingDayNL(), -1),
-    sources: { finnhub: { fails: 1, msg: 'Finnhub gaf 429', at: new Date(now - 3 * HOUR).toISOString(), backup: 'Alpha Vantage (marktnieuws)', backupAt: new Date(now - 3 * HOUR).toISOString() },
+    sources: { finnhub: { fails: 1, msg: 'Finnhub gaf 429', at: new Date(now - 3 * HOUR).toISOString(), backup: 'Polygon (marktnieuws)', backupAt: new Date(now - 3 * HOUR).toISOString() },
       twelvedata: { fails: 3, msg: 'Twelve Data-limiet', until: now + 55 * 60e3, next: new Date(now + 55 * 60e3).toISOString() } },
     hist: { finnhub: Object.assign({ days: mk([18]) }, { lastLimit: { at: new Date(now - 3 * HOUR).toISOString(), msg: 'Finnhub gaf 429' } }),
       fmp: { days: mk([]), lastOk: new Date(now - HOUR).toISOString() },
@@ -55,6 +55,9 @@ function demoHealth() {
       { src: 'fmp', name: 'Financial Modeling Prep', used: 96, limit: 250, per: 'dag', own: 230, pct: 96 / 230 },
       { src: 'alphavantage', name: 'Alpha Vantage', used: 6, limit: 25, per: 'dag', own: 24, pct: 6 / 24 },
       { src: 'twelvedata', name: 'Twelve Data', used: 120, limit: 800, per: 'dag', own: null, pct: 0.15 },
+      { src: 'tiingo', name: 'Tiingo', used: 38, limit: 1000, per: 'dag', own: 900, pct: 38 / 900 },
+      { src: 'marketaux', name: 'Marketaux', used: 0, limit: 100, per: 'dag', own: 90, pct: 0 },
+      { src: 'polygon', name: 'Polygon (Massive)', used: 52, limit: 5, per: 'minuut', own: null, pct: null },
       { src: 'finnhub', name: 'Finnhub', used: 140, limit: 60, per: 'minuut', own: null, pct: null },
       { src: 'sec', name: 'SEC EDGAR', used: 18, limit: 10, per: 'seconde', own: null, pct: null },
     ] },
@@ -69,7 +72,7 @@ function demoHealth() {
     r2: { on: true, keep: { daily: 7, weekly: 4 }, last: nlDay(), copies: lastDaysNL(7).reverse().map((d) => ({ key: 'dag/' + d + '.json', kind: 'dag', bytes: 1.4e6, at: d + 'T05:20:00Z' }))
       .concat(lastDaysNL(22).filter((d) => nlWeekday(d) === 7).map((d) => ({ key: 'week/' + d + '.json', kind: 'week', bytes: 1.4e6, at: d + 'T05:20:00Z' }))) },
     backoff: [15, 60, 240, 720, 1440],
-    keys: { T212_KEY: true, FMP_KEY: true, FINNHUB_KEY: true, ALPHAVANTAGE_KEY: false, TWELVEDATA_KEY: true, FRED_KEY: false, SEC_CONTACT: true, RESEND_KEY: false },
+    keys: { T212_KEY: true, FMP_KEY: true, FINNHUB_KEY: true, ALPHAVANTAGE_KEY: false, TWELVEDATA_KEY: true, TIINGO_KEY: true, POLYGON_KEY: true, MARKETAUX_KEY: false, FRED_KEY: false, SEC_CONTACT: true, RESEND_KEY: false },
   };
 }
 

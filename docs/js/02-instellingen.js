@@ -164,9 +164,13 @@ const LINKS = [
     keys: [['FMP_KEY', 'API-sleutel']], href: 'https://site.financialmodelingprep.com/register' },
   { id: 'finnhub', title: 'Finnhub', need: 'gratis sleutel', what: 'Nieuws per aandeel, wat analisten vinden, verrassingen bij kwartaalcijfers en insiderhandel (Amerikaanse aandelen).',
     keys: [['FINNHUB_KEY', 'API-sleutel']], href: 'https://finnhub.io/register' },
-  { id: 'av', title: 'Alpha Vantage', need: 'gratis sleutel (reserve)', what: 'Reserve voor Finnhub: vult nieuws, nieuwsstemming, analisten, koersdoel, kwartaalcijfers en insiderhandel aan als Finnhub ze niet levert. Gratis zijn 25 verzoeken per dag, dus een paar aandelen per dag.',
+  { id: 'polygon', title: 'Polygon (Massive)', need: 'gratis sleutel (reserve)', what: 'Reserve voor Finnhub en FMP: nieuws per aandeel met de stemming erbij, marktnieuws, dagkoersen van de laatste twee jaar en een bedrijfsprofiel (Amerikaanse aandelen). Polygon heet sinds 2025 Massive; een sleutel van beide werkt. Gratis zijn 5 verzoeken per minuut, zonder daglimiet.',
+    keys: [['POLYGON_KEY', 'API-sleutel']], href: 'https://massive.com/' },
+  { id: 'marketaux', title: 'Marketaux', need: 'gratis sleutel (reserve)', what: 'Reserve voor nieuws: berichten per aandeel en marktnieuws met een stemmingsscore, als Finnhub en Polygon niets geven. Gratis zijn 100 verzoeken per dag met 3 berichten per verzoek.',
+    keys: [['MARKETAUX_KEY', 'API-sleutel']], href: 'https://www.marketaux.com/register' },
+  { id: 'av', title: 'Alpha Vantage', need: 'gratis sleutel (laatste reserve)', what: 'Laatste reserve: vult nieuws, analisten, koersdoel, kwartaalcijfers en insiderhandel alleen aan als Finnhub, Polygon, Marketaux, de SEC en FMP ze niet leveren, en dagkoersen als de andere bronnen niets geven. Gratis zijn 25 verzoeken per dag, dus een paar aandelen per dag.',
     keys: [['ALPHAVANTAGE_KEY', 'API-sleutel']], href: 'https://www.alphavantage.co/support/#api-key' },
-  { id: 'sec', title: 'SEC EDGAR', need: 'e-mailadres', what: 'Bedrijfscijfers over meerdere jaren (omzet, winst, marge) uit de officiële jaarverslagen. De SEC vraagt een contactadres bij elk verzoek; dat blijft in je Worker.',
+  { id: 'sec', title: 'SEC EDGAR', need: 'e-mailadres', what: 'Bedrijfscijfers over meerdere jaren (omzet, winst, marge) uit de officiële jaarverslagen, de winst per aandeel per kwartaal en insiderhandel uit de Form 4-meldingen (Amerikaanse bedrijven). De SEC vraagt een contactadres bij elk verzoek; dat blijft in je Worker.',
     keys: [['SEC_CONTACT', 'Je e-mailadres']], flag: 'sec', href: 'https://www.sec.gov/search-filings/edgar-application-programming-interfaces' },
   { id: 'fx', title: 'Euro-dollarkoers (ECB)', need: 'geen sleutel', what: 'Referentiekoersen van de Europese Centrale Bank via Frankfurter, voor het valuta-overzicht.', flag: 'fx', href: 'https://frankfurter.dev/' },
   { id: 'inflation', title: 'Inflatie (ECB)', need: 'geen sleutel', what: 'De HICP-prijsindex voor Nederland en de eurozone, voor je rendement na inflatie.', flag: 'inflation', href: 'https://data.ecb.europa.eu/main-figures/inflation' },
@@ -175,13 +179,19 @@ const LINKS = [
   { id: 'etfAuto', title: 'Fondssamenstelling automatisch (iShares)', need: 'geen sleutel', what: 'Probeert wekelijks de samenstelling van je indexfondsen op te halen. Lukt dat niet, dan kun je het bestand zelf toevoegen op Plannen.', flag: 'etfAuto' },
   { id: 'twelvedata', title: 'Twelve Data (koersgeschiedenis, reserve)', need: 'gratis sleutel', what: 'Dagkoersen van het afgelopen jaar voor aandelen waarvoor het gratis FMP-abonnement geen geschiedenis geeft, zodat ook die een grafiek krijgen. Gratis tot 800 verzoeken per dag.',
     keys: [['TWELVEDATA_KEY', 'API-sleutel']], href: 'https://twelvedata.com/register' },
+  { id: 'openfigi', title: 'OpenFIGI (beurs bij ISIN)', need: 'geen sleutel nodig', what: 'Zoekt per ISIN op op welke beurzen een effect noteert, onder welke ticker en of het een fonds is (van Bloomberg, gratis). Daarmee vraagt de Worker Amerikaanse bronnen alleen naar effecten die echt in de VS noteren, en niet naar een ander bedrijf met dezelfde letters. Je ISIN\'s gaan naar OpenFIGI. Zonder sleutel 25 verzoeken per minuut; een gratis sleutel geeft meer.',
+    keys: [['OPENFIGI_KEY', 'API-sleutel (optioneel)']], optKeys: true, flag: 'openfigi', href: 'https://www.openfigi.com/api' },
+  { id: 'gdelt', title: 'GDELT (nieuws, reserve)', need: 'geen sleutel', what: 'Laatste reserve voor nieuws vóór Alpha Vantage: zoekt op de naam van het bedrijf in nieuwssites wereldwijd, ook Nederlandse. Geeft koppen, bron en link, geen stemming. De namen van je aandelen gaan als zoekvraag naar GDELT. Hoogstens één verzoek per 5 seconden.',
+    flag: 'gdelt', href: 'https://www.gdeltproject.org/' },
+  { id: 'tiingo', title: 'Tiingo (koersgeschiedenis, reserve)', need: 'gratis sleutel', what: 'Dagkoersen, gecorrigeerd voor splitsingen en dividend, voor Amerikaanse aandelen en fondsen als FMP en Twelve Data niets geven. Gratis zijn 1000 verzoeken per dag, 50 per uur en 500 verschillende aandelen per maand.',
+    keys: [['TIINGO_KEY', 'API-sleutel']], href: 'https://www.tiingo.com/account/api/token' },
   { id: 'mail', title: 'Weekoverzicht per e-mail (optioneel)', need: 'gratis sleutel', what: 'Elke zaterdag na de weekmeting een korte mail met je weekrendement en de grootste stijgers en dalers, via Resend (gratis tot 3000 mails per maand). Zonder eigen domein kan Resend alleen mailen naar het adres van je Resend-account. Lukt mailen niet, dan komt het overzicht als melding (als meldingen aanstaan).',
     keys: [['RESEND_KEY', 'Resend API-sleutel'], ['MAIL_TO', 'Naar (je e-mailadres)'], ['MAIL_FROM', 'Afzender (optioneel, met eigen domein)', true]], flag: 'weeklyMail', href: 'https://resend.com/signup' },
   { id: 'trading', title: 'Kopen en verkopen (optioneel)', need: 'sleutel met orderrecht', what: 'Orders plaatsen vanuit de app: markt- en limietorders voor je posities en je volglijst. Elke order zie je eerst en bevestig je zelf; de Worker houdt je grens per order en per dag aan en verstuurt dezelfde order nooit twee keer. Je Trading 212-sleutel moet orders mogen plaatsen. Staat standaard uit.', flag: 'trading', href: 'https://docs.trading212.com/api/equity-orders' },
 ];
 // Welke bronnen bij een koppeling horen (voor de melding "reserve in gebruik")
-const LINK_SOURCES = { twelvedata: ['twelvedata'], fmp: ['fmp'], finnhub: ['finnhub'], fx: ['frankfurter'], inflation: ['ecb_hicp'], indices: ['fred'], mail: ['resend'] };
-const SOURCE_NAMES = { twelvedata: 'Twelve Data', fmp: 'FMP', finnhub: 'Finnhub', frankfurter: 'Frankfurter', ecb_hicp: 'de ECB', fred: 'FRED', resend: 'Resend' };
+const LINK_SOURCES = { openfigi: ['openfigi'], gdelt: ['gdelt'], twelvedata: ['twelvedata'], tiingo: ['tiingo'], polygon: ['polygon'], marketaux: ['marketaux'], fmp: ['fmp'], finnhub: ['finnhub'], fx: ['frankfurter'], inflation: ['ecb_hicp'], indices: ['fred'], mail: ['resend'] };
+const SOURCE_NAMES = { openfigi: 'OpenFIGI', gdelt: 'GDELT', twelvedata: 'Twelve Data', tiingo: 'Tiingo', polygon: 'Polygon', marketaux: 'Marketaux', fmp: 'FMP', finnhub: 'Finnhub', frankfurter: 'Frankfurter', ecb_hicp: 'de ECB', fred: 'FRED', resend: 'Resend' };
 function healthLine(id, H) {
   return (LINK_SOURCES[id] || []).map((src) => {
     const h = H && H[src];
@@ -194,7 +204,7 @@ function healthLine(id, H) {
   }).join('');
 }
 // ---------- Hoe dicht een bron bij zijn limiet zit (uit budgets van /api/features) ----------
-const LINK_BUDGET = { fmp: 'fmp', finnhub: 'finnhub', av: 'alphavantage', twelvedata: 'twelvedata', indices: 'fred', sec: 'sec' };
+const LINK_BUDGET = { fmp: 'fmp', finnhub: 'finnhub', av: 'alphavantage', twelvedata: 'twelvedata', tiingo: 'tiingo', polygon: 'polygon', marketaux: 'marketaux', openfigi: 'openfigi', gdelt: 'gdelt', indices: 'fred', sec: 'sec' };
 function budgetMeter(b) {
   if (!b) return '';
   const dag = b.per === 'dag';
@@ -214,15 +224,16 @@ function budgetLine(id, B) {
   return b ? budgetMeter(b) : '';
 }
 // ---------- Reserves per functie: welke bron eerst, welke daarna (zie de Worker: srcBackup, srcDown) ----------
-// [bron-id in src_health, naam, sleutel (null = geen sleutel nodig), bron-id in het budget]
+// [bron-id in src_health, naam, sleutel (null = geen sleutel nodig, 'flag:x' = schakelaar x), bron-id in het budget]
 const FUNC_ROUTES = [
-  ['Koershistorie (grafieken, risico, vergelijken)', [['fmp', 'FMP', 'FMP_KEY', 'fmp'], ['twelvedata', 'Twelve Data', 'TWELVEDATA_KEY', 'twelvedata'], ['alphavantage', 'Alpha Vantage', 'ALPHAVANTAGE_KEY', 'alphavantage']]],
-  ['Bedrijfsprofiel (sector, branche, beta)', [['fmp', 'FMP', 'FMP_KEY', 'fmp'], ['finnhub', 'Finnhub', 'FINNHUB_KEY']]],
+  ['Koershistorie (grafieken, risico, vergelijken)', [['fmp', 'FMP', 'FMP_KEY', 'fmp'], ['twelvedata', 'Twelve Data', 'TWELVEDATA_KEY', 'twelvedata'], ['tiingo', 'Tiingo', 'TIINGO_KEY', 'tiingo'], ['polygon', 'Polygon', 'POLYGON_KEY', 'polygon'], ['alphavantage', 'Alpha Vantage', 'ALPHAVANTAGE_KEY', 'alphavantage']]],
+  ['Bedrijfsprofiel (sector, branche, beta)', [['fmp', 'FMP', 'FMP_KEY', 'fmp'], ['finnhub', 'Finnhub', 'FINNHUB_KEY'], ['polygon', 'Polygon', 'POLYGON_KEY', 'polygon']]],
   ['Vergelijkbare bedrijven', [['fmp', 'FMP', 'FMP_KEY', 'fmp'], ['finnhub', 'Finnhub', 'FINNHUB_KEY']]],
   ['Kwartaalcijfers in de agenda', [['fmp', 'FMP', 'FMP_KEY', 'fmp'], ['finnhub', 'Finnhub', 'FINNHUB_KEY']]],
-  ['Nieuws, analisten en koersdoelen per aandeel', [['finnhub', 'Finnhub', 'FINNHUB_KEY'], ['alphavantage', 'Alpha Vantage', 'ALPHAVANTAGE_KEY', 'alphavantage']]],
-  ['Marktnieuws', [['finnhub', 'Finnhub', 'FINNHUB_KEY'], ['alphavantage', 'Alpha Vantage', 'ALPHAVANTAGE_KEY', 'alphavantage']]],
+  ['Nieuws, analisten en koersdoelen per aandeel', [['finnhub', 'Finnhub', 'FINNHUB_KEY'], ['polygon', 'Polygon', 'POLYGON_KEY', 'polygon'], ['marketaux', 'Marketaux', 'MARKETAUX_KEY', 'marketaux'], ['-', 'SEC (cijfers, insiders)', 'SEC_CONTACT', 'sec'], ['fmp', 'FMP (analisten)', 'FMP_KEY', 'fmp'], ['gdelt', 'GDELT (nieuws)', 'flag:gdelt', 'gdelt'], ['alphavantage', 'Alpha Vantage', 'ALPHAVANTAGE_KEY', 'alphavantage']]],
+  ['Marktnieuws', [['finnhub', 'Finnhub', 'FINNHUB_KEY'], ['polygon', 'Polygon', 'POLYGON_KEY', 'polygon'], ['marketaux', 'Marketaux', 'MARKETAUX_KEY', 'marketaux'], ['gdelt', 'GDELT', 'flag:gdelt', 'gdelt'], ['alphavantage', 'Alpha Vantage', 'ALPHAVANTAGE_KEY', 'alphavantage']]],
   ['Koersalarmen op je volglijst', [['finnhub', 'Finnhub', 'FINNHUB_KEY'], ['twelvedata', 'Twelve Data', 'TWELVEDATA_KEY', 'twelvedata'], ['-', 'laatst bekende koers', null]]],
+  ['Beurs en ticker bij een ISIN', [['openfigi', 'OpenFIGI', 'flag:openfigi', 'openfigi'], ['-', 'ticker van Trading 212', null]]],
   ['Bedrijven zoeken', [['-', 'eigen lijst (SEC)', null], ['finnhub', 'Finnhub', 'FINNHUB_KEY'], ['twelvedata', 'Twelve Data', 'TWELVEDATA_KEY', 'twelvedata']]],
   ['Indexen (S&P 500, Nasdaq-100)', [['fred', 'FRED', null], ['fmp', 'FMP', 'FMP_KEY', 'fmp']]],
   ['Euro-dollarkoers', [['frankfurter', 'Frankfurter', null], ['-', 'ECB', null]]],
@@ -231,7 +242,8 @@ const FUNC_ROUTES = [
 ];
 function sourceState(src, F) {
   const [id, , key, bud] = src;
-  if (key && !(F.keys && F.keys[key])) return { st: 'off', why: 'geen sleutel' };
+  if (key && key.indexOf('flag:') === 0) { if (F.flags && F.flags[key.slice(5)] === false) return { st: 'off', why: 'staat uit' }; }
+  else if (key && !(F.keys && F.keys[key])) return { st: 'off', why: 'geen sleutel' };
   const h = id !== '-' && F.health && F.health[id];
   if (h && h.until && h.until > Date.now()) return { st: 'down', why: (h.minute ? 'even pauze' : /limiet/i.test(h.msg || '') ? 'limiet' : 'storing') + ' tot ' + new Intl.DateTimeFormat(LOCALE, { weekday: h.until - Date.now() > 20 * 3600e3 ? 'short' : undefined, hour: '2-digit', minute: '2-digit' }).format(h.until) };
   const b = bud && F.budgets && (F.budgets.sources || []).find((x) => x.src === bud);
@@ -283,7 +295,7 @@ function cloudflareRow(B) {
 }
 
 // Sleutels die de Worker kan testen met één proefvraag, zonder op te slaan (idee 62); zie js/15-bronnen.js
-const KEY_TEST_OK = ['T212_KEY', 'T212_SECRET', 'FMP_KEY', 'FINNHUB_KEY', 'ALPHAVANTAGE_KEY', 'TWELVEDATA_KEY', 'FRED_KEY', 'SEC_CONTACT', 'RESEND_KEY'];
+const KEY_TEST_OK = ['T212_KEY', 'T212_SECRET', 'FMP_KEY', 'FINNHUB_KEY', 'ALPHAVANTAGE_KEY', 'TWELVEDATA_KEY', 'TIINGO_KEY', 'POLYGON_KEY', 'MARKETAUX_KEY', 'OPENFIGI_KEY', 'FRED_KEY', 'SEC_CONTACT', 'RESEND_KEY'];
 let linkState = null;
 
 async function workerCall(path, init) {

@@ -1,0 +1,21 @@
+{
+  "cik": "21344",
+  "entityType": "operating",
+  "sic": "2080",
+  "sicDescription": "Beverages",
+  "name": "COCA COLA CO",
+  "tickers": ["KO"],
+  "exchanges": ["NYSE"],
+  "filings": {
+    "recent": {
+      "accessionNumber": ["0000021344-26-000101", "0000021344-26-000004", "0000021344-20-000050"],
+      "filingDate": ["2026-11-10", "2026-10-27", "2020-03-02"],
+      "reportDate": ["2026-11-07", "2026-09-30", "2020-02-28"],
+      "acceptanceDateTime": ["2026-11-10T16:05:00.000Z", "2026-10-27T06:30:00.000Z", "2020-03-02T16:00:00.000Z"],
+      "form": ["4", "10-Q", "4"],
+      "primaryDocument": ["xslF345X05/wk-form4_1.xml", "ko-20260930.htm", "wf-form4_old.xml"],
+      "primaryDocDescription": ["FORM 4", "10-Q", "FORM 4"]
+    },
+    "files": []
+  }
+}

@@ -1,7 +1,7 @@
 // Contracttests: leest de Worker de antwoorden van de bronnen nog goed?
 //
 // De bewaarde voorbeeldantwoorden in worker/test/fixtures/ hebben de vorm die Trading 212, Finnhub,
-// Financial Modeling Prep en Alpha Vantage volgens hun documentatie teruggeven (verzonnen getallen,
+// Financial Modeling Prep, Alpha Vantage, Tiingo, Polygon (Massive), Marketaux, de SEC, OpenFIGI en GDELT volgens hun documentatie teruggeven (verzonnen getallen,
 // geen sleutels of eigen gegevens). Deze tests voeren ze aan de Worker en kijken of er aan de andere kant
 // uitkomt wat de site verwacht. Verandert een bron de naam van een veld, dan valt dit om in plaats van dat
 // er stilletjes lege tegels verschijnen.
@@ -274,11 +274,189 @@ await test('Alpha Vantage: dagkoersen als reserve voor FMP', async () => {
   assert.deepEqual({ day: rows[1].day, price: rows[1].price }, { day: '2026-11-14', price: 232.4 }, 'slotkoers uit "4. close"');
 });
 
+// ================= Tiingo, Polygon (Massive), Marketaux en de SEC =================
+// Nieuws en meldingen tellen alleen als ze recent zijn; de datums in de voorbeelden schuiven we daarom naar gisteren
+// en eergisteren, zodat de tests ook over een jaar nog hetzelfde toetsen.
+const daysAgo = (n) => new Date(Date.now() - n * 864e5).toISOString();
+const fxText = (naam) => readFileSync(dir + naam, 'utf8');
+
+await test('Tiingo: gecorrigeerde slotkoersen als reserve voor FMP', async () => {
+  const e2 = Object.assign({}, env, { TIINGO_KEY: 'ti' });
+  setKv('mkt_queue', ['eod:KO']);
+  setKv('tiingo_calls', '{}');
+  setKv('src_health', {});
+  setKv('market_schema', '');
+  routes = [[/api\.tiingo\.com\/tiingo\/daily\/ko\/prices/, (u, init) => {
+    assert.equal(init.headers.Authorization, 'Token ti', 'sleutel in de kop');
+    return reply(fx('tiingo-daily-prices'));
+  }]];
+  await req('/api/market', { method: 'POST', env: e2 });
+  const rows = DB.db.prepare('SELECT day, price FROM ext_prices WHERE symbol = ? ORDER BY day').all('KO');
+  const by = Object.fromEntries(rows.map((r) => [r.day, r.price]));
+  assert.equal(by['2026-11-12'], 60.9, 'adjClose gaat voor close');
+  assert.equal(by['2026-11-14'], 62.4);
+  assert.equal(JSON.parse(kv('tiingo_calls')).n, 1, 'telt tegen het dagbudget');
+});
+
+await test('Polygon: dagkoersen uit aggs (t in milliseconden)', async () => {
+  const e2 = Object.assign({}, env, { POLYGON_KEY: 'pg' });
+  setKv('mkt_queue', ['eod:PEP']);
+  setKv('src_health', {});
+  setKv('market_schema', '');
+  routes = [[/api\.massive\.com\/v2\/aggs\/ticker\/PEP\/range\/1\/day\//, (u, init) => {
+    assert.equal(init.headers.Authorization, 'Bearer pg', 'sleutel in de kop, niet in het adres');
+    return reply(fx('polygon-aggs'));
+  }]];
+  await req('/api/market', { method: 'POST', env: e2 });
+  const rows = DB.db.prepare('SELECT day, price FROM ext_prices WHERE symbol = ? ORDER BY day').all('PEP');
+  const by = Object.fromEntries(rows.map((r) => [r.day, r.price]));
+  assert.deepEqual([by['2026-11-12'], by['2026-11-13'], by['2026-11-14']], [151.4, 152.3, 153.1], 'slotkoers uit c, dag uit t');
+});
+
+await test('Polygon: profiel uit ticker overview, sector uit de SIC-code', async () => {
+  const e2 = Object.assign({}, env, { POLYGON_KEY: 'pg' });
+  setKv('mkt_queue', ['profile:KO']);
+  setKv('src_health', {});
+  setKv('market_schema', '');
+  routes = [[/api\.massive\.com\/v3\/reference\/tickers\/KO/, reply(fx('polygon-ticker-overview'))]];
+  await req('/api/market', { method: 'POST', env: e2 });
+  const p = JSON.parse(DB.db.prepare('SELECT data FROM ext_profile WHERE symbol = ?').get('KO').data);
+  assert.equal(p.source, 'Polygon');
+  assert.equal(p.name, 'Coca-Cola Co');
+  assert.equal(p.marketCap, 268000000000);
+  assert.equal(p.sector, 'Consumer Defensive', 'SIC 2080 (dranken)');
+  assert.equal(p.industry, 'BEVERAGES');
+  assert.equal(p.currency, 'USD', 'currency_name in kleine letters');
+  assert.equal(p.employees, 69000);
+  assert.equal(p.cik, '0000021344');
+  assert.equal(p.isEtf, false);
+});
+
+await test('Polygon: nieuws met stemming per aandeel (insights)', async () => {
+  const e2 = Object.assign({}, env, { POLYGON_KEY: 'pg' });
+  const body = fx('polygon-news');
+  body.results[0].published_utc = daysAgo(1).slice(0, 19) + 'Z';
+  body.results[1].published_utc = daysAgo(2).slice(0, 19) + 'Z';
+  setKv('mkt_queue', ['alt:KO']);
+  setKv('rs_KO', {});
+  setKv('src_health', {});
+  routes = [[/api\.massive\.com\/v2\/reference\/news\?ticker=KO/, reply(body)]];
+  await req('/api/market', { method: 'POST', env: e2 });
+  const rs = JSON.parse(kv('rs_KO'));
+  assert.equal(rs.src.news, 'polygon');
+  assert.equal(rs.news.length, 2);
+  assert.equal(rs.news[0].headline, 'Voorbeeldbedrijf verhoogt verwachting', 'kop uit title, nieuwste eerst');
+  assert.equal(rs.news[0].url, 'https://example.com/nieuws/p1', 'adres uit article_url');
+  assert.equal(rs.news[0].source, 'Voorbeeldkrant', 'bron uit publisher.name');
+  assert.equal(rs.sent.bull, 0.5, 'één positief en één negatief bericht over KO');
+  assert.equal(rs.src.sent, 'polygon');
+});
+
+await test('Marketaux: nieuws met sentiment_score per aandeel', async () => {
+  const e2 = Object.assign({}, env, { MARKETAUX_KEY: 'mx' });
+  const body = fx('marketaux-news-all');
+  body.data[0].published_at = daysAgo(1);
+  body.data[1].published_at = daysAgo(2);
+  setKv('mkt_queue', ['alt:KO']);
+  setKv('rs_KO', {});
+  setKv('mx_calls', '{}');
+  setKv('src_health', {});
+  routes = [[/api\.marketaux\.com\/v1\/news\/all\?symbols=KO/, reply(body)]];
+  await req('/api/market', { method: 'POST', env: e2 });
+  const rs = JSON.parse(kv('rs_KO'));
+  assert.equal(rs.src.news, 'marketaux');
+  assert.equal(rs.news[0].headline, 'Frisdrankmaker koopt sapmerk');
+  assert.equal(rs.news[0].source, 'example.net');
+  assert.equal(rs.news[1].url, 'https://example.net/nieuws/m2');
+  assert.equal(rs.sent.bull, 0.5, '0,52 telt als positief, −0,4 als negatief');
+  assert.equal(JSON.parse(kv('mx_calls')).n, 1);
+});
+
+await test('SEC: kwartaalwinst uit companyconcept en insiders uit Form 4', async () => {
+  const e2 = Object.assign({}, env, { SEC_CONTACT: 'contact@example.com' });
+  const sub = fx('sec-submissions');
+  sub.filings.recent.filingDate[0] = daysAgo(2).slice(0, 10);
+  const f4 = fxText('sec-form4.xml').replace('2026-11-07</value></transactionDate>', daysAgo(3).slice(0, 10) + '</value></transactionDate>')
+    .replace('2026-11-06</value></transactionDate>', daysAgo(4).slice(0, 10) + '</value></transactionDate>');
+  setKv('mkt_queue', ['alt:KO']);
+  setKv('rs_KO', {});
+  setKv('sec_cik', { KO: '21344' });
+  setKv('src_health', {});
+  routes = [
+    [/data\.sec\.gov\/api\/xbrl\/companyconcept\/CIK0000021344\/us-gaap\/EarningsPerShareDiluted\.json/, (u, init) => {
+      assert.match(init.headers['User-Agent'], /contact@example\.com/, 'de SEC vraagt een contactadres in de User-Agent');
+      return reply(fx('sec-companyconcept-eps'));
+    }],
+    [/data\.sec\.gov\/submissions\/CIK0000021344\.json/, reply(sub)],
+    [/www\.sec\.gov\/Archives\/edgar\/data\/21344\/000002134426000101\/wk-form4_1\.xml/, reply(f4)],
+  ];
+  await req('/api/market', { method: 'POST', env: e2 });
+  const rs = JSON.parse(kv('rs_KO'));
+  assert.equal(rs.src.eps, 'sec');
+  assert.deepEqual(rs.eps.map((x) => [x.period, x.actual, x.estimate]), [['2026-09-30', 0.77, null], ['2026-06-30', 0.81, null], ['2026-03-31', 0.72, null]],
+    'alleen kwartalen (frame CYjjjjQn), geen jaar of halfjaar');
+  assert.equal(rs.src.insider, 'sec');
+  assert.equal(rs.insider.length, 2, 'beide transacties uit de melding, de oude melding niet');
+  assert.deepEqual(rs.insider[0], { name: 'Voorbeeld Anna', date: daysAgo(3).slice(0, 10), code: 'S', change: -2500, price: 62.15, shares: 40000 });
+  assert.equal(rs.insider[1].code, 'M');
+  assert.equal(rs.insider[1].change, 1000, 'A blijft positief');
+  assert.ok(!calls.some((c) => /form4_old/.test(c.url)), 'een melding van jaren terug wordt niet opgehaald');
+  assert.ok(!calls.some((c) => /\.htm$/.test(c.url)), 'alleen Form 4, geen kwartaalverslag');
+});
+
+// ================= OpenFIGI en GDELT (geen sleutel nodig) =================
+await test('OpenFIGI: per ISIN de beurzen, de Amerikaanse ticker en of het een fonds is', async () => {
+  setKv('pos_extra', { KO: { isin: 'US1912161007' }, RAND: { isin: 'NL0000379121' }, VUAG: { isin: 'IE00BFMXXD54' }, XYZ: { isin: 'XS0000000001' } });
+  setKv('figi', {});
+  setKv('src_health', {});
+  setKv('mkt_queue', ['figi']);
+  routes = [[/api\.openfigi\.com\/v3\/mapping/, (u, init) => {
+    assert.deepEqual(JSON.parse(init.body).map((j) => j.idValue).sort(), ['IE00BFMXXD54', 'NL0000379121', 'US1912161007', 'XS0000000001']);
+    // Het antwoord volgt de volgorde van de vragen; het voorbeeld staat in de volgorde KO, RAND, VUAG, onbekend
+    const order = ['US1912161007', 'NL0000379121', 'IE00BFMXXD54', 'XS0000000001'];
+    const fxList = fx('openfigi-mapping');
+    return reply(JSON.parse(init.body).map((j) => fxList[order.indexOf(j.idValue)]));
+  }]];
+  await req('/api/market', { method: 'POST' });
+  const m = JSON.parse(kv('figi'));
+  assert.equal(m.US1912161007.us, 'KO', 'exchCode US is het samengestelde Amerikaanse symbool');
+  assert.deepEqual(m.US1912161007.ex.map((e) => e[0]), ['US', 'UN', 'GY']);
+  assert.equal(m.US1912161007.name, 'COCA-COLA CO/THE');
+  assert.equal(m.NL0000379121.us, null);
+  assert.equal(m.IE00BFMXXD54.fund, true, 'securityType ETP');
+  assert.equal(m.US1912161007.fund, false);
+  assert.equal(m.XS0000000001.none, true, 'warning: No identifier found.');
+  setKv('pos_extra', {}); setKv('figi', {}); setKv('figi_sym', {});
+});
+
+await test('GDELT DOC: koppen uit ArtList, seendate als tijd', async () => {
+  const body = fx('gdelt-artlist');
+  // Alleen de laatste tien dagen tellen: de datums schuiven naar gisteren en eergisteren
+  const stamp = (n) => daysAgo(n).replace(/[-:]/g, '').slice(0, 15) + 'Z';
+  body.articles[0].seendate = stamp(1);
+  body.articles[1].seendate = stamp(2);
+  await WM._test.ensureMarketTables(env);
+  DB.db.prepare('INSERT OR REPLACE INTO ext_profile (symbol, data, updated) VALUES (?,?,?)').run('RAND', JSON.stringify({ name: 'Randstad N.V.' }), '2026-01-01');
+  setKv('rs_RAND', {});
+  setKv('settings', {});
+  setKv('src_health', {});
+  setKv('mkt_queue', ['alt:RAND']);
+  routes = [[/api\.gdeltproject\.org\/api\/v2\/doc\/doc\?query=/, reply(body)]];
+  await req('/api/market', { method: 'POST' });
+  const rs = JSON.parse(kv('rs_RAND'));
+  assert.equal(rs.src.news, 'gdelt');
+  assert.equal(rs.news[0].headline, 'Randstad ziet vraag naar personeel stabiliseren', 'kop uit title, nieuwste eerst');
+  assert.equal(rs.news[0].source, 'example.com', 'bron uit domain');
+  assert.equal(rs.news[1].url, 'https://example.org/news/g2');
+  assert.ok(Math.abs(rs.news[0].t - Date.parse(daysAgo(1).slice(0, 19) + 'Z')) < 1000, 'seendate (jjjjmmddTuummssZ) wordt een tijd in ms');
+});
+
 // ================= Volledigheid =================
 await test('elk voorbeeldantwoord wordt door een test gebruikt', async () => {
   const bestanden = readdirSync(dir).filter((f) => f.endsWith('.json')).map((f) => f.replace(/\.json$/, ''));
   const bron = readFileSync(fileURLToPath(import.meta.url), 'utf8');
-  const ongebruikt = bestanden.filter((f) => !bron.includes("fx('" + f + "')"));
+  const ongebruikt = bestanden.filter((f) => !bron.includes("fx('" + f + "')"))
+    .concat(readdirSync(dir).filter((f) => f.endsWith('.xml') && !bron.includes("fxText('" + f + "')")));
   assert.deepEqual(ongebruikt, [], 'ongebruikte voorbeeldantwoorden: ' + ongebruikt.join(', '));
 });
 

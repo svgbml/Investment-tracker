@@ -347,6 +347,17 @@ function rangeBar(p) {
 }
 
 // Sectorvergelijking en vergelijkbare bedrijven voor één bedrijf
+// Beurscodes van OpenFIGI naar een leesbare plaats (de rest blijft de code zelf)
+const FIGI_EXCH = { US: 'VS', UN: 'New York (NYSE)', UW: 'Nasdaq', UQ: 'Nasdaq', UA: 'NYSE American', NA: 'Amsterdam', LN: 'Londen', GY: 'Xetra', GR: 'Frankfurt',
+  GF: 'Frankfurt', GM: 'München', GS: 'Stuttgart', FP: 'Parijs', IM: 'Milaan', SM: 'Madrid', SW: 'Zwitserland', BB: 'Brussel', ID: 'Dublin', CT: 'Toronto', JT: 'Tokio', HK: 'Hongkong' };
+// Noteringen volgens OpenFIGI (Worker: posExtra[tk].figi), of null als die er niet zijn
+function figiListings(tk) {
+  const f = data.posExtra && data.posExtra[tk] && data.posExtra[tk].figi;
+  if (!f || !Array.isArray(f.ex) || !f.ex.length) return null;
+  const names = [...new Set(f.ex.filter((c) => !/^U[A-Z]$/.test(c) || c === 'US').map((c) => FIGI_EXCH[c] || c))];
+  return names.map((n) => (n === 'VS' && f.us ? 'VS (' + f.us + ')' : n)).join(', ');
+}
+
 function companyMarket(c) {
   const X = M.mk;
   const isFund = ETF_RE.test(c.name) || BENCHES.some((b) => b[1].test(c.tk));
@@ -387,8 +398,9 @@ function companyMarket(c) {
     ['Beurswaarde', mcap(p.marketCap, p.currency)],
     ['Beta (beweeglijkheid t.o.v. de markt)', isNum(p.beta) && p.beta > 0 ? N2.format(p.beta) + (betas.length ? ', branchegenoten gemiddeld ' + N2.format(mean(betas)) : '') : '–'],
     ['Land en beurs', [p.country, p.exchange].filter(Boolean).join(', ') || '–'],
+  ].concat(figiListings(c.tk) ? [['Noteringen', figiListings(c.tk)]] : [], [
     ['Beursgang', p.ipoDate ? fDM.format(ymd(p.ipoDate)) + ' ' + p.ipoDate.slice(0, 4) : '–'],
-  ]) + '<h3 style="margin-top:16px">Laatste handelsdag in de VS</h3>' + dayBars +
+  ])) + (figiListings(c.tk) ? '<p class="sub" style="margin-top:6px">Noteringen volgens OpenFIGI.</p>' : '') + '<h3 style="margin-top:16px">Laatste handelsdag in de VS</h3>' + dayBars +
     '<p class="sub" style="margin-top:8px">Koersverandering' + (lastD ? ' op ' + esc(fD.format(ymd(lastD))) : '') + ', in dollars. Branche en sector zijn het gemiddelde van alle bedrijven op ' + esc(exch || 'de beurs') + '.</p></section>';
 
   const chartTile = '<section class="tile pad"><h3>Tegenover branche en sector</h3>' +

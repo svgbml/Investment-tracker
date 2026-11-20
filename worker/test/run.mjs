@@ -928,9 +928,333 @@ await test('marktnieuws: Finnhub aan zijn limiet, dan Alpha Vantage (idee 153)',
   setKv('mkt_queue', JSON.stringify(['fhnews']));
   setKv('src_health', '{}');
   await req('/api/market', { method: 'POST', env: Object.assign(Object.create(env), { FINNHUB_KEY: 'fh' }) });
-  assert.match(JSON.parse(kv('ext_errors')).marketnews.msg, /Alpha Vantage/);
+  assert.match(JSON.parse(kv('ext_errors')).marketnews.msg, /Polygon|Marketaux/);
   routes = [];
   setKv('mkt_queue', '[]');
+});
+
+await test('marktnieuws: Finnhub aan zijn limiet, dan Polygon, dan Marketaux; Alpha Vantage blijft over', async () => {
+  setKv('src_health', '{}');
+  setKv('av_calls', '{}');
+  setKv('mx_calls', '{}');
+  setKv('mkt_queue', ['fhnews']);
+  const d1 = new Date(Date.now() - 864e5).toISOString().slice(0, 19) + 'Z';
+  routes = [
+    [/finnhub\.io\/api\/v1\/news/, reply({ error: 'limit' }, 429)],
+    [/api\.massive\.com\/v2\/reference\/news/, (u, init) => {
+      assert.equal(init.headers.Authorization, 'Bearer pg', 'sleutel in de kop, niet in het adres');
+      assert.ok(!/apiKey=/.test(u));
+      return reply({ status: 'OK', results: [{ title: 'Markt stijgt', article_url: 'https://nieuws.test/p1', published_utc: d1, publisher: { name: 'Polygon-bron' }, description: 'Kort', tickers: ['AAPL', 'MSFT'] }] });
+    }],
+  ];
+  const e = Object.assign(Object.create(env), { FINNHUB_KEY: 'fh', POLYGON_KEY: 'pg', MARKETAUX_KEY: 'mx', ALPHAVANTAGE_KEY: 'av' });
+  await req('/api/market', { method: 'POST', env: e });
+  let news = JSON.parse(kv('market_news'));
+  assert.match(news.source, /Polygon/);
+  assert.equal(news.items[0].related, 'AAPL,MSFT');
+  assert.equal(news.items[0].source, 'Polygon-bron');
+  assert.ok(!calls.some((c) => /alphavantage|marketaux/.test(c.url)), 'de volgende reserves zijn niet nodig');
+  assert.match(JSON.parse(kv('src_health')).finnhub.backup, /Polygon/);
+  // Polygon ook stuk: Marketaux (3 berichten per verzoek, binnen het eigen dagbudget)
+  setKv('src_health', '{}');
+  setKv('mkt_queue', ['fhnews']);
+  routes = [
+    [/finnhub\.io\/api\/v1\/news/, reply({ error: 'limit' }, 429)],
+    [/api\.massive\.com/, reply({ status: 'ERROR' }, 500)],
+    [/api\.marketaux\.com\/v1\/news\/all/, (u) => {
+      assert.match(u, /countries=us/);
+      return reply({ meta: { found: 1, returned: 1 }, data: [{ title: 'Rente daalt', url: 'https://nieuws.test/m1', published_at: d1, source: 'nieuws.test', description: 'Kort', entities: [{ symbol: 'JPM', sentiment_score: 0.4 }] }] });
+    }],
+  ];
+  await req('/api/market', { method: 'POST', env: e });
+  news = JSON.parse(kv('market_news'));
+  assert.match(news.source, /Marketaux/);
+  assert.equal(news.items[0].related, 'JPM');
+  assert.equal(JSON.parse(kv('mx_calls')).n, 1);
+  assert.ok(!calls.some((c) => /alphavantage/.test(c.url)));
+  routes = [];
+  setKv('mkt_queue', '[]');
+  setKv('src_health', '{}');
+});
+
+await test('koershistorie: Twelve Data uit, dan Tiingo; anders Polygon; Europese symbolen niet', async () => {
+  const e2 = Object.assign({}, env, { FMP_KEY: 'fmp', TWELVEDATA_KEY: 'td', TIINGO_KEY: 'ti', POLYGON_KEY: 'pg', ALPHAVANTAGE_KEY: 'av' });
+  setKv('src_health', { twelvedata: { fails: 3, until: Date.now() + 3600e3 } });
+  setKv('eod_unavailable', []);
+  setKv('tiingo_calls', '{}');
+  setKv('mkt_queue', ['eod:LMT']);
+  routes = [[/financialmodelingprep/, reply({ 'Error Message': 'Premium' }, 402)],
+    [/api\.tiingo\.com\/tiingo\/daily\/lmt\/prices/, (u, init) => {
+      assert.equal(init.headers.Authorization, 'Token ti');
+      assert.match(u, /startDate=\d{4}-\d{2}-\d{2}/);
+      return reply([{ date: '2026-11-13T00:00:00.000Z', close: 470, adjClose: 469.5 }, { date: '2026-11-14T00:00:00.000Z', close: 472, adjClose: 472 }]);
+    }]];
+  await req('/api/market', { method: 'POST', env: e2 });
+  const rows = DB.db.prepare('SELECT day, price FROM ext_prices WHERE symbol = ? ORDER BY day').all('LMT');
+  assert.equal(rows.length, 2, JSON.stringify(rows));
+  assert.equal(rows[0].price, 469.5, 'gecorrigeerde slotkoers');
+  assert.match(JSON.parse(kv('src_health')).fmp.backup, /Tiingo/);
+  assert.ok(!calls.some((c) => /twelvedata|alphavantage|massive/.test(c.url)), 'Twelve Data staat uit, de rest is niet nodig');
+  assert.equal(JSON.parse(kv('tiingo_calls')).n, 1);
+  // Alleen Polygon: de aandelenklasse gaat met een punt (BRK.B)
+  setKv('src_health', {});
+  setKv('mkt_queue', ['eod2:BRK-B']);
+  routes = [[/api\.massive\.com\/v2\/aggs\/ticker\/BRK\.B\/range\/1\/day\//, reply({ status: 'OK', results: [{ t: Date.UTC(2026, 10, 13, 5), c: 480.5 }, { t: Date.UTC(2026, 10, 14, 5), c: 482 }] })]];
+  const e3 = Object.assign({}, env, { POLYGON_KEY: 'pg' });
+  await req('/api/market', { method: 'POST', env: e3 });
+  const r2 = DB.db.prepare('SELECT day, price FROM ext_prices WHERE symbol = ? ORDER BY day').all('BRK-B');
+  assert.deepEqual(r2.map((r) => r.day), ['2026-11-13', '2026-11-14']);
+  assert.match(JSON.parse(kv('src_health')).fmp.backup, /Polygon/);
+  // Een Europees symbool kennen Tiingo en Polygon niet: dan geen verzoek
+  setKv('mkt_queue', ['eod2:ASML.AS']);
+  calls = [];
+  routes = [];
+  await req('/api/market', { method: 'POST', env: Object.assign({}, e3, { TIINGO_KEY: 'ti' }) });
+  assert.ok(!calls.some((c) => /massive|tiingo/.test(c.url)), JSON.stringify(calls.map((c) => c.url)));
+  assert.equal(JSON.parse(kv('mkt_queue')).length, 0, 'taak afgerond, niet eindeloos opnieuw');
+  setKv('src_health', {});
+});
+
+await test('aanvulling zonder Alpha Vantage: nieuws van Polygon, kwartaalwinst en Form 4 van de SEC, analisten van FMP', async () => {
+  const e2 = Object.assign({}, env, { POLYGON_KEY: 'pg', SEC_CONTACT: 'iemand@example.com', FMP_KEY: 'fmp', ALPHAVANTAGE_KEY: 'av' });
+  setKv('src_health', {});
+  setKv('fmp_opinion_denied', '');
+  setKv('av_calls', '{}');
+  setKv('rs_NOC', {});
+  setKv('sec_cik', { NOC: '0001133421' });
+  setKv('mkt_queue', ['alt:NOC', 'av:NOC']);
+  const d1 = new Date(Date.now() - 864e5).toISOString().slice(0, 19) + 'Z', day1 = d1.slice(0, 10);
+  const art = (n, s) => ({ title: 'NOC bericht ' + n, article_url: 'https://nieuws.test/noc' + n, published_utc: d1, publisher: { name: 'Bron' }, tickers: ['NOC'], insights: [{ ticker: 'NOC', sentiment: s }] });
+  const f4 = '<?xml version="1.0"?><ownershipDocument><reportingOwner><reportingOwnerId><rptOwnerCik>1</rptOwnerCik><rptOwnerName>Doe Jane</rptOwnerName></reportingOwnerId></reportingOwner>' +
+    '<nonDerivativeTable><nonDerivativeTransaction><securityTitle><value>Common Stock</value></securityTitle><transactionDate><value>' + day1 + '</value></transactionDate>' +
+    '<transactionCoding><transactionFormType>4</transactionFormType><transactionCode>P</transactionCode></transactionCoding><transactionAmounts><transactionShares><value>100</value></transactionShares>' +
+    '<transactionPricePerShare><value>500.25</value></transactionPricePerShare><transactionAcquiredDisposedCode><value>A</value></transactionAcquiredDisposedCode></transactionAmounts>' +
+    '<postTransactionAmounts><sharesOwnedFollowingTransaction><value>1100</value></sharesOwnedFollowingTransaction></postTransactionAmounts></nonDerivativeTransaction></nonDerivativeTable></ownershipDocument>';
+  routes = [
+    [/api\.massive\.com\/v2\/reference\/news\?ticker=NOC/, reply({ status: 'OK', results: [art(1, 'positive'), art(2, 'negative'), art(3, 'positive')] })],
+    [/companyconcept\/CIK0001133421\/us-gaap\/EarningsPerShareDiluted/, (u, init) => {
+      assert.match(init.headers['User-Agent'], /iemand@example\.com/);
+      return reply({ units: { 'USD/shares': [{ end: '2026-06-30', val: 6.1, frame: 'CY2026Q2' }, { end: '2026-09-30', val: 7, frame: 'CY2026Q3' }, { end: '2025-12-31', val: 25, frame: 'CY2025', fp: 'FY' }] } });
+    }],
+    [/submissions\/CIK0001133421\.json/, reply({ filings: { recent: { form: ['4', '10-Q', '4'], filingDate: [day1, day1, '2020-01-01'], accessionNumber: ['0001-26-000001', '0001-26-000002', '0001-20-000003'], primaryDocument: ['xslF345X05/form4.xml', 'q.htm', 'old.xml'] } } })],
+    [/Archives\/edgar\/data\/1133421\/000126000001\/form4\.xml/, reply(f4)],
+    [/financialmodelingprep.*grades-consensus/, reply([{ symbol: 'NOC', strongBuy: 2, buy: 8, hold: 6, sell: 1, strongSell: 0 }])],
+    [/financialmodelingprep.*price-target-consensus/, reply([{ symbol: 'NOC', targetHigh: 700, targetLow: 450, targetConsensus: 610, targetMedian: 600 }])],
+  ];
+  const r = await jsonOf(await req('/api/market', { method: 'POST', env: e2 }));
+  assert.equal(r.ok, true, JSON.stringify(r));
+  const R = JSON.parse(kv('rs_NOC'));
+  assert.deepEqual(R.src, { news: 'polygon', sent: 'polygon', eps: 'sec', insider: 'sec', rec: 'fmp', target: 'fmp' }, JSON.stringify(R.src));
+  assert.equal(R.news.length, 3);
+  assert.ok(Math.abs(R.sent.bull - 2 / 3) < 1e-9);
+  assert.deepEqual(R.eps.map((x) => [x.period, x.actual, x.estimate]), [['2026-09-30', 7, null], ['2026-06-30', 6.1, null]]);
+  assert.deepEqual(R.insider[0], { name: 'Doe Jane', date: day1, code: 'P', change: 100, price: 500.25, shares: 1100 });
+  assert.equal(R.insider.length, 1, 'oude meldingen niet opgehaald');
+  assert.equal(R.rec[0].b, 8);
+  assert.equal(R.target.mean, 610);
+  assert.equal(R.target.low, 450);
+  assert.ok(!calls.some((c) => /alphavantage/.test(c.url)), 'Alpha Vantage hoeft niets meer');
+  assert.ok(!calls.some((c) => /old\.xml/.test(c.url)), 'meldingen ouder dan een half jaar niet');
+  // Nogmaals vandaag: niets meer te doen, en FMP pas over een week weer
+  calls = [];
+  setKv('mkt_queue', ['alt:NOC']);
+  await req('/api/market', { method: 'POST', env: e2 });
+  assert.equal(calls.filter((c) => !/t212/.test(c.url)).length, 0, JSON.stringify(calls.map((c) => c.url)));
+  routes = [];
+  setKv('mkt_queue', '[]');
+});
+
+await test('profiel en planning zonder FMP en Finnhub: Polygon, met de reserves in de rij', async () => {
+  setKv('src_health', {});
+  setKv('mkt_queue', ['profile:NOC']);
+  routes = [[/api\.massive\.com\/v3\/reference\/tickers\/NOC/, reply({ status: 'OK', results: { name: 'Northrop Grumman', market_cap: 7e10, sic_code: '3812', sic_description: 'Search, detection and navigation systems', primary_exchange: 'XNYS', currency_name: 'usd', locale: 'us', type: 'CS', cik: '0001133421', total_employees: 100000, list_date: '1981-01-01' } })]];
+  const e2 = Object.assign({}, env, { POLYGON_KEY: 'pg' });
+  await req('/api/market', { method: 'POST', env: e2 });
+  const p = JSON.parse(DB.db.prepare('SELECT data FROM ext_profile WHERE symbol = ?').get('NOC').data);
+  assert.equal(p.source, 'Polygon');
+  assert.equal(p.sector, 'Industrials');
+  assert.equal(p.currency, 'USD');
+  assert.equal(p.marketCap, 7e10);
+  const T = WM._test;
+  assert.equal(T.usSym('BRK-B'), true);
+  assert.equal(T.usSym('AAPL'), true);
+  assert.equal(T.usSym('ASML.AS'), false);
+  assert.equal(T.usSym('VOD.L'), false);
+  assert.equal(T.sicSector(7372), 'Technology');
+  assert.equal(T.sicSector(2834), 'Healthcare');
+  assert.equal(T.sicSector(9999), null);
+  // Planning: zonder FMP en Finnhub komen profiel, koershistorie, marktnieuws en de aanvulling via de reserves
+  const e3 = Object.assign({}, env, { POLYGON_KEY: 'pg', TIINGO_KEY: 'ti', MARKETAUX_KEY: 'mx' });
+  setKv('mkt_planned', '');
+  await T.planMarket(e3);
+  const q = JSON.parse(kv('mkt_queue'));
+  assert.ok(q.includes('fhnews'), JSON.stringify(q));
+  assert.ok(q.includes('profile:GOED') && q.includes('eod:AAPL') && q.includes('alt:AAPL'), JSON.stringify(q));
+  assert.ok(!q.some((t) => t.startsWith('av:')), 'zonder Alpha Vantage-sleutel geen av-taken');
+  routes = [];
+  setKv('mkt_queue', '[]');
+  setKv('src_health', {});
+});
+
+await test('sleutels van Tiingo, Polygon en Marketaux testen zonder ze te laten zien', async () => {
+  routes = [
+    [/api\.tiingo\.com\/tiingo\/daily\/aapl/, (u, init) => (init.headers.Authorization === 'Token goed-ti' ? reply({ ticker: 'AAPL', name: 'Apple' }) : reply({ detail: 'Invalid token.' }, 401))],
+    [/api\.massive\.com\/v2\/aggs\/ticker\/AAPL\/prev/, (u, init) => (init.headers.Authorization === 'Bearer goed-pg' ? reply({ status: 'OK', results: [{ c: 230 }] }) : reply({ status: 'ERROR' }, 401))],
+    [/api\.marketaux\.com/, (u) => (/goed-mx/.test(u) ? reply({ meta: {}, data: [] }) : reply({ error: { code: 'invalid_api_token' } }, 401))],
+  ];
+  for (const [name, good] of [['TIINGO_KEY', 'goed-ti'], ['POLYGON_KEY', 'goed-pg'], ['MARKETAUX_KEY', 'goed-mx']]) {
+    let r = await jsonOf(await req('/api/keytest', { method: 'POST', body: { name, value: good } }));
+    assert.equal(r.result.state, 'ok', name + ': ' + JSON.stringify(r.result));
+    assert.ok(!JSON.stringify(r).includes(good));
+    r = await jsonOf(await req('/api/keytest', { method: 'POST', body: { name, value: 'fout-' + name } }));
+    assert.equal(r.result.state, 'fout', name + ': ' + JSON.stringify(r.result));
+  }
+  // De Worker telt Tiingo en Marketaux tegen hun eigen dagbudget
+  const day = WM._test.parts(new Date()).day;
+  setKv('tiingo_calls', { day, n: 450, hour: 'x', h: 0 });
+  setKv('mx_calls', { day, n: 90 });
+  const b = await WM._test.budgetInfo(env);
+  const byId = Object.fromEntries(b.sources.map((x) => [x.src, x]));
+  assert.equal(byId.tiingo.used, 450);
+  assert.equal(byId.tiingo.pct, 0.5);
+  assert.equal(byId.marketaux.pct, 1);
+  assert.equal(byId.polygon.per, 'minuut');
+  routes = [];
+});
+
+await test('OpenFIGI: ISIN naar beurzen; Amerikaanse bronnen alleen voor effecten die in de VS noteren', async () => {
+  const T = WM._test;
+  setKv('src_health', {});
+  setKv('figi', {});
+  setKv('pos_extra', { AAPL: { isin: 'US0378331005', t212: 'AAPL_US_EQ' }, RAND: { isin: 'NL0000379121', t212: 'RANDa_EQ' }, VUAG: { isin: 'IE00BFMXXD54', t212: 'VUAGl_EQ' }, ONB: { isin: 'XS0000000001' } });
+  setKv('mkt_queue', ['figi']);
+  routes = [[/api\.openfigi\.com\/v3\/mapping/, (u, init) => {
+    assert.equal(init.method, 'POST');
+    assert.ok(!init.headers['X-OPENFIGI-APIKEY'], 'zonder sleutel geen sleutelkop');
+    const jobs = JSON.parse(init.body);
+    assert.ok(jobs.every((j) => j.idType === 'ID_ISIN'));
+    return reply(jobs.map((j) => ({
+      US0378331005: { data: [{ figi: 'BBG000B9XRY4', name: 'APPLE INC', ticker: 'AAPL', exchCode: 'US', securityType: 'Common Stock', securityType2: 'Common Stock' }, { ticker: 'APC', exchCode: 'GY', name: 'APPLE INC', securityType: 'Common Stock' }] },
+      NL0000379121: { data: [{ name: 'RANDSTAD NV', ticker: 'RAND', exchCode: 'NA', securityType: 'Common Stock', securityType2: 'Common Stock' }] },
+      IE00BFMXXD54: { data: [{ name: 'VANGUARD S&P 500 UCITS ETF', ticker: 'VUAG', exchCode: 'LN', securityType: 'ETP', securityType2: 'Mutual Fund' }] },
+      XS0000000001: { warning: 'No identifier found.' },
+    })[j.idValue]));
+  }]];
+  await req('/api/market', { method: 'POST' });
+  const map = JSON.parse(kv('figi'));
+  assert.equal(map.US0378331005.us, 'AAPL');
+  assert.deepEqual(map.US0378331005.ex, [['US', 'AAPL'], ['GY', 'APC']]);
+  assert.equal(map.NL0000379121.us, null, 'Randstad noteert niet in de VS');
+  assert.equal(map.IE00BFMXXD54.fund, true, 'ETP is een fonds');
+  assert.equal(map.XS0000000001.none, true);
+  const fs = JSON.parse(kv('figi_sym'));
+  assert.equal(fs.RAND.us, null);
+  assert.equal(fs.VUAG.fund, true);
+  assert.deepEqual(fs.AAPL.ex, ['US', 'GY']);
+  const e2 = Object.create(env);
+  assert.equal(await T.usTicker(e2, 'AAPL'), 'AAPL');
+  assert.equal(await T.usTicker(e2, 'RAND'), null, 'geen Amerikaanse bron voor Randstad');
+  assert.equal(await T.usTicker(e2, 'ONB'), 'ONB', 'onbekend bij OpenFIGI: de oude regel');
+  assert.equal(await T.usTicker(e2, 'WATCH'), 'WATCH', 'volglijst zonder ISIN: de oude regel');
+  // Tiingo vraagt niet naar Randstad (anders kreeg je een Amerikaans bedrijf met dezelfde letters)
+  calls = [];
+  routes = [];
+  setKv('mkt_queue', ['eod2:RAND']);
+  await req('/api/market', { method: 'POST', env: Object.assign({}, env, { TIINGO_KEY: 'ti', POLYGON_KEY: 'pg' }) });
+  assert.ok(!calls.some((c) => /tiingo|massive/.test(c.url)), JSON.stringify(calls.map((c) => c.url)));
+  // Een tweede keer vandaag: niets te doen
+  calls = [];
+  setKv('mkt_queue', ['figi']);
+  await req('/api/market', { method: 'POST' });
+  assert.ok(!calls.some((c) => /openfigi/.test(c.url)), 'binnen 30 dagen niet opnieuw');
+  // Te veel verzoeken: korte pauze, niets overschreven
+  setKv('figi', {});
+  setKv('mkt_queue', ['figi']);
+  routes = [[/api\.openfigi\.com/, reply({ error: 'Too many requests' }, 429)]];
+  await req('/api/market', { method: 'POST' });
+  const h = JSON.parse(kv('src_health')).openfigi;
+  assert.ok(h && h.minute === true && h.until > Date.now(), JSON.stringify(h));
+  assert.equal(JSON.parse(kv('figi_sym')).RAND.us, null, 'de vorige korte vorm blijft staan');
+  // Met sleutel: grotere partij en de sleutel in de kop
+  setKv('src_health', {});
+  setKv('mkt_queue', ['figi']);
+  routes = [[/api\.openfigi\.com/, (u, init) => { assert.equal(init.headers['X-OPENFIGI-APIKEY'], 'of'); return reply(JSON.parse(init.body).map(() => ({ warning: 'No identifier found.' }))); }]];
+  await req('/api/market', { method: 'POST', env: Object.assign({}, env, { OPENFIGI_KEY: 'of' }) });
+  assert.ok(calls.some((c) => /openfigi/.test(c.url)));
+  routes = [];
+  setKv('figi', {}); setKv('figi_sym', {}); setKv('pos_extra', {}); setKv('src_health', {}); setKv('mkt_queue', '[]');
+});
+
+await test('GDELT: nieuws per aandeel op bedrijfsnaam en marktnieuws, zonder sleutel; uit te zetten', async () => {
+  const T = WM._test;
+  assert.equal(T.gdeltName('Randstad N.V.'), 'Randstad');
+  assert.equal(T.gdeltName('Apple Inc.'), 'Apple');
+  assert.equal(T.gdeltName('The Coca-Cola Company'), 'Coca-Cola');
+  assert.equal(T.gdeltName('Co'), null, 'te kort: geen zoekvraag');
+  await T.ensureMarketTables(env);
+  DB.db.prepare('INSERT OR REPLACE INTO ext_profile (symbol, data, updated) VALUES (?,?,?)').run('RAND', JSON.stringify({ name: 'Randstad N.V.' }), '2026-01-01');
+  setKv('figi_sym', { RAND: { us: null, fund: false, ex: ['NA'] } });
+  setKv('src_health', {});
+  setKv('settings', {});
+  setKv('rs_RAND', {});
+  const seen = (d) => new Date(Date.now() - d * 864e5).toISOString().replace(/[-:]/g, '').slice(0, 15) + 'Z';
+  routes = [[/api\.gdeltproject\.org\/api\/v2\/doc\/doc/, (u) => {
+    const q = decodeURIComponent(new URL(u).searchParams.get('query'));
+    assert.match(q, /"Randstad"/);
+    assert.match(u, /mode=ArtList/);
+    assert.match(u, /format=json/);
+    return reply({ articles: [
+      { url: 'https://nieuws.test/r1', title: 'Randstad ziet minder vraag naar uitzendkrachten', seendate: seen(1), domain: 'nieuws.test', language: 'Dutch', sourcecountry: 'Netherlands' },
+      { url: 'http://onveilig.test/r2', title: 'Zonder https', seendate: seen(1), domain: 'onveilig.test' },
+      { url: 'https://nieuws.test/r3', title: 'Randstad koopt bureau', seendate: seen(3), domain: 'nieuws.test' },
+    ] });
+  }]];
+  setKv('mkt_queue', ['alt:RAND']);
+  await req('/api/market', { method: 'POST', env: Object.assign({}, env, { POLYGON_KEY: 'pg' }) });
+  const R = JSON.parse(kv('rs_RAND'));
+  assert.equal(R.src.news, 'gdelt');
+  assert.equal(R.news.length, 2, 'alleen https-links');
+  assert.equal(R.news[0].headline, 'Randstad ziet minder vraag naar uitzendkrachten');
+  assert.equal(R.news[0].source, 'nieuws.test');
+  assert.ok(!R.sent, 'GDELT geeft geen stemming per aandeel');
+  assert.ok(!calls.some((c) => /massive/.test(c.url)), 'Polygon niet gevraagd: Randstad noteert niet in de VS');
+  // Marktnieuws: Finnhub aan zijn limiet, geen andere sleutels: GDELT met het thema aandelenmarkt
+  setKv('mkt_queue', ['fhnews']);
+  routes = [
+    [/finnhub\.io\/api\/v1\/news/, reply({ error: 'limit' }, 429)],
+    [/api\.gdeltproject\.org/, (u) => { assert.match(decodeURIComponent(u), /theme:ECON_STOCKMARKET/); return reply({ articles: [{ url: 'https://nieuws.test/m1', title: 'Beurzen hoger', seendate: seen(0.2), domain: 'nieuws.test' }] }); }],
+  ];
+  await req('/api/market', { method: 'POST', env: Object.assign({}, env, { FINNHUB_KEY: 'fh' }) });
+  const mn = JSON.parse(kv('market_news'));
+  assert.match(mn.source, /GDELT/);
+  assert.equal(mn.items[0].headline, 'Beurzen hoger');
+  assert.match(JSON.parse(kv('src_health')).finnhub.backup, /GDELT/);
+  // GDELT vraagt om rustiger aan te doen (platte tekst): korte pauze, geen fout op de site
+  setKv('src_health', {});
+  setKv('mkt_queue', ['fhnews']);
+  routes = [[/api\.gdeltproject\.org/, reply('Please limit requests to one every 5 seconds.')]];
+  await req('/api/market', { method: 'POST' });
+  assert.equal(JSON.parse(kv('src_health')).gdelt.minute, true);
+  // Uitgezet in de instellingen: geen verzoek naar GDELT
+  setKv('src_health', {});
+  setKv('settings', { features: { gdelt: false } });
+  setKv('rs_RAND', {});
+  setKv('mkt_queue', ['alt:RAND', 'fhnews']);
+  calls = [];
+  routes = [];
+  await req('/api/market', { method: 'POST' });
+  assert.ok(!calls.some((c) => /gdeltproject/.test(c.url)), JSON.stringify(calls.map((c) => c.url)));
+  setKv('settings', {}); setKv('figi_sym', {}); setKv('src_health', {}); setKv('mkt_queue', '[]');
+  routes = [];
+});
+
+await test('sleutel van OpenFIGI testen', async () => {
+  routes = [[/api\.openfigi\.com/, (u, init) => (init.headers['X-OPENFIGI-APIKEY'] === 'goed-of' ? reply([{ data: [{ ticker: 'AAPL', exchCode: 'US' }] }]) : reply({ error: 'Invalid API key.' }, 401))]];
+  let r = await jsonOf(await req('/api/keytest', { method: 'POST', body: { name: 'OPENFIGI_KEY', value: 'goed-of' } }));
+  assert.equal(r.result.state, 'ok', JSON.stringify(r));
+  r = await jsonOf(await req('/api/keytest', { method: 'POST', body: { name: 'OPENFIGI_KEY', value: 'fout-of' } }));
+  assert.equal(r.result.state, 'fout');
+  routes = [];
 });
 
 await test('budget per bron en databasegrootte (ideeën 151, 152)', async () => {
@@ -1625,6 +1949,19 @@ await test('vijf jaar, 30 posities: een ronde blijft ruim binnen de D1-daglimiet
   assert.ok(full.days && full.days.rows.length >= YEARS * 250 * 30 * 0.9, 'alle dagen terug: ' + (full.days && full.days.rows.length));
   routes = [];
   setKv('cf_usage', {});
+});
+
+await test('grote waarde in stukken: de verwijzing bevat geen NUL-teken en komt heel terug', async () => {
+  const T = WM._test;
+  const v = JSON.stringify({ x: 'é'.repeat(2e6) });
+  await T.setBig(env, 'test_groot', v);
+  const mark = kv('test_groot');
+  assert.match(mark, /^~stukken:\d+$/, 'de verwijzing overleeft elke SQLite-koppeling: ' + JSON.stringify(String(mark).slice(0, 20)));
+  assert.equal(await T.getBig(env, 'test_groot'), v);
+  await T.setBig(env, 'test_groot', '{"klein":1}');
+  assert.equal(await T.getBig(env, 'test_groot'), '{"klein":1}');
+  assert.equal(DB.db.prepare("SELECT COUNT(*) AS n FROM kv WHERE key LIKE 'test_groot#%'").get().n, 0, 'oude stukken opgeruimd');
+  DB.db.prepare("DELETE FROM kv WHERE key = 'test_groot'").run();
 });
 
 console.log((failed ? failed + ' fout, ' : '') + passed + ' geslaagd');

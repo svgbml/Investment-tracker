@@ -1,0 +1,26 @@
+{
+  "request_id": "voorbeeld-ticker",
+  "results": {
+    "ticker": "KO",
+    "name": "Coca-Cola Co",
+    "market": "stocks",
+    "locale": "us",
+    "primary_exchange": "XNYS",
+    "type": "CS",
+    "active": true,
+    "currency_name": "usd",
+    "cik": "0000021344",
+    "market_cap": 268000000000,
+    "description": "Voorbeeldtekst.",
+    "sic_code": "2080",
+    "sic_description": "BEVERAGES",
+    "ticker_root": "KO",
+    "homepage_url": "https://example.com",
+    "total_employees": 69000,
+    "list_date": "1919-09-05",
+    "share_class_shares_outstanding": 4300000000,
+    "weighted_shares_outstanding": 4300000000,
+    "round_lot": 100
+  },
+  "status": "OK"
+}
