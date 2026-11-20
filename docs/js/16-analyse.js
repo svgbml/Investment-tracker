@@ -520,7 +520,7 @@ document.addEventListener('click', async (e) => {
   if (!b) return;
   const box = b.closest('.tile');
   const v = (k) => Number(box.querySelector('[data-conc="' + k + '"]').value);
-  try { await savePrefs({ concPos: Math.max(1, Math.min(100, v('pos') || 20)), concSec: Math.max(1, Math.min(100, v('sec') || 40)) }); rerenderAll(); } catch (err) { /* blijft staan */ }
+  try { await savePrefs({ concPos: Math.max(1, Math.min(100, v('pos') || 20)), concSec: Math.max(1, Math.min(100, v('sec') || 40)) }); refresh('analyse', 'home'); } catch (err) { /* blijft staan */ }
 });
 
 // ---------- Trading 212-pies ----------

@@ -820,7 +820,7 @@ document.addEventListener('click', async (e) => {
         rate: isFinite(rate) && rate > 0 ? rate : null, updated: g('updated') || null };
     }).filter((x) => x.name && x.amount >= 0);
     plxTell('bank', 'Bezig met opslaan…');
-    try { await savePrefs({ banks: list }); plxTell('bank', 'Opgeslagen.', 'gain'); rerenderAll(); }
+    try { await savePrefs({ banks: list }); plxTell('bank', 'Opgeslagen.', 'gain'); refresh('plan'); }
     catch (err) { plxTell('bank', 'Opslaan is mislukt: ' + err.message + '.', 'loss'); }
     return;
   }

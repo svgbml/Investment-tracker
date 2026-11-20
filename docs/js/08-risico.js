@@ -166,7 +166,9 @@ function corrMatrix(mat) {
     runOffThread(corrCompute, inp).then((res) => {
       corrState.busy = null; corrState.key = key; corrState.mat = res;
       if (M && M._risk) M._risk.C2 = res;
-      if (M) renderAll();   // alleen de zichtbare pagina opnieuw; de rest volgt bij het openen
+      // Alleen wat de samenhang toont: de risicotegels op Start, Analyse, Plannen en de risicopagina. Een weergave
+      // die niet in beeld is, wordt alleen als verouderd gemarkeerd (zie refresh in js/00-kern.js).
+      if (M) { refresh('home-rest', 'analyse', 'plan', 'risk-extra'); foldSoon(); }
     });
   }
   return null;
