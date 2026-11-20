@@ -1,6 +1,6 @@
 # Roadmap: de site sneller maken
 
-Ideeën om de webapp minder traag te laten aanvoelen. De punten 1 tot en met 9 zijn in versie v68 uitgevoerd; per punt staat hieronder wat er gebouwd is, wat het opleverde en wat is teruggedraaid.
+Ideeën om de webapp minder traag te laten aanvoelen. De punten 1 tot en met 9 zijn in versie v68 uitgevoerd; per punt staat hieronder wat er gebouwd is, wat het opleverde en wat is teruggedraaid. De punten 10 tot en met 18 zijn nieuwe ideeën op basis van die metingen.
 
 ## Resultaat (v68)
 
@@ -135,6 +135,69 @@ Lijsten met veel regels (transacties, nieuws, orders, dagboek) eerst 20 tot 50 r
 
 **Gebouwd (v68).** `tools/meetlat.mjs` meet alle waarden uit de tabel (desktop en telefoon met `Emulation.setCPUThrottlingRate` 4, Long Tasks API, vaste klok), plus de elementen per pagina, de langste taak bij het eerste openen van elke pagina en DOMContentLoaded. Met `--map` meet het een andere uitgecheckte versie, met `--grens` faalt het boven de grenzen. De Lighthouse-werkstroom draait het met `--grens` (niet blokkerend) en zet de tabel in de samenvatting; `lighthouserc.json` waarschuwt boven 6.000 elementen (`dom-size`). Het `?perf`-paneel toont nu ook de langste taak, het aantal taken boven 50 ms en de elementen per pagina.
 
+## Nieuwe ideeën (na v68)
+
+Wat de metingen van v68 nog lieten zien, op volgorde van verwachte winst. Getallen zijn van de telefoon met een vier keer tragere processor (`tools/meetlat.mjs`), tenzij er iets anders staat.
+
+### 10. Verschuivingen bij het laden voorkomen (CLS)
+
+Lighthouse meet een verschuiving van 0,5 tot 0,9 (budget 0,1); dat zat op `main` al boven de grens en is de reden dat de Lighthouse-controle "buiten het budget" meldt. Waarschijnlijke oorzaken: meldingen die na het tekenen boven de inhoud verschijnen ("Wat is er nieuw", "bewaarde stand", de demobalk), het skelet dat niet even hoog is als de echte tegels, en de geschatte hoogte van secties met `content-visibility` (640 px).
+
+- Aanpak: meldingen in een vaste plek met gereserveerde hoogte of onder de grafiek zetten, het skelet de hoogte van de echte tegels geven, en `contain-intrinsic-size` per sectie afstemmen op de gemeten hoogte. Eerst met de Lighthouse-trace uitzoeken welke elementen verschuiven.
+- Winst: hogere Lighthouse-score, en de pagina springt niet meer weg onder je vinger.
+
+### 11. Minder JavaScript uitvoeren bij het starten
+
+Het inlezen en uitvoeren van alle scripts is nog één taak van ± 0,5 s. Punt 7 haalde er 5% af; de rest wordt bijna overal gebruikt, maar vaak alleen door één onderdeel.
+
+- Scripts opsplitsen in een deel met de luisteraars en kleine hulpjes (vast) en een deel met de tegels of dialogen (lui), zoals bij `21-plannen2.js`. Kandidaten: de instellingen (`21-privacy.js`, delen van `13-app.js` en `15-bronnen.js` zijn alleen nodig als het instellingenscherm opent), de handelsdialogen (`20-handel.js`, `22-handel-extra.js`) en de Analyse-tegels.
+- Wat lui laadt, alvast inlezen als de browser niets te doen heeft (`requestIdleCallback`), zodat het openen van de pagina niet wacht.
+- Nameten met een warme service worker: Chrome bewaart dan gecompileerde code, en het verschil met een koude start laat zien hoeveel winst er nog is.
+
+### 12. Plannen net zo aanpakken als Analyse
+
+Het eerste openen van Plannen kost nog ± 250 ms in één taak, en de pagina wordt bij het openen drie keer helemaal getekend: één keer bij het openen en daarna nog eens zodra elk van de twee simulaties (`mcSimulate`, `plxFanSim` via `runOffThread`) klaar is.
+
+- Op de telefoon alleen het open tabblad vullen (zoals `renderAnalyse` met `analyseAll`).
+- Na een simulatie alleen de tegel met de uitkomst opnieuw tekenen, niet de hele pagina.
+- In de Preact-versie (`plannen-preact.js`) tegels die niet veranderen overslaan (`memo`).
+
+### 13. De onderkant van Start later tekenen
+
+`home-rest` (sectoren, valuta, risico, weken, patronen) is één taak van ± 200 ms; `drawMacro` en `riskTiles` zijn de grootste delen.
+
+- `home-rest` opsplitsen in kleinere weergaven, zodat `renderAll` er tussendoor kan pauzeren.
+- Of tekenen zodra de sectie in de buurt van het scherm komt (`IntersectionObserver`), want bij het laden staat hij buiten beeld.
+
+### 14. Niet opnieuw tekenen als er niets veranderde
+
+De site ververst elke 5 minuten. Komt er nieuwe data binnen, dan tekent `render()` de hele open pagina opnieuw, ook als alleen de laatste meting erbij kwam.
+
+- Een vingerafdruk per weergave van de gegevens die hij gebruikt; gelijk gebleven, dan overslaan.
+- Bij alleen een nieuwe meting: de grote grafiek, de kerncijfers en de stijgers en dalers bijwerken, de rest laten staan.
+
+### 15. Voorbeeldgegevens sneller maken
+
+`makeDemoData` kost bij het laden ± 0,5 s in één taak. Dat is alleen de demo, maar Lighthouse en de meetlat meten de demo, dus het vertekent de cijfers en de eerste indruk voor bezoekers.
+
+- De koersreeksen in stukken maken (met `yieldNow`), of één keer maken en bewaren in `sessionStorage`.
+- Minder meetpunten per dag maken voor dagen die alleen op de dag- en jaargrafiek komen.
+
+### 16. Reageren op tikken meten (INP)
+
+De meetlat meet nu laden en tekenen, nog niet hoe snel de site op een tik reageert. Met de Event Timing API (`PerformanceObserver` met `event`) kan de meetlat een paar vaste handelingen nadoen (pagina wisselen, een tegel uitklappen, een tabblad op Analyse kiezen, een bedrijf openen) en de langste reactietijd noteren. Het `?perf`-paneel kan hetzelfde tonen.
+
+### 17. Kleinere stylesheet
+
+`style.css` is 170 kB, met ongeveer 60 dubbele selectors (`tools/check-stijl.mjs`). Elke stijlberekening loopt over alle regels.
+
+- Dubbele regels samenvoegen en regels zonder gebruik weghalen (nagaan met de Coverage-tab van Chrome op alle pagina's van de demo).
+- Alleen op de telefoon of alleen bij afdrukken gebruikte regels achter een `@media`-blok zetten waar dat nog niet zo is.
+
+### 18. Lijsten met veel elementen
+
+Na punt 8 zijn de grootste tegels in de demo "Analisten per bedrijf" (Nieuws, ± 600 elementen bij 14 posities), "Screener" en "Gerealiseerd en ongerealiseerd per positie" (Analyse, ± 450). Die groeien mee met het aantal posities; met 30 posities is het ruim het dubbele. Ook daar eerst 15 regels tonen met "Meer tonen" (`moreRows`).
+
 ## Bronnen
 
 - [Use scheduler.yield() to break up long tasks](https://developer.chrome.com/blog/use-scheduler-yield) (Chrome)
@@ -144,3 +207,7 @@ Lijsten met veel regels (transacties, nieuws, orders, dagboek) eerst 20 tot 50 r
 - [Optimizing interactions in complex layouts](https://developer.chrome.com/docs/modern-web-guidance/guides/performance/interactions-in-complex-layouts) (Chrome)
 - [Lazy DOM rendering](https://shopify.dev/docs/storefronts/themes/best-practices/performance/lazy-dom-rendering) (Shopify)
 - [Field testing CSS containment](https://www.speedkit.com/blog/field-testing-css-containment-for-web-performance-optimization) (Speed Kit)
+- [Cumulative Layout Shift (CLS)](https://web.dev/articles/cls) (web.dev)
+- [Interaction to Next Paint (INP)](https://web.dev/articles/inp) (web.dev)
+- [Code caching for JavaScript developers](https://v8.dev/blog/code-caching-for-devs) (V8)
+- [requestIdleCallback](https://developer.mozilla.org/en-US/docs/Web/API/Window/requestIdleCallback) (MDN)
