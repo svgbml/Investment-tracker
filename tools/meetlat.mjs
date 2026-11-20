@@ -2,6 +2,7 @@
 //
 // Opent de demo (?demo) in Chromium op desktopformaat (1360×900) en op telefoonformaat (390×844) met een
 // vier keer tragere processor (ongeveer een middenklasse telefoon) en meet:
+//  - wanneer alle scripts zijn ingelezen en uitgevoerd (DOMContentLoaded);
 //  - de langste blokkerende taak bij het laden en het aantal taken boven 50 ms in de eerste 4 seconden;
 //  - hoe lang renderAll(), alleen Start, alleen Analyse en foldAll() duren (mediaan van een paar keer);
 //  - het aantal elementen in de pagina, in totaal en per pagina;
@@ -56,6 +57,8 @@ function initScript() {
     /** @type {any} */ (window).__ltNu = () => neem(po.takeRecords());
   } catch (e) { /* oude browser */ }
   try { localStorage.setItem('tracker.theme', 'light'); } catch (e) { /* niets */ }
+  // Alle gewone scripts en de modules zijn ingelezen en uitgevoerd (de vaste klok van Playwright laat performance.now heel)
+  document.addEventListener('DOMContentLoaded', () => { /** @type {any} */ (window).__dcl = performance.now(); });
 }
 
 async function openPagina(browser, base, fmt) {
@@ -113,6 +116,7 @@ async function meetEenKeer(browser, base, fmt) {
     const lt = /** @type {any} */ (window).__lt;
     const eerste = lt.filter((x) => x[0] < 4000);
     return {
+      gereed: /** @type {any} */ (window).__dcl,
       langsteLaden: Math.max(0, ...lt.filter((x) => x[0] < 6000).map((x) => x[1])),
       takenLaden: eerste.length,
       blokkeertijd: eerste.reduce((s, x) => s + Math.max(0, x[1] - 50), 0),
@@ -154,7 +158,7 @@ async function meetEenKeer(browser, base, fmt) {
 function samen(runs) {
   const m = (f) => mediaan(runs.map(f));
   const out = {
-    langsteLaden: m((r) => r.langsteLaden), takenLaden: m((r) => r.takenLaden), blokkeertijd: m((r) => r.blokkeertijd),
+    gereed: m((r) => r.gereed), langsteLaden: m((r) => r.langsteLaden), takenLaden: m((r) => r.takenLaden), blokkeertijd: m((r) => r.blokkeertijd),
     renderAll: m((r) => r.renderAll.ms), renderAllLangst: m((r) => r.renderAll.langst),
     analyse: m((r) => r.analyse && r.analyse.ms), analyseLangst: m((r) => r.analyse && r.analyse.langst),
     start: m((r) => r.start.ms), foldAll: m((r) => r.foldAll.ms),
@@ -191,6 +195,7 @@ const rij = (k, a, b) => '| ' + k + ' | ' + a + ' | ' + b + ' |';
 const regels = [
   '| Meting | Desktop | Telefoon (4× trager) |',
   '|---|---|---|',
+  rij('Scripts ingelezen en uitgevoerd (DOMContentLoaded)', getal(d.gereed, ' ms'), getal(t.gereed, ' ms')),
   rij('Langste blokkerende taak bij het laden', getal(d.langsteLaden, ' ms'), getal(t.langsteLaden, ' ms')),
   rij('Blokkerende taken (> 50 ms) in de eerste 4 seconden', getal(d.takenLaden), getal(t.takenLaden)),
   rij('Blokkeertijd in de eerste 4 seconden (som boven 50 ms)', getal(d.blokkeertijd, ' ms'), getal(t.blokkeertijd, ' ms')),

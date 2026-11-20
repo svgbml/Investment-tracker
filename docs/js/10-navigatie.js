@@ -308,13 +308,48 @@ defineView('valuation', () => renderValuationList());
 
 // Alleen de zichtbare pagina tekenen; de andere worden bijgewerkt zodra je ze opent
 const PAGE_VIEWS = { home: ['home', 'home-rest'], list: ['list', 'watch', 'valuation'], news: ['news'], stats: [], plan: ['plan'] };
+
+// Scripts die alleen één pagina nodig heeft, laden pas als je die pagina opent (niet bij het starten). Ze staan
+// niet in index.html, wel in de cachelijst van sw.js, zodat ze ook zonder verbinding werken.
+// Sleutel: de weergave die erop wacht; waarde: de scripts.
+const VIEW_SCRIPTS = { plan: ['js/29-plannen-extra.js'] };
+const viewScriptsOk = new Set();
+const viewScriptsBusy = new Map();
+function loadViewScripts(n) {
+  if (viewScriptsBusy.has(n)) return viewScriptsBusy.get(n);
+  const one = (src) => new Promise((ok, no) => {
+    const el = document.createElement('script');
+    el.src = src + '?v=' + VERSION.replace(/^v/, '');
+    el.onload = () => ok(true);
+    el.onerror = () => no(new Error(src + ' kon niet worden geladen'));
+    document.head.appendChild(el);
+  });
+  // Op volgorde laden: een later script mag namen uit een eerder gebruiken
+  const p = VIEW_SCRIPTS[n].reduce((acc, src) => acc.then(() => one(src)), Promise.resolve(true))
+    .then(() => yieldNow())                // inlezen en tekenen in twee taken, niet in één lange
+    .then(() => {
+      viewScriptsOk.add(n);
+      if (M) { refresh(n); foldSoon(); }   // tekent alleen als de pagina nog open is; anders blijft hij verouderd
+    })
+    .catch((err) => {
+      viewScriptsBusy.delete(n);           // bij de volgende keer openen opnieuw proberen
+      console.error('Onderdeel "' + n + '" kon niet worden geladen:', err);
+      if (typeof toastErr === 'function') toastErr('Dit onderdeel kon niet worden geladen. Vernieuw de pagina of probeer het later opnieuw.');
+    });
+  viewScriptsBusy.set(n, p);
+  return p;
+}
+// Een weergave die op een script wacht, kan nog niet getekend worden: begin met laden
+const viewNeedsScripts = (n) => !!VIEW_SCRIPTS[n] && !viewScriptsOk.has(n) && (loadViewScripts(n), true);
+
 // Een weergave die alleen bij andere pagina's hoort, is buiten beeld: refresh() slaat hem dan over en
 // onthoudt hem als verouderd. Weergaven die bij geen pagina horen (zoals de detailpagina's) tekent hij altijd.
+// Wacht een weergave op zijn script (VIEW_SCRIPTS), dan geldt hij ook als nog niet te tekenen.
 viewOffscreen = (n) => {
   let mine = false;
   for (const p in PAGE_VIEWS) {
     if (!PAGE_VIEWS[p].includes(n)) continue;
-    if (p === ui.page) return false;
+    if (p === ui.page) return viewNeedsScripts(n);
     mine = true;
   }
   return mine;
