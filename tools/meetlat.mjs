@@ -2,7 +2,7 @@
 //
 // Opent de demo (?demo) in Chromium op desktopformaat (1360×900) en op telefoonformaat (390×844) met een
 // vier keer tragere processor (ongeveer een middenklasse telefoon) en meet:
-//  - wanneer alle scripts zijn ingelezen en uitgevoerd (DOMContentLoaded);
+//  - wanneer de pagina gereed is (DOMContentLoaded: alle scripts ingelezen en uitgevoerd, plus wat daarvoor al draaide);
 //  - de langste blokkerende taak bij het laden en het aantal taken boven 50 ms in de eerste 4 seconden;
 //  - hoe lang renderAll(), alleen Start, alleen Analyse en foldAll() duren (mediaan van een paar keer);
 //  - het aantal elementen in de pagina, in totaal en per pagina;
@@ -195,7 +195,7 @@ const rij = (k, a, b) => '| ' + k + ' | ' + a + ' | ' + b + ' |';
 const regels = [
   '| Meting | Desktop | Telefoon (4× trager) |',
   '|---|---|---|',
-  rij('Scripts ingelezen en uitgevoerd (DOMContentLoaded)', getal(d.gereed, ' ms'), getal(t.gereed, ' ms')),
+  rij('Pagina gereed (DOMContentLoaded)', getal(d.gereed, ' ms'), getal(t.gereed, ' ms')),
   rij('Langste blokkerende taak bij het laden', getal(d.langsteLaden, ' ms'), getal(t.langsteLaden, ' ms')),
   rij('Blokkerende taken (> 50 ms) in de eerste 4 seconden', getal(d.takenLaden), getal(t.takenLaden)),
   rij('Blokkeertijd in de eerste 4 seconden (som boven 50 ms)', getal(d.blokkeertijd, ' ms'), getal(t.blokkeertijd, ' ms')),
