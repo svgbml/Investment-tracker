@@ -8,6 +8,12 @@
 // (gemaakt met node tools/changelog.mjs); hieronder staat alleen wat de gebruiker merkt.
 // Bij een nieuwe versie: zet de regels van die versie bovenaan, met VERSION uit js/01-basis.js als sleutel.
 const WHATS_NEW = {
+  v68: [
+    'De site start sneller en reageert eerder op tikken en scrollen: pagina\'s die je niet ziet, worden pas getekend als je ze opent, en Start wordt in stukken getekend.',
+    'Analyse op de telefoon tekent alleen het tabblad dat open staat; het rapport (pdf) bevat nog steeds alle onderdelen.',
+    'Tegels opvouwen kost minder rekenwerk, en de extra onderdelen van Plannen laden pas als je Plannen opent.',
+    'Lange lijsten, zoals het aankoopdagboek en de economische agenda, tonen eerst een deel met een knop Meer tonen.',
+  ],
   v67: [
     'Nieuwe gratis reserves bij Koppelingen: Tiingo en Polygon (Massive) voor koersgeschiedenis, Polygon en Marketaux voor nieuws.',
     'Met een SEC-e-mailadres komen de winst per aandeel per kwartaal en insiderhandel (Form 4) rechtstreeks van de SEC; FMP vult analisten en koersdoel aan.',

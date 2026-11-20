@@ -125,6 +125,7 @@ function renderAnalyse() {
   if (!host || !M) return;
   const sec = (id, title, sub, tiles) => '<div class="dash-sec" data-sec="' + id + '"><div class="section-head"><h2>' + esc(title) + '</h2>' + (sub ? '<p class="muted small">' + esc(sub) + '</p>' : '') + '</div><div class="plan-grid">' + tiles.filter(Boolean).join('') + '</div></div>';
   const AX = () => (typeof analyseExtraTiles === 'function' ? analyseExtraTiles() : []);
+  /** @type {[string, string, string, () => string[]][]} */
   const SECS = [
     ['an-ret', 'Rendement', 'Wat je echt verdiende, tegenover een maatstaf, en met welk risico', () => { const X = AX(); return [returnsTile(), benchTile(), ratiosTile(), drawdownTile(), X[0], X[1], contribTile(), X[2], concTile(), periodCmpTile(), yearHeatTile(), realUnrealTile(), fxFeeTile(), X[3], piesTile(), wrappedTile()]; }],
     ['an-exp', 'Doorkijk en kosten', 'Waar je geld werkelijk in zit, en wat het omwisselen kost', () => [typeof lookAllTile === 'function' ? lookAllTile() : '', typeof fxCalcTile === 'function' ? fxCalcTile() : '']],

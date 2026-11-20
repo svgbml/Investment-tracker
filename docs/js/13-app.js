@@ -277,6 +277,7 @@ Object.assign(EN, {
   'Pagina gereed na': 'Page ready after', 'DOM-knopen': 'DOM nodes', 'Nog niets getekend.': 'Nothing rendered yet.',
   'desktop': 'desktop', 'telefoon': 'phone',
   'Tijd in milliseconden per tekening van een weergave. Een taak boven 50 ms laat de pagina haperen. Alleen zichtbaar met ?perf in het adres.': 'Milliseconds per render of a view. A task over 50 ms makes the page stutter. Only visible with ?perf in the address.',
+  'Dit onderdeel kon niet worden geladen. Vernieuw de pagina of probeer het later opnieuw.': 'This part could not be loaded. Refresh the page or try again later.',
   'Langste taak': 'Longest task', 'Taken boven 50 ms': 'Tasks over 50 ms', 'Elementen op Overzicht': 'Elements on Overview', 'Elementen op Bedrijven': 'Elements on Companies',
   'Elementen op Nieuws': 'Elements on News', 'Elementen op Analyse': 'Elements on Analysis', 'Elementen op Plannen': 'Elements on Plans',
   '1 week': '1 week', 'Alleen waarde': 'Value only', 'Maatstaf': 'Benchmark', 'Vergelijken met': 'Compare with', 'Jouw beleggingen': 'Your investments',

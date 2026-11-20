@@ -404,7 +404,7 @@ function foldSoon() {
 function foldAll() {
   const H = mode === 'm' ? 300 : 320;
   // 1. Lezen: welke wortels zijn zichtbaar en niet midden in een animatie
-  const roots = FOLD_ROOTS.map((rid) => ({ rid, root: $(rid) }))
+  const roots = FOLD_ROOTS.map((rid) => ({ rid, root: $(rid), tiles: [], info: [] }))
     .filter((x) => x.root && !x.root.hidden && x.root.offsetParent && !x.root.querySelector('.fold-anim'));
   if (!roots.length) return;
   // 2. Schrijven: alles terug naar de natuurlijke hoogte, zonder overgangen (anders "ademen" de grafieken)
@@ -474,8 +474,6 @@ function fitApply(t, f) {
   f.ch.style.setProperty('--fit-h', f.h + 'px');
   f.ch.classList.add('fit-chart');
 }
-// Losse aanroep (meten en meteen zetten), voor wie één tegel passend wil maken
-function fitChart(t, H) { fitApply(t, fitMeasure(t, H)); }
 function toggleFold(t) {
   if (t.classList.contains('fold-anim')) return;
   const key = t.dataset.fold;
