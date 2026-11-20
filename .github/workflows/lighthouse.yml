@@ -30,6 +30,14 @@ jobs:
         continue-on-error: true
         run: npx --yes @lhci/cli@0.14.0 autorun
 
+      - name: Meetlat (langste taak bij laden en aantal elementen, zie tools/meetlat.mjs)
+        continue-on-error: true
+        run: |
+          npm i --no-save --no-audit --no-fund playwright@1.65.1
+          npx playwright install --with-deps chromium || npx playwright install chromium
+          node tools/meetlat.mjs --grens --keer 3 | tee meetlat.md
+          { echo '### Meetlat'; cat meetlat.md; } >> $GITHUB_STEP_SUMMARY
+
       - name: Scores van deze tak
         continue-on-error: true
         run: node tools/lh-score.mjs --lees .lighthouseci-report > lh-nieuw.json

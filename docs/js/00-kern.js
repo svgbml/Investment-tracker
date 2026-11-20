@@ -21,12 +21,21 @@ function defineView(name, draw) {
   VIEWS.set(name, draw);
 }
 
+// Weergaven die nu niet in beeld zijn (een andere pagina dan de open pagina) worden niet getekend maar als
+// verouderd onthouden; bij het openen van hun pagina worden ze alsnog bijgewerkt (zie ensurePage in
+// js/10-navigatie.js). viewOffscreen(naam) zegt of een weergave nu buiten beeld is; tot de navigatie
+// geladen is, telt alles als zichtbaar.
+const staleViews = new Set();
+let viewOffscreen = (name) => false;
+
 // Teken de genoemde weergaven opnieuw, of alle als er geen namen zijn
 function refresh(...names) {
   const list = names.length ? names : [...VIEWS.keys()];
   list.forEach((n) => {
     const draw = VIEWS.get(n);
     if (!draw) return;
+    if (viewOffscreen(n)) { staleViews.add(n); return; }
+    staleViews.delete(n);
     const t0 = performance.now();
     try { draw(); }
     catch (err) { console.error('Weergave "' + n + '" kon niet worden getekend:', err); }
@@ -42,6 +51,16 @@ function perfNote(name, ms) {
   r.n++; r.last = ms; r.tot += ms; r.max = Math.max(r.max, ms);
   PERF.set(name, r);
   if (typeof perfPanelSoon === 'function') perfPanelSoon();
+}
+
+// ---------- De browser even laten reageren tussen stukken werk ----------
+// Lang werk (meer dan ± 50 ms) in één keer laat de pagina haperen: tikken en scrollen wachten tot het klaar is.
+// await yieldNow() geeft de browser tussendoor de beurt. scheduler.yield() (Chrome, Firefox) laat het werk
+// daarna voorrang houden; Safari kent dat niet en krijgt setTimeout(0).
+function yieldNow() {
+  const sch = /** @type {any} */ (window).scheduler;
+  if (sch && typeof sch.yield === 'function') return sch.yield();
+  return new Promise((ok) => setTimeout(ok, 0));
 }
 
 // ---------- Werk samenvoegen: meten en zetten één keer per frame ----------

@@ -170,7 +170,7 @@ function secTabs(key) {
 defineView('analyse', () => renderAnalyse());
 defineView('badge', () => { updateBadge(); maybeTour(); });
 Object.keys(PAGE_VIEWS).forEach((p) => { if (!PAGE_VIEWS[p].includes('badge')) PAGE_VIEWS[p].push('badge'); });
-PAGE_VIEWS.stats = ['stats', 'analyse', 'badge'];
+PAGE_VIEWS.stats = ['analyse', 'badge'];
 
 // ---------- Pagina's aanpassen: secties verplaatsen, vastzetten of verbergen ----------
 const LS_DASH = 'tracker.dash';

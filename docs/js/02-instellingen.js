@@ -628,7 +628,9 @@ async function load() {
   if (demo) {
     showSkeleton();
     try { await loadDemoScript(); } catch (err) { showError(foutTekst('De voorbeeldgegevens konden niet worden geladen', err, 'Vernieuw de pagina; blijft het misgaan, dan blokkeert een filter of adblocker het bestand js/14-demo.js.')); return; }
-    data = makeDemoData(); render(); return;
+    data = makeDemoData();
+    await yieldNow();   // voorbeeldgegevens maken en tekenen zijn twee lange stukken: de browser mag ertussen
+    render(); return;
   }
   const token = getToken();
   const url = getUrl();
@@ -662,8 +664,9 @@ async function load() {
     }
     if (json) {
       data = json;
-      saveLast(url, json);
       render();
+      // Bewaren (kopiëren naar IndexedDB) pas na het tekenen, in een eigen taak
+      yieldNow().then(() => saveLast(url, json));
       // Zonder verbinding gaf de service worker de laatst binnengekomen stand terug: dat hoort de gebruiker te zien
       if (fromSwCache) { if (typeof noteOffline === 'function') noteOffline(); else showError('Geen verbinding. Je ziet de laatst geladen stand van ' + fDT.format(new Date(json.generated)) + '.'); }
       else noteLiveData();

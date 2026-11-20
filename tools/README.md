@@ -25,6 +25,7 @@ node tools/check-dood.mjs        # namen waar niets naar verwijst
 node tools/a11y.mjs              # axe-core op alle pagina's (niet blokkerend)
 node tools/visual.mjs --uit map  # schermafbeeldingen; vergelijken met --vergelijk mapOud mapNieuw
 node tools/lh-score.mjs --lees .lighthouseci-report   # scores uit een Lighthouse-rapport
+node tools/meetlat.mjs           # snelheid: langste taak, tekentijden en elementen (desktop en telefoon 4× trager)
 ```
 
 ## Wat elk script doet
@@ -42,6 +43,7 @@ node tools/lh-score.mjs --lees .lighthouseci-report   # scores uit een Lighthous
 | `a11y.mjs` | axe-core, WCAG 2.1 A en AA, op alle pagina's in beide thema's en formaten | nee |
 | `visual.mjs` | Schermafbeeldingen met een vaste klok, en het aantal veranderde beeldpunten tegenover een andere versie | nee |
 | `lh-score.mjs` | Leest een Lighthouse-rapport en zet twee metingen naast elkaar in een tabel | nee |
+| `meetlat.mjs` | Vaste meetlat uit `roadmap.md`: langste blokkerende taak bij laden, taken boven 50 ms, duur van `renderAll`, Start, Analyse en `foldAll`, elementen per pagina; desktop en telefoon met 4× tragere processor. Met `--map` meet je een andere uitgecheckte versie, met `--grens` faalt hij boven de grenzen (in de Lighthouse-werkstroom) | nee |
 | `lib-browser.mjs` | Gedeelde hulp: `docs/` uitserveren, een pagina openen, naar een pagina gaan, overloop meten | – |
 
 De browsercontroles gebruiken Playwright met Chromium. `visual.mjs` en de schermafbeeldingen zetten de klok

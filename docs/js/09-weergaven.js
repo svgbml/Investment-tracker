@@ -42,6 +42,10 @@ function renderHome() {
     : ['<p class="empty">Nog geen metingen van vandaag.</p>']);
 
   fill('agenda', agendaTiles());
+}
+// Het deel van Start onder de vouw (sectoren, valuta, risico, weken, patronen, statistieken): een eigen
+// weergave ('home-rest'), zodat de browser na de bovenste tegels even kan reageren voordat dit volgt
+function renderHomeRest() {
   fill('sectors', sectorTiles());
   fill('macro', [fxTile(), inflationTile()]);
   drawMacro($('macro'));
@@ -216,7 +220,7 @@ function renderMHome() {
   fill('m-agenda', agendaTiles());
   fill('m-weeks', weekCards());
   drawWeekChart($('m-weeks'));
-  renderMStats();
+  // De statistieken onderaan (renderMStats) zijn een eigen weergave ('home-rest'), zie js/10-navigatie.js
 }
 
 // ---------- Telefoon: Bedrijven als compacte tabel per sector, met grafiekjes en sorteerbare kolommen ----------

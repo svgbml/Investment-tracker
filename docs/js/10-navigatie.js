@@ -298,24 +298,56 @@ if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { pl
 // ---------- Tekenen ----------
 // Weergaven (zie js/00-kern.js): renderAll() tekent ze allemaal, refresh('naam') alleen dat stuk
 defineView('home', () => { if (mode === 'm') renderMHome(); else renderHome(); renderDriftNote(); });
+// Start onder de vouw; op de telefoon zijn dat de statistieken (renderMStats), die ook op Start staan
+defineView('home-rest', () => { if (mode === 'm') renderMStats(); else renderHomeRest(); });
 defineView('list', () => { if (mode === 'm') renderMList(); else renderList(); });
-defineView('stats', () => { if (mode === 'm') renderMStats(); });
 defineView('plan', () => renderPlan());
 defineView('watch', () => renderWatch());
 defineView('news', () => renderNews());
 defineView('valuation', () => renderValuationList());
 
 // Alleen de zichtbare pagina tekenen; de andere worden bijgewerkt zodra je ze opent
-const PAGE_VIEWS = { home: ['home'], list: ['list', 'watch', 'valuation'], news: ['news'], stats: ['stats'], plan: ['plan'] };
-const staleViews = new Set();
-function renderAll() {
-  const now = PAGE_VIEWS[ui.page] || [];
-  [...VIEWS.keys()].forEach((n) => { if (now.includes(n)) staleViews.delete(n); else staleViews.add(n); });
-  refresh(...now);
+const PAGE_VIEWS = { home: ['home', 'home-rest'], list: ['list', 'watch', 'valuation'], news: ['news'], stats: [], plan: ['plan'] };
+// Een weergave die alleen bij andere pagina's hoort, is buiten beeld: refresh() slaat hem dan over en
+// onthoudt hem als verouderd. Weergaven die bij geen pagina horen (zoals de detailpagina's) tekent hij altijd.
+viewOffscreen = (n) => {
+  let mine = false;
+  for (const p in PAGE_VIEWS) {
+    if (!PAGE_VIEWS[p].includes(n)) continue;
+    if (p === ui.page) return false;
+    mine = true;
+  }
+  return mine;
+};
+// renderAll() tekent de weergaven van de open pagina na elkaar. Duurt het samen langer dan RENDER_SLICE ms,
+// dan laat hij de browser tussendoor even reageren (yieldNow): tikken en scrollen blijven dan werken, ook op
+// een trage telefoon. De bovenste weergave komt altijd eerst. Geeft een belofte die klaar is als alles staat.
+const RENDER_SLICE = 40;
+let renderGen = 0;
+let renderBusy = null;   // de pagina waarvoor renderAll() nog bezig is
+async function renderAll() {
+  const gen = ++renderGen;
+  const page = ui.page;
+  const now = PAGE_VIEWS[page] || [];
+  renderBusy = page;
+  [...VIEWS.keys()].forEach((n) => staleViews.add(n));   // alles verouderd tot het opnieuw getekend is
+  let t0 = performance.now();
+  for (const n of now) {
+    if (!staleViews.has(n)) continue;                    // intussen al getekend (pagina geopend)
+    if (performance.now() - t0 > RENDER_SLICE) {
+      rafWork('fold', foldAll);                          // wat er al staat vóór de volgende tekening opvouwen
+      await yieldNow();
+      if (gen !== renderGen) return;                     // een nieuwere tekenbeurt heeft het overgenomen
+      t0 = performance.now();
+    }
+    refresh(n);
+  }
+  renderBusy = null;
   foldSoon();
 }
 // Pagina openen: eerst bijwerken wat sinds de laatste gegevens nog niet getekend is
 function ensurePage(p) {
+  if (renderBusy === p) return;   // renderAll() is deze pagina al in stukken aan het tekenen
   const want = (PAGE_VIEWS[p] || []).filter((n) => staleViews.has(n));
   if (!want.length) return;
   want.forEach((n) => staleViews.delete(n));

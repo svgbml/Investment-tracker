@@ -111,6 +111,16 @@ paintSnap();
 // Verborgen hulpmiddel om te zien of een wijziging het tekenen sneller of langzamer maakt.
 const PERF_ON = new URLSearchParams(location.search).has('perf');
 let perfFirstAt = null, perfBox = null, perfTimer = null;
+// Langste taak sinds het laden (Long Tasks API, Chrome en Edge): alles boven 50 ms laat de pagina haperen
+const perfLong = { max: 0, at: 0, n: 0 };
+if (PERF_ON && typeof PerformanceObserver === 'function') {
+  try {
+    new PerformanceObserver((l) => {
+      l.getEntries().forEach((e) => { perfLong.n++; if (e.duration > perfLong.max) { perfLong.max = e.duration; perfLong.at = e.startTime; } });
+      perfPanelSoon();
+    }).observe({ type: 'longtask', buffered: true });
+  } catch (e) { /* deze browser kent geen lange taken; de regel toont dan een streepje */ }
+}
 function perfPanelSoon() {
   if (perfFirstAt == null) perfFirstAt = performance.now();
   if (!PERF_ON) return;
@@ -126,8 +136,18 @@ function perfRows() {
     ['Snelle start na', snapPaintAt == null ? 'niet gebruikt' : ms(snapPaintAt)],
     ['Pagina gereed na', ms(nav ? nav.domContentLoadedEventEnd : null)],
     ['Scripts', Math.round(res.reduce((s, x) => s + (x.transferSize || x.encodedBodySize || 0), 0) / 1024) + ' kB in ' + res.length + ' bestanden'],
+    ['Langste taak', perfLong.n ? ms(perfLong.max) + ' (na ' + ms(perfLong.at) + ')' : '–'],
+    ['Taken boven 50 ms', perfLong.n ? NI.format(perfLong.n) : '–'],
     ['DOM-knopen', NI.format(document.querySelectorAll('*').length)],
-  ];
+  ].concat(perfPageRows());
+}
+// Elementen per pagina: een verborgen pagina hoort (bijna) leeg te zijn tot je hem opent
+function perfPageRows() {
+  if (typeof ORDER !== 'object' || typeof pageId !== 'function') return [];
+  return Object.keys(ORDER).map((p) => {
+    const el = $(pageId(p));
+    return ['Elementen op ' + TITLES[p], (el ? NI.format(el.querySelectorAll('*').length) : '–') + (p === ui.page ? ' (open)' : '')];
+  });
 }
 function drawPerf() {
   if (!PERF_ON) return;
@@ -144,7 +164,7 @@ function drawPerf() {
     (rows.length ? rows.map(([n, r]) => '<tr><td>' + esc(n) + '</td><td class="num">' + esc(N1.format(r.last)) + '</td><td class="num">' + esc(N1.format(r.tot / r.n)) +
       '</td><td class="num">' + esc(N1.format(r.max)) + '</td><td class="num">' + r.n + '</td></tr>').join('') : '<tr><td colspan="5">Nog niets getekend.</td></tr>') +
     '</tbody></table><dl class="perf-kv">' + perfRows().map(([k, v]) => '<div><dt>' + esc(k) + '</dt><dd>' + esc(v) + '</dd></div>').join('') + '</dl>' +
-    '<p class="perf-note">Tijd in milliseconden per tekening van een weergave. Alleen zichtbaar met ?perf in het adres.</p>';
+    '<p class="perf-note">Tijd in milliseconden per tekening van een weergave. Een taak boven 50 ms laat de pagina haperen. Alleen zichtbaar met ?perf in het adres.</p>';
 }
 if (PERF_ON) {
   document.addEventListener('click', (e) => {
@@ -154,8 +174,7 @@ if (PERF_ON) {
     if (/** @type {HTMLElement} */ (b).dataset.perf === 'off') { if (perfBox) { perfBox.remove(); perfBox = null; } return; }
     PERF.clear();
     const t0 = performance.now();
-    renderAll();
-    perfNote('renderAll', performance.now() - t0);
+    renderAll().then(() => perfNote('renderAll', performance.now() - t0));
   });
   document.addEventListener('keydown', (e) => { if (e.key === 'P' && e.shiftKey && e.ctrlKey) drawPerf(); });
   drawPerf();

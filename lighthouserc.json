@@ -66,6 +66,12 @@
           {
             "maxNumericValue": 0.1
           }
+        ],
+        "dom-size": [
+          "warn",
+          {
+            "maxNumericValue": 6000
+          }
         ]
       }
     },
