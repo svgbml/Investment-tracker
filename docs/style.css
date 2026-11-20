@@ -2114,6 +2114,8 @@ body.skeleton footer.foot-page { visibility: hidden; }
    groeit); overflow-clip-margin geeft daar ruimte voor. */
 .dash-sec { content-visibility: auto; contain-intrinsic-size: auto 640px; overflow-clip-margin: 40px; }
 @media print { .dash-sec { content-visibility: visible; } }
+/* "Meer tonen" onder een lange lijst (moreRows in js/04-grafieken.js) */
+.more-rows { margin-top: 10px; }
 .dash-sec[data-size="s"] > .grid, .dash-sec[data-size="s"] > .plan-grid { grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr)); }
 .dash-sec[data-size="l"] > .grid, .dash-sec[data-size="l"] > .plan-grid { grid-template-columns: repeat(auto-fit, minmax(min(460px, 100%), 1fr)); }
 .dash-sec[data-size="s"] .tile .chart { height: 110px; }

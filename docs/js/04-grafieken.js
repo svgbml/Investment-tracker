@@ -356,6 +356,29 @@ function calendar(returns) {
 const stag = (html, i) => html.replace(/^<(\w+)/, '<$1 style="--i:' + i + '"');
 const fill = (id, items) => { $(id).innerHTML = items.map(stag).join(''); };
 
+// ---------- Lange lijsten: eerst een deel, de rest met "Meer tonen" ----------
+// moreRows('sleutel', regels, 20, 'plan') geeft de eerste 20 regels (rows) en een knop (btn) die de rest toont.
+// De keuze geldt tot je de pagina herlaadt; de knop tekent alleen de genoemde weergave opnieuw.
+const moreOpen = new Set();
+function moreRows(key, rows, n, view) {
+  const all = moreOpen.has(key);
+  const shown = all || rows.length <= n ? rows : rows.slice(0, n);
+  const btn = rows.length <= n ? '' : '<button type="button" class="btn ghost more-rows" data-more="' + esc(key) + '" data-more-view="' + esc(view) + '" aria-expanded="' + all + '">' +
+    (all ? '<span>Minder tonen</span>' : '<span>Meer tonen</span> <span class="muted">(' + NI.format(rows.length - n) + ')</span>') + '</button>';
+  return { rows: shown.join(''), btn };
+}
+document.addEventListener('click', (e) => {
+  const t = /** @type {Element} */ (e.target);
+  const b = /** @type {HTMLElement|null} */ (t && t.closest ? t.closest('[data-more]') : null);
+  if (!b) return;
+  const key = b.dataset.more || '';
+  if (moreOpen.has(key)) moreOpen.delete(key); else moreOpen.add(key);
+  refresh(b.dataset.moreView || '');
+  if (ui.detail) renderDetail(false);
+  const again = /** @type {HTMLElement|null} */ (document.querySelector('[data-more="' + (window.CSS && CSS.escape ? CSS.escape(key) : key) + '"]'));
+  if (again) again.focus({ preventScroll: true });
+});
+
 // Kerncijfer als tegel (desktop) of kaart (telefoon)
 function stat(k, v, sub, cls, extra) {
   const flush = !!extra && extra.indexOf('spark') !== -1;

@@ -351,11 +351,12 @@ function journalTile() {
   const withN = buys.filter((x) => N[noteKey(x)]);
   const show = withN.concat(buys.filter((x) => !N[noteKey(x)]).slice(0, 5)).sort((a, b) => b.t - a.t);
   const res = withN.map(sinceBuy).filter(isNum);
+  const L = moreRows('journal', show.map((x) => { const r = sinceBuy(x);
+    return '<div class="tx"><span class="tag gain">Koop</span><span class="tx-m"><b>' + esc(x.tk) + ' · ' + esc(eur(x.net)) + '</b><span class="sub">' + esc(fD.format(x.t) + ' ' + new Date(x.t).getFullYear()) + ' · ' + esc(N4.format(x.qty)) + ' × ' + esc(money(x.price, x.cur)) + '</span></span>' +
+      '<span class="tx-v ' + tone(r) + '">' + esc(isNum(r) ? spct1(r) : M.byTk.has(x.tk) ? '–' : 'verkocht') + '<span class="sub">sinds aankoop</span></span></div>' + noteBlock(x); }), 8, 'plan');
   return '<section class="tile pad full journal"><h3>Aankoopdagboek</h3>' +
     '<p class="small">' + withN.length + ' van ' + buys.length + ' aankopen hebben een notitie' + (res.length ? '; die staan gemiddeld <b class="' + tone(mean(res)) + '">' + esc(spct1(mean(res))) + '</b> sinds aankoop' : '') + '.</p>' +
-    '<div class="tx-list" style="margin-top:8px">' + show.map((x) => { const r = sinceBuy(x);
-      return '<div class="tx"><span class="tag gain">Koop</span><span class="tx-m"><b>' + esc(x.tk) + ' · ' + esc(eur(x.net)) + '</b><span class="sub">' + esc(fD.format(x.t) + ' ' + new Date(x.t).getFullYear()) + ' · ' + esc(N4.format(x.qty)) + ' × ' + esc(money(x.price, x.cur)) + '</span></span>' +
-        '<span class="tx-v ' + tone(r) + '">' + esc(isNum(r) ? spct1(r) : M.byTk.has(x.tk) ? '–' : 'verkocht') + '<span class="sub">sinds aankoop</span></span></div>' + noteBlock(x); }).join('') + '</div>' +
+    '<div class="tx-list" style="margin-top:8px">' + L.rows + '</div>' + L.btn +
     '<p class="sub" style="margin-top:8px">Resultaat: de koers nu tegenover je aankoopkoers, in de munt van het aandeel. Notities staan in je eigen Worker.</p></section>';
 }
 
