@@ -113,7 +113,7 @@ const EN_RE = [
   [/^Wat is er nieuw in (.+)$/, "What's new in $1"], [/^(\d+) u oud$/, '$1 h old'], [/^(\d+) d oud$/, '$1 d old'],
   [/^Gekopieerd: (.+)$/, 'Copied: $1'],
   [/^Alle (\d+) bedrijven bekijken$/, 'View all $1 companies'], [/^Alle (\d+) bedrijven$/, 'All $1 companies'], [/^(\d+) van 7$/, '$1 of 7'], [/^Via (.+)$/, 'Via $1'],
-  [/^Stijgers, markt en dalers (.*)$/, 'Risers, market and fallers $1'], [/^(\d+) dagen$/, '$1 days'], [/^(\d+) jaar$/, '$1 years'], [/^Waarde beleggingen, (.+)$/, 'Investments value, $1'],
+  [/^Stijgers, markt en dalers (.*)$/, 'Risers, market and fallers $1'], [/^(\d+) dagen$/, '$1 days'], [/^(\d+) jaar$/, '$1 years'], [/^Accountwaarde, (.+) · beleggingen (.+) \+ (.+) vrij saldo$/, 'Account value, $1 · investments $2 + $3 free cash'], [/^Waarde beleggingen, (.+)$/, 'Investments value, $1'],
   [/^Bijgewerkt (.+)$/, 'Updated $1'], [/^vandaag$/, 'today'], [/^Nieuwe versie (.+)$/, 'New version $1'],
   [/^(.+) vandaag$/, '$1 today'], [/^sinds het slot van (.+)$/, 'since the close of $1'], [/^(.+) sinds het slot van (.+)$/, '$1 since the close of $2'],
   [/^sinds de opening(.*)$/, 'since the open$1'], [/^Sinds aankoop (.+)$/, 'Since purchase $1'], [/^(\d+) posities, samen (.+)$/, '$1 positions, together $2'],

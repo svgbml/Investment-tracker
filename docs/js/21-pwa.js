@@ -191,7 +191,7 @@ function widgetPayload() {
   const T = M.tot;
   const { movers } = todayLines();
   return {
-    value: eur(M.totalValue),
+    value: eur(heroAmount()),
     change: isNum(T.change) ? seur(T.change) + ' · ' + spct(T.changePct) : 'nog niet gemeten',
     tone: isNum(T.change) ? (T.change < 0 ? 'attention' : 'good') : 'default',
     updated: M.lastT ? 'Bijgewerkt ' + fDT.format(M.lastT) : 'Nog geen meting',
