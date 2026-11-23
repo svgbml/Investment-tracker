@@ -32,7 +32,7 @@ function companyResearch(c) {
   const newsOff = !F.has.finnhub && !F.has.polygon && !F.has.mx && !F.has.av && !(F.flags && F.flags.gdelt !== false) && !demo;
   const opinionOff = newsOff && !F.has.fmp && !F.has.sec;
   const insiderOff = !F.has.finnhub && !F.has.av && !F.has.sec && !demo;
-  const wait = 'De gegevens worden opgehaald buiten de meettijden; kom straks terug.';
+  const wait = 'De gegevens worden opgehaald buiten de handelsuren; kom straks terug.';
   // Nieuws
   if (newsOff) tiles.push(offTile('Nieuws', 'Zet Finnhub aan (gratis sleutel) om het laatste nieuws per aandeel te zien. Polygon en Marketaux werken ook, als reserve.', 'FINNHUB_KEY'));
   else if (!R) tiles.push(offTile('Nieuws', wait));

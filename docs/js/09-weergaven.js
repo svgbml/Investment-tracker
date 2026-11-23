@@ -3,15 +3,20 @@
 'use strict';
 
 // ---------- Desktop ----------
-// Het grote bedrag is de waarde van je beleggingen; Trading 212 toont als totaal ook je vrije saldo. Dat staat er daarom bij.
+// Het grote bedrag is je accountwaarde (beleggingen plus vrij saldo), net als het totaal in Trading 212.
+// Is het saldo nog onbekend, dan alleen de beleggingen. De grafiek eronder blijft de lijn van je beleggingen.
+const heroWithCash = () => M.cash != null && M.cash > 0;
+const heroAmount = () => (heroWithCash() ? M.accountNow : M.totalValue);
 function heroLabelText() {
-  return 'Waarde beleggingen, ' + (M.lastT ? fDT.format(M.lastT) : 'laatste meting') +
-    (M.cash != null && M.cash > 0 ? ' · met vrij saldo ' + eur(M.accountNow) : '');
+  const when = M.lastT ? fDT.format(M.lastT) : 'laatste meting';
+  return heroWithCash()
+    ? 'Accountwaarde, ' + when + ' · beleggingen ' + eur(M.totalValue) + ' + ' + eur(M.cash) + ' vrij saldo'
+    : 'Waarde beleggingen, ' + when;
 }
 function renderHome() {
   const T = M.tot;
   $('hero-label').textContent = heroLabelText();
-  countTo($('hero-value'), M.totalValue, eur);
+  countTo($('hero-value'), heroAmount(), eur);
   const ch = $('hero-change');
   if (calmMode()) {
     ch.textContent = calmChangeLine();
@@ -190,7 +195,7 @@ function mRow(c, pts, right) {
 function renderMHome() {
   const T = M.tot;
   $('m-hero-label').textContent = heroLabelText();
-  countTo($('m-hero-value'), M.totalValue, eur);
+  countTo($('m-hero-value'), heroAmount(), eur);
   $('m-hero-change').innerHTML = calmMode()
     ? '<span class="pill-chg ' + tone(calmChangeValue()) + '">' + esc(calmChangeLine()) + '</span>'
     : isNum(T.change)
@@ -319,7 +324,7 @@ function setMini() {
   const T = M.tot;
   const mo = calmMode() ? monthNow() : null;
   const cal = mo && (mo.cur || mo.prev);
-  const html = '<span class="mini-v">' + esc(eur(M.totalValue)) + '</span>' +
+  const html = '<span class="mini-v">' + esc(eur(heroAmount())) + '</span>' +
     (calmMode()
       ? (cal && isNum(cal.pct) ? '<span class="mini-c ' + tone(cal.v) + '">' + esc(spct(cal.pct)) + '<span class="mini-w"> ' + esc(mo.cur ? 'deze maand' : fMonLong.format(cal.t)) + '</span></span>' : '')
       : isNum(T.changePct) ? '<span class="mini-c ' + tone(T.change) + '">' + esc(spct(T.changePct)) + '<span class="mini-w"> ' + esc(M.dayWord) + '</span></span>' : '') +

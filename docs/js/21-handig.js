@@ -8,6 +8,10 @@
 // (gemaakt met node tools/changelog.mjs); hieronder staat alleen wat de gebruiker merkt.
 // Bij een nieuwe versie: zet de regels van die versie bovenaan, met VERSION uit js/01-basis.js als sleutel.
 const WHATS_NEW = {
+  v69: [
+    'De Worker meet op werkdagen nu de hele dag elke 10 minuten, ook in de nacht en vroeg in de ochtend. Orders en marktgegevens haalt hij nog steeds buiten de handelsuren op.',
+    'Het grote bedrag toont de accountwaarde met het vrije saldo erbij, net als Trading 212.',
+  ],
   v68: [
     'De site start sneller en reageert eerder op tikken en scrollen: pagina\'s die je niet ziet, worden pas getekend als je ze opent, en Start wordt in stukken getekend.',
     'Analyse op de telefoon tekent alleen het tabblad dat open staat; het rapport (pdf) bevat nog steeds alle onderdelen.',
@@ -117,7 +121,7 @@ function ageTag(stamp, limitH) {
   const h = (Date.now() - t) / HOUR;
   const lim = isNum(limitH) ? limitH : AGE_LIMIT.market;
   if (!(h > lim)) return '';
-  return '<span class="age" title="' + esc('Deze gegevens zijn van ' + fDT.format(t) + '. De Worker haalt ze opnieuw op buiten de meettijden.') + '">' + esc(ageWords(h)) + '</span>';
+  return '<span class="age" title="' + esc('Deze gegevens zijn van ' + fDT.format(t) + '. De Worker haalt ze opnieuw op buiten de handelsuren.') + '">' + esc(ageWords(h)) + '</span>';
 }
 // Jongste van meerdere stempels (bijvoorbeeld Finnhub en Alpha Vantage voor hetzelfde aandeel)
 function ageTagOf(obj, limitH, keys) {

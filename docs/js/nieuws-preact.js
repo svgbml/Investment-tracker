@@ -119,7 +119,7 @@ function NewsList({ items, tk, onClear }) {
         ${rest ? html`<div class="news-tail" ref=${tail} aria-hidden="true"></div><p class="small muted" role="status" style="margin-top:6px">Nog ${rest} ${rest === 1 ? 'kop' : 'koppen'}: scrol verder.</p>` : null}
         ${canOlder && !end && !rest ? html`<div class="news-more"><button type="button" class="btn ghost" disabled=${busy} onClick=${loadOlder}>${busy ? 'Bezig met laden…' : 'Ouder nieuws laden'}</button></div>` : null}
         ${note ? html`<p class="small muted" role="status" style="margin-top:6px">${note}</p>` : null}`
-      : html`<p class="muted">${filter === 'market' && !data.marketNews ? 'Marktnieuws komt van Finnhub en wordt buiten de meettijden opgehaald.' : 'Geen nieuws in deze selectie.'}</p>`}
+      : html`<p class="muted">${filter === 'market' && !data.marketNews ? 'Marktnieuws komt van Finnhub en wordt buiten de handelsuren opgehaald.' : 'Geen nieuws in deze selectie.'}</p>`}
     <p class="sub" style="margin-top:8px">Koppen en links van Finnhub (of als reserve Polygon, Marketaux, GDELT of Alpha Vantage): per aandeel de laatste tien dagen, en algemeen marktnieuws. Het artikel opent bij de bron. Berichten met bijna dezelfde kop staan samen onder "x bronnen". Positief of negatief is een schatting uit woorden in de kop en samenvatting, geen oordeel van de bron; lees bij twijfel het artikel.</p>
   </section>`;
 }

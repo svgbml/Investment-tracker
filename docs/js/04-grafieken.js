@@ -620,7 +620,7 @@ function drawHero(p, animate) {
   const cmp = heroCmpSets(pts);
   lineChart($(p + 'hero-chart'), [{ pts, color: C.accent, width: 2.5, label: 'Jouw beleggingen' }].concat(cmp.sets), {
     animate, markers: heroMarkers(pts, r), xl: $(p + 'hero-x'), xfmt: xFmt(r, pts), tfmt: tFmt(r, pts),
-    empty: 'Nog te weinig metingen voor deze periode. De tracker meet op werkdagen tussen 08:00 en 22:30.',
+    empty: 'Nog te weinig metingen voor deze periode. De tracker meet op werkdagen de hele dag, elke 10 minuten.',
   });
   // Zei de lijn iets anders dan de waarde zelf, dan staat erbij dat aan- en verkopen eruit zijn gehaald
   const raw = seriesFor(TOTAL, r);
