@@ -2,7 +2,7 @@
 
 Deze Worker doet hetzelfde als het Apps Script, maar zonder Google Sheet:
 
-- elke 10 minuten op werkdagen van 08:00 tot 22:30 (Amsterdamse tijd) je posities ophalen uit de Trading 212 API;
+- elke 10 minuten op werkdagen, de hele dag (Amsterdamse tijd), je posities ophalen uit de Trading 212 API;
 - per uur en per dag open, slot, laagste, hoogste en gemiddelde waarde bewaren;
 - metingen per 10 minuten na 3 dagen verwijderen (pas nadat ze per uur zijn samengevat);
 - elke zaterdag rond 09:00 een weeksnapshot: accountwaarde, netto stortingen, cash en kostprijs;
@@ -93,7 +93,7 @@ Sleutel toevoegen: maak een gratis account bij FMP, kopieer je API-sleutel uit h
 
 ## Sector en vergelijkbare bedrijven
 
-Na de agenda zet de Worker elke ochtend taken klaar die hij buiten de meettijden (per 10 minuten maximaal 30 verzoeken) afwerkt:
+Na de agenda zet de Worker elke ochtend taken klaar die hij buiten de handelsuren (08:00–22:30) (per 10 minuten maximaal 30 verzoeken) afwerkt:
 
 - per aandeel het profiel bij FMP (sector, branche, beurswaarde, beta, jaarbereik, koers) en, één keer per week, tot 5 vergelijkbare bedrijven met hun profiel;
 - de gemiddelde koersverandering per sector en per branche (eerste keer 20 handelsdagen terug, daarna 1 per dag);
@@ -103,14 +103,14 @@ Gegevens staan in de tabellen `ext_profile`, `ext_peers`, `ext_prices` en `ext_p
 
 ## Orders, valuta, peildatum en fondssamenstelling
 
-- **Orders:** buiten de meettijden haalt de Worker één keer per dag de uitgevoerde orders op (de eerste keer de hele geschiedenis, daarna de nieuwste 100). Per order: aantal, prijs, wisselkoers, bedrag, gerealiseerd resultaat en kosten (tabel `orders`).
+- **Orders:** buiten de handelsuren (08:00–22:30) haalt de Worker één keer per dag de uitgevoerde orders op (de eerste keer de hele geschiedenis, daarna de nieuwste 100). Per order: aantal, prijs, wisselkoers, bedrag, gerealiseerd resultaat en kosten (tabel `orders`).
 - **Valuta-effect:** bij elke meting bewaart de Worker per positie de gemiddelde aankoopprijs, de valuta en het valuta-effect (`fxImpact`) van Trading 212 (`pos_extra` in `kv`).
 - **Peildatum:** op 1 januari legt de Worker de stand van beleggingen en vrij saldo vast (`peil_JAAR` in `kv`).
 - **Werkelijke spreiding:** de samenstelling van de S&P 500 en de Nasdaq-100 komt uit de holdings-CSV van iShares (CSPX en CNDX); ETF's op dezelfde index (zoals VUAG en SXRV) worden daarmee doorgerekend. De Worker probeert het bestand wekelijks op te halen; weigert iShares dat, voeg het dan zelf toe op de pagina Plannen (`POST /api/etf-upload`).
 
 ## Nieuws, analisten, bedrijfscijfers, valuta en inflatie
 
-Na de agenda zet de Worker elke ochtend taken klaar die hij buiten de meettijden afwerkt (per 10 minuten maximaal 30 externe verzoeken):
+Na de agenda zet de Worker elke ochtend taken klaar die hij buiten de handelsuren (08:00–22:30) afwerkt (per 10 minuten maximaal 30 externe verzoeken):
 
 - **Finnhub** (`FINNHUB_KEY`), per aandeel: nieuws van de laatste 10 dagen, aanbevelingen van analisten, de laatste 4 kwartaalverrassingen en insiderhandel van de laatste 6 maanden. Onderdelen die niet in je abonnement zitten (status 403) slaat hij daarna over.
 - **SEC EDGAR** (`SEC_CONTACT`, wekelijks): omzet, nettowinst, bedrijfsresultaat en winst per aandeel per kalenderjaar uit de XBRL-gegevens (`companyconcept`). Elk verzoek draagt `investment-tracker (jouw e-mailadres)` als User-Agent, zoals de SEC vraagt. Alleen bedrijven die bij de SEC rapporteren.

@@ -693,7 +693,7 @@ function renderStatusView() {
   const errRows = Object.entries(S.errors || {}).map(([src, e]) => [src, e.msg + ' (' + fDT.format(new Date(e.at)) + ')', 'loss']);
   const meas = '<section class="tile pad"><h3>Metingen</h3>' + kvList([
     ['Laatste meting', ago(S.lastMeasurement), stale ? 'loss' : ''],
-    ['Meettijden nu', S.live ? 'ja (werkdagen 08:00–22:30)' : 'nee'],
+    ['Meettijden nu', S.live ? 'ja (werkdagen, de hele dag)' : 'nee'],
     ['Laatste geplande run', ago(S.lastCron)],
     ['Mislukte metingen op rij', String(S.tickFails || 0), S.tickFails >= 3 ? 'loss' : ''],
     ['Laatste fout', S.lastError || 'geen', S.lastError ? 'loss' : ''],

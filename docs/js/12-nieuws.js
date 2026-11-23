@@ -189,7 +189,7 @@ function newsListTile() {
   return '<section class="tile pad span-2 news-tile"><div class="plan-head"><h3>Nieuws</h3>' + segX('newsF', [['all', 'Alles'], ['mine', 'Mijn aandelen'], ['watch', 'Volglijst'], ['market', 'Markt']], f, 'Nieuws filteren') + '</div>' +
     (items.length ? '<p class="small muted" style="margin:2px 0 6px">' + (() => { const c = { pos: 0, neg: 0, neu: 0 }; items.forEach((n) => { c[newsTone(n)]++; }); return esc(c.pos + ' positief, ' + c.neg + ' negatief, ' + c.neu + ' neutraal' + (bundled > 0 ? ', ' + bundled + ' gebundeld' : '')); })() + '</p>' +
       '<div class="news">' + cls.map((c) => newsClusterHtml(c, newsItemHtml)).join('') + '</div>'
-      : '<p class="muted">' + (f === 'market' && !data.marketNews ? 'Marktnieuws komt van Finnhub en wordt buiten de meettijden opgehaald.' : 'Geen nieuws in deze selectie.') + '</p>') +
+      : '<p class="muted">' + (f === 'market' && !data.marketNews ? 'Marktnieuws komt van Finnhub en wordt buiten de handelsuren opgehaald.' : 'Geen nieuws in deze selectie.') + '</p>') +
     '<p class="sub" style="margin-top:8px">Koppen en links van Finnhub: per aandeel de laatste tien dagen, en algemeen marktnieuws. Het artikel opent bij de bron. Berichten met bijna dezelfde kop staan samen onder "x bronnen". Positief of negatief is een schatting uit woorden in de kop en samenvatting (zoals "stijgt", "beats", "daalt", "downgrade"), geen oordeel van de bron; lees bij twijfel het artikel.</p></section>';
 }
 function analystTableTile() {

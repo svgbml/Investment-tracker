@@ -103,7 +103,7 @@ function ageTag(stamp, limitH) {
   const h = (Date.now() - t) / HOUR;
   const lim = isNum(limitH) ? limitH : AGE_LIMIT.market;
   if (!(h > lim)) return '';
-  return '<span class="age" title="' + esc('Deze gegevens zijn van ' + fDT.format(t) + '. De Worker haalt ze opnieuw op buiten de meettijden.') + '">' + esc(ageWords(h)) + '</span>';
+  return '<span class="age" title="' + esc('Deze gegevens zijn van ' + fDT.format(t) + '. De Worker haalt ze opnieuw op buiten de handelsuren.') + '">' + esc(ageWords(h)) + '</span>';
 }
 // Jongste van meerdere stempels (bijvoorbeeld Finnhub en Alpha Vantage voor hetzelfde aandeel)
 function ageTagOf(obj, limitH, keys) {

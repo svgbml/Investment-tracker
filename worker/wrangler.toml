@@ -2,7 +2,7 @@ name = "investment-tracker"
 main = "src/index.js"
 compatibility_date = "2026-11-01"
 
-# Elke 10 minuten (UTC). De Worker meet zelf alleen op werkdagen 08:00–22:30 Amsterdamse tijd.
+# Elke 10 minuten (UTC). De Worker meet op werkdagen de hele dag; buiten 08:00–22:30 haalt hij daarnaast orders en marktgegevens op.
 [triggers]
 crons = ["*/10 * * * *", "17 5 * * *"]
 # De tweede (05:17 UTC) haalt 1x per dag dividenden en kwartaalcijfers op.

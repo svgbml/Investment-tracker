@@ -339,7 +339,7 @@ async function afterLinkChange(note) {
   renderLinks(note + ' Bezig met ophalen…');
   try {
     await workerCall('/api/market?plan=1', { method: 'POST' });
-    renderLinks(note + ' De eerste gegevens zijn opgehaald; de rest volgt binnen een uur buiten de meettijden.');
+    renderLinks(note + ' De eerste gegevens zijn opgehaald; de rest volgt binnen een uur buiten de handelsuren.');
     load();
   } catch (err) { renderLinks(note + ' ' + foutTekst('De eerste gegevens ophalen lukte nog niet', err, 'De Worker probeert het binnen een uur zelf opnieuw; je hoeft niets te doen.')); }
 }

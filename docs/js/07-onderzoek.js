@@ -26,7 +26,7 @@ function companyResearch(c) {
   const R = (data.research || {})[c.tk];
   const tiles = [];
   const finnhubOff = !F.has.finnhub && !F.has.av && !demo;
-  const wait = 'De gegevens worden opgehaald buiten de meettijden; kom straks terug.';
+  const wait = 'De gegevens worden opgehaald buiten de handelsuren; kom straks terug.';
   // Nieuws
   if (finnhubOff) tiles.push(offTile('Nieuws', 'Zet Finnhub aan (gratis sleutel) om het laatste nieuws per aandeel te zien.', 'FINNHUB_KEY'));
   else if (!R) tiles.push(offTile('Nieuws', wait));

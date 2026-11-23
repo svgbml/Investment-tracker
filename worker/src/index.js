@@ -2,7 +2,7 @@
  * Investeringstracker – Cloudflare Worker (versie zonder Google Sheets)
  *
  * Wat hij doet:
- *  - Elke 10 minuten op werkdagen 08:00–22:30 (Amsterdam): posities ophalen uit de Trading 212 API
+ *  - Elke 10 minuten op werkdagen, de hele dag (Amsterdam): posities ophalen uit de Trading 212 API
  *    en opslaan in de tabel `intraday` (plus een regel TOTAAL).
  *  - Eén keer per uur: afgeronde uren samenvatten in `hours`, afgeronde dagen in `days`,
  *    en metingen ouder dan 3 dagen verwijderen (pas als hun uur in `hours` staat).
@@ -20,8 +20,9 @@
 
 const TZ = 'Europe/Amsterdam';
 const LIVE_WEEKDAYS = [1, 2, 3, 4, 5];
-const LIVE_START = '08:00';
-const LIVE_END = '22:30';
+// Handelsuren (Europa en VS): daarbuiten haalt de Worker naast het meten ook orders en marktgegevens op
+const MARKET_START = '08:00';
+const MARKET_END = '22:30';
 const KEEP_INTRADAY_MS = 3 * 864e5;
 const HOUR_MS = 3600e3;
 const TOTAL = 'TOTAAL';
@@ -191,8 +192,8 @@ const WORKER = {
       .then(() => setKv(env, 'last_cron', new Date().toISOString()))
       .then(() => morningPush(env, at).catch((e) => console.error('ochtend', e)))
       .then(async () => {
-        if (isLive(at)) return null;
-        // Buiten de meettijden: eerst (1x per dag) de orders, anders een portie marktgegevens
+        if (marketHours(at)) return null;
+        // Buiten de handelsuren: eerst (1x per dag) de orders, anders een portie marktgegevens
         if (env.T212_KEY && (await getKv(env, 'orders_synced')) !== parts(at).day) return syncOrders(env);
         if (await saveMode(env)) return 'Spaarstand: marktgegevens wachten tot na middernacht (UTC).';
         return marketStep(env);
@@ -964,8 +965,11 @@ function usTradingDay(ms) {
 }
 
 function isLive(d) {
+  return LIVE_WEEKDAYS.includes(parts(d).weekday);
+}
+function marketHours(d) {
   const p = parts(d);
-  return LIVE_WEEKDAYS.includes(p.weekday) && p.hm >= LIVE_START && p.hm <= LIVE_END;
+  return isLive(d) && p.hm >= MARKET_START && p.hm <= MARKET_END;
 }
 
 function isoLocal(ms) {
@@ -3572,7 +3576,7 @@ function isDst(localIso) {
   return t >= start.getTime() + 2 * HOUR_MS && t < end.getTime() + 3 * HOUR_MS;
 }
 
-export const _test = { parts, isLive, shortTicker, isoLocal, isDst, hourStart, dayOf, newsHistTask, storeNews, noteOpinionDay,
+export const _test = { parts, isLive, marketHours, shortTicker, isoLocal, isDst, hourStart, dayOf, newsHistTask, storeNews, noteOpinionDay,
   tradingDay, usTradingDay, shiftDay, weekdayOf, srcPause, srcFail, srcOk, srcState, srcHistState, checkPositions, splitRatio,
   planResearch, uniqTasks, dbWatch, testKey, r2Backup, r2Info, r2Preview, healthInfo, budgetInfo, buildData, bumpMarket, ensureMarketTables, ensureIndexes, countingDb, flushCalls, srcFail, searchCompanies, checkPriceAlerts, saveMode, buildAllowed, seriesRows, invalidateSeries, cfTrend, setBig, getBig, invalidateOrders,
   usSym, sicSector, parseForm4, quarterlyEps, polyNewsItems, altTask, eodBackup, planMarket };

@@ -184,7 +184,7 @@ function dayLineText() {
     return [txt, newsMoodSentence(), 'Rustige modus staat aan: dagveranderingen blijven verborgen.'].filter(Boolean).join(' ');
   }
   const T = M.tot;
-  if (!isNum(T.change)) return 'Nog geen metingen van ' + (M.isToday ? 'vandaag' : 'deze handelsdag') + '. De tracker meet op werkdagen tussen 08:00 en 22:30.';
+  if (!isNum(T.change)) return 'Nog geen metingen van ' + (M.isToday ? 'vandaag' : 'deze handelsdag') + '. De tracker meet op werkdagen de hele dag, elke 10 minuten.';
   const word = M.dayWord.charAt(0).toUpperCase() + M.dayWord.slice(1);
   const withChange = M.companies.filter((c) => isNum(c.change));
   const up = withChange.filter((c) => c.change > 0).length, down = withChange.filter((c) => c.change < 0).length;
@@ -215,7 +215,7 @@ function daySumItems() {
     ].filter(Boolean);
   }
   const T = M.tot;
-  if (!isNum(T.change)) return [{ k: M.dayWord.charAt(0).toUpperCase() + M.dayWord.slice(1), v: 'Nog geen metingen', s: 'De tracker meet op werkdagen tussen 08:00 en 22:30' }].concat(news ? [news] : []);
+  if (!isNum(T.change)) return [{ k: M.dayWord.charAt(0).toUpperCase() + M.dayWord.slice(1), v: 'Nog geen metingen', s: 'De tracker meet op werkdagen de hele dag, elke 10 minuten' }].concat(news ? [news] : []);
   const withChange = M.companies.filter((c) => isNum(c.change));
   const by = withChange.slice().sort((x, y) => y.change - x.change);
   const best = by[0] && by[0].change > 0 ? by[0] : null;

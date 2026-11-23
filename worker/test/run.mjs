@@ -725,6 +725,11 @@ await test('handelsdag: zomer- en wintertijd, weekend en de Amerikaanse beurs (i
   assert.equal(T.dayOf(Date.parse('2026-10-25T22:30:00Z')), '2026-10-25'); // 23:30 CET
   assert.equal(T.isDst('2026-03-29T03:30:00'), true);
   assert.equal(T.isDst('2026-10-25T04:30:00'), false, '04:30 na de overgang is wintertijd');
+  // Meten: werkdagen de hele dag; orders en marktgegevens alleen buiten de handelsuren (08:00–22:30)
+  assert.equal(T.isLive(new Date('2026-11-24T05:00:00Z')), true, 'dinsdag 06:00 wordt gemeten');
+  assert.equal(T.marketHours(new Date('2026-11-24T05:00:00Z')), false);
+  assert.equal(T.marketHours(new Date('2026-11-24T12:00:00Z')), true);
+  assert.equal(T.isLive(new Date('2026-11-22T12:00:00Z')), false, 'zondag niet');
   // Handelsdag: in het weekend de vrijdag ervoor
   assert.equal(T.tradingDay(Date.parse('2026-11-18T12:00:00Z')), '2026-11-18'); // woensdag
   assert.equal(T.tradingDay(Date.parse('2026-11-21T12:00:00Z')), '2026-11-20'); // zaterdag -> vrijdag
@@ -1744,7 +1749,7 @@ await test('vijf jaar, 30 posities: een ronde blijft ruim binnen de D1-daglimiet
   const hIns = DB.db.prepare('INSERT OR REPLACE INTO hours (hour, ticker, name, open, close, low, high, avg, n, close_price) VALUES (?,?,?,?,?,?,?,?,?,?)');
   for (let d = 1; d <= 60; d++) for (let h = 8; h <= 21; h++) { const t = Math.floor((now - d * DAYMS) / HOUR) * HOUR - (new Date(now).getUTCHours() - h) * HOUR; tks.forEach((tk) => hIns.run(t, tk, nameOf(tk), 1, 1, 1, 1, 1, 6, 1)); }
   const iIns = DB.db.prepare('INSERT OR REPLACE INTO intraday (ts, ticker, name, value, unrealized, price, qty) VALUES (?,?,?,?,?,?,?)');
-  for (let k = 1; k <= 3 * 87; k++) { const t = Math.floor((now - k * 10 * 60e3) / 60000) * 60000; tks.forEach((tk) => iIns.run(t, tk, nameOf(tk), 100, 1, 10, 10)); }
+  for (let k = 1; k <= 3 * 144; k++) { const t = Math.floor((now - k * 10 * 60e3) / 60000) * 60000; tks.forEach((tk) => iIns.run(t, tk, nameOf(tk), 100, 1, 10, 10)); }
   await T.ensureMarketTables(env);
   const pIns = DB.db.prepare('INSERT OR REPLACE INTO ext_prices (symbol, day, price) VALUES (?,?,?)');
   for (let n = 0; n < 120; n++) for (let d = 1; d <= 390; d++) pIns.run('SYM' + n, day(now - d * DAYMS), 50);
