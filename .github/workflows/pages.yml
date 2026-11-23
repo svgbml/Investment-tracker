@@ -28,9 +28,17 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      # Gepubliceerd wordt een verkleinde kopie van docs/ (één script in plaats van tientallen, zie tools/bouw-site.mjs)
+      - name: Site bouwen
+        run: |
+          npm i --no-save --no-audit --no-fund esbuild@0.28.2
+          node tools/bouw-site.mjs --uit _site
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: docs
+          path: _site
       - id: deployment
         uses: actions/deploy-pages@v4

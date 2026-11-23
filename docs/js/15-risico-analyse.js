@@ -141,7 +141,7 @@ async function mountWhatIf() {
   const key = items.map((x) => x.c.tk + ':' + x.n).join(',');
   if (!raCov || raCov.key !== key) {
     const series = items.map((x) => [...x.rets.entries()]);
-    const out = await runOffThread(covJob, { series });
+    const out = await runOffThread(covJob, { series }, 'cov', key);
     raCov = { key, cov: (out && out.cov) || [], tks: items.map((x) => x.c.tk) };
   }
   paintWhatIf();

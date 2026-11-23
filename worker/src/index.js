@@ -74,6 +74,7 @@ function countingDb(db) {
   });
   return {
     __counted: true,
+    __raw: db,
     prepare: (sql) => wrap(db.prepare(sql)),
     async batch(list) { const r = await db.batch(list.map((x) => (x && x.__inner) || x)); (r || []).forEach((x) => add(x && x.meta)); return r; },
     exec: (q) => db.exec(q),
@@ -341,7 +342,7 @@ const WORKER = {
         catch (e) { return json({ ok: false, error: String(e && e.message || e) }, 400, cors); }
       }
       if (url.pathname === '/api/quotes' && request.method === 'GET') {
-        try { return json(Object.assign({ ok: true }, await liveQuotes(env, url.searchParams.get('fast'))), 200, cors); }
+        try { return json(Object.assign({ ok: true }, await liveQuotes(env, url.searchParams.get('fast'), url.searchParams.has('us'))), 200, cors); }
         catch (e) { return json({ ok: false, error: String(e && e.message || e) }, 400, cors); }
       }
       if (url.pathname === '/api/trade/instruments' && request.method === 'GET') {
@@ -1484,13 +1485,33 @@ async function addPending(env, amount) {
 
 // ---------- Opslag van instellingen ----------
 
+// Voorwaardelijk ophalen: met de ETag en Last-Modified van de vorige keer antwoordt een bron 304 als er niets veranderde.
+// Alleen bij bronnen die ze meesturen (ECB, iShares); de SEC en de dagelijkse Frankfurter-reeks (adres verandert elke dag) niet.
+function condHeaders(prev, h = {}) {
+  if (prev && prev.etag) h['If-None-Match'] = prev.etag;
+  if (prev && prev.lm) h['If-Modified-Since'] = prev.lm;
+  return h;
+}
+const condOf = (res) => ({ etag: res.headers.get('ETag') || null, lm: res.headers.get('Last-Modified') || null });
+
+// Sessies en sleutels leest elk verzoek (live koersen elke paar seconden): 30 seconden in het geheugen van deze isolate.
+// shortcut: een andere isolate ziet een wijziging (zoals een ingetrokken apparaat) pas na hoogstens 30 s; KV_MEMO_MS korter maken als dat te lang is.
+const KV_MEMO_MS = 30e3, KV_MEMO_KEYS = new Set(['keys', 'sessions']);
+let kvMemo = new WeakMap();
+const kvMemoOf = (env) => { const db = env.DB.__raw || env.DB; let m = kvMemo.get(db); if (!m) kvMemo.set(db, (m = new Map())); return m; };
+
 async function getKv(env, key) {
+  const memo = KV_MEMO_KEYS.has(key) ? kvMemoOf(env) : null, hit = memo && memo.get(key);
+  if (hit && Date.now() - hit.t < KV_MEMO_MS) return hit.v;
   const row = await env.DB.prepare('SELECT value FROM kv WHERE key = ?').bind(key).first();
-  return row ? row.value : null;
+  const v = row ? row.value : null;
+  if (memo) memo.set(key, { v, t: Date.now() });
+  return v;
 }
 
 async function setKv(env, key, value) {
   await env.DB.prepare('INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)').bind(key, value).run();
+  if (KV_MEMO_KEYS.has(key)) kvMemoOf(env).set(key, { v: value, t: Date.now() });
 }
 // Grote waarden (het overzicht, de deel-link, caches) in stukken opslaan: D1 staat hoogstens 2 MB per rij toe,
 // en met jaren aan dagen per positie of veel gevolgde aandelen wordt één rij te groot. Een waarde van één stuk
@@ -2029,7 +2050,7 @@ function parseCsvLine(line) {
 }
 
 function parseHoldings(text) {
-  const lines = text.replace(/^﻿/, '').split(/\r?\n/);
+  const lines = (text.charCodeAt(0) === 0xfeff ? text.slice(1) : text).split(/\r?\n/);
   let asOf = null;
   const hIdx = lines.findIndex((l) => /^"?Ticker"?,/.test(l));
   if (hIdx < 0) return null;
@@ -2054,12 +2075,16 @@ async function refreshEtf(env) {
   const errs = [];
   for (const [key, src] of Object.entries(ETF_SOURCES)) {
     try {
-      const res = await fetch(src.url, { headers: { 'User-Agent': 'Mozilla/5.0 (investment-tracker; persoonlijk gebruik)', Accept: 'text/csv,*/*' } });
+      let old = null;
+      try { old = JSON.parse((await getKv(env, 'etf_' + key)) || 'null'); } catch (e) { old = null; }
+      const prev = old && old.cond && old.cond.url === src.url ? old.cond : null;
+      const res = await fetch(src.url, { headers: condHeaders(prev, { 'User-Agent': 'Mozilla/5.0 (investment-tracker; persoonlijk gebruik)', Accept: 'text/csv,*/*' }) });
+      if (res.status === 304 && prev) continue;   // zelfde lijst als de vorige keer: niets schrijven
       if (!res.ok) throw new Error('status ' + res.status);
       const text = await res.text();
       const parsed = parseHoldings(text);
       if (!parsed) throw new Error('geen lijst in het bestand (' + (res.headers.get('content-type') || '?') + ', ' + text.length + ' tekens, begint met: ' + text.slice(0, 160).replace(/\s+/g, ' ') + ')');
-      await setKv(env, 'etf_' + key, JSON.stringify(Object.assign({ label: src.label, fund: src.fund }, parsed)));
+      await setKv(env, 'etf_' + key, JSON.stringify(Object.assign({ label: src.label, fund: src.fund, cond: Object.assign({ url: src.url }, condOf(res)) }, parsed)));
     } catch (e) { errs.push('ETF ' + src.label + ': ' + e.message); }
   }
   if (!errs.length) await setKv(env, 'etf_updated', new Date().toISOString().slice(0, 10));
@@ -2085,7 +2110,7 @@ async function extraData(env) {
   // Noteringen per positie van OpenFIGI (beurzen, Amerikaanse ticker, fonds of aandeel), voor de bedrijfspagina
   try {
     const fs = JSON.parse((await getKv(env, 'figi_sym')) || '{}');
-    Object.keys(out.posExtra).forEach((tk) => { const f = fs[tk]; if (f && !f.none) out.posExtra[tk].figi = { us: f.us || null, fund: !!f.fund, type: f.type || null, ex: f.ex || [] }; });
+    Object.keys(out.posExtra).forEach((tk) => { const f = fs[tk]; if (f && !f.none) out.posExtra[tk].figi = { us: f.us || null, de: f.de || null, fund: !!f.fund, type: f.type || null, ex: f.ex || [] }; });
   } catch (e) { /* geen OpenFIGI-gegevens */ }
   out.settings = await getSettings(env);
   if ((await getKv(env, 'orders_schema')) === '1') {
@@ -2172,11 +2197,18 @@ async function externalTask(env, kind, arg) {
   if (kind === 'hicp') {
     // HICP-index van de ECB (2025 = 100), Nederland en eurozone
     const start = new Date(); start.setFullYear(start.getFullYear() - 6);
-    const out = { updated: isoLocal(Date.now()), source: 'ECB Data Portal, HICP', series: {} };
+    const out = { updated: isoLocal(Date.now()), source: 'ECB Data Portal, HICP', series: {}, cond: {} };
+    let old = null;
+    try { old = JSON.parse((await getKv(env, 'hicp')) || 'null'); } catch (e) { old = null; }
+    let same = 0;
     for (const area of ['NL', 'U2']) {
       const url = 'https://data-api.ecb.europa.eu/service/data/HICP/M.' + area + '.N.000000.4D0.INX?format=csvdata&startPeriod=' + start.toISOString().slice(0, 7);
-      const res = await fetch(url);
+      // De index komt één keer per maand: met Last-Modified van de vorige keer antwoordt de ECB meestal 304 (niets nieuws)
+      const prev = old && old.cond && old.cond[area] && old.cond[area].url === url && old.series && old.series[area] ? old.cond[area] : null;
+      const res = await fetch(url, { headers: condHeaders(prev) });
+      if (res.status === 304 && prev) { out.series[area] = old.series[area]; out.cond[area] = prev; same++; continue; }
       if (res.ok) {
+        out.cond[area] = Object.assign({ url }, condOf(res));
         const lines = (await res.text()).trim().split(/\r?\n/);
         const head = lines[0].split(',');
         const iT = head.indexOf('TIME_PERIOD'), iV = head.indexOf('OBS_VALUE');
@@ -2192,6 +2224,7 @@ async function externalTask(env, kind, arg) {
       out.source = 'Eurostat (reserve voor de ECB), HICP 2015 = 100';
       await srcBackup(env, 'ecb_hicp', 'Eurostat');
     }
+    if (same === 2) { await noteExtError(env, 'inflation', null); return 2; }   // niets nieuws: niets schrijven
     if (Object.keys(out.series).length) { await setKv(env, 'hicp', JSON.stringify(out)); await noteExtError(env, 'inflation', null); }
     return 2;
   }
@@ -2613,14 +2646,17 @@ async function figiMap(key, jobs) {
   try { body = await res.json(); } catch (e) { body = null; }
   return { status: res.status, ok: res.ok, body };
 }
-// Eén regel per ISIN: { d: dag, name, type, fund, us: Amerikaanse ticker of null, ex: [[beurscode, ticker], …] } of { d, none: true }
+// Eén regel per ISIN: { d: dag, name, type, fund, us: Amerikaanse ticker of null, de: Duitse ticker of null, ex: [[beurscode, ticker], …] }
+// of { d, none: true }. De Duitse ticker (samengesteld GR, anders Xetra, Frankfurt of München) is ook die van gettex: de site
+// toont daarmee de live grafiek van TradingView in de snelle modus.
 function figiRecord(item, day) {
   const data = item && Array.isArray(item.data) ? item.data : null;
   if (!data || !data.length) return { d: day, none: true };
   const seen = new Set(), ex = [];
   data.forEach((x) => { const k = x.exchCode + ':' + x.ticker; if (x.exchCode && x.ticker && !seen.has(k) && ex.length < 16) { seen.add(k); ex.push([String(x.exchCode), String(x.ticker)]); } });
   const usRow = data.find((x) => x.exchCode === 'US') || data.find((x) => FIGI_US.has(x.exchCode));
-  return { d: day, name: String(data[0].name || '').slice(0, 80) || null, type: String(data[0].securityType2 || data[0].securityType || '').slice(0, 40) || null,
+  const deRow = ['GR', 'GY', 'GF', 'GM'].map((c) => data.find((x) => x.exchCode === c && x.ticker)).find(Boolean);
+  return { d: day, de: deRow && /^[A-Z0-9]{1,8}$/i.test(deRow.ticker) ? String(deRow.ticker).toUpperCase() : null, name: String(data[0].name || '').slice(0, 80) || null, type: String(data[0].securityType2 || data[0].securityType || '').slice(0, 40) || null,
     fund: data.some(figiIsFund), us: usRow && usRow.ticker ? String(usRow.ticker).replace('/', '-').toUpperCase() : null, ex };
 }
 async function figiTask(env) {
@@ -2629,7 +2665,7 @@ async function figiTask(env) {
   try { map = JSON.parse((await getKv(env, 'figi')) || '{}'); } catch (e) { map = {}; }
   const today = parts(new Date()).day;
   const isins = [...new Set(Object.values(pe).map((x) => x && x.isin).filter((x) => /^[A-Z]{2}[A-Z0-9]{9}\d$/.test(String(x || ''))))];
-  const todo = isins.filter((i) => !map[i] || dayGap(today, map[i].d) >= FIGI_MAX_AGE_DAYS).sort((a, b) => (map[a] ? 1 : 0) - (map[b] ? 1 : 0));
+  const todo = isins.filter((i) => figiStale(map[i], today)).sort((a, b) => (map[a] ? 1 : 0) - (map[b] ? 1 : 0));
   let calls = 0;
   if (todo.length && !(await srcDown(env, 'openfigi'))) {
     const batch = todo.slice(0, env.OPENFIGI_KEY ? 100 : 10);
@@ -2654,7 +2690,7 @@ async function figiTask(env) {
   Object.entries(pe).forEach(([tk, x]) => {
     const f = x && x.isin && map[x.isin];
     if (!f) return;
-    const v = f.none ? { none: true } : { us: f.us, fund: !!f.fund, type: f.type, name: f.name, ex: f.ex.map((e) => e[0]).filter((c, k, a) => a.indexOf(c) === k).slice(0, 8) };
+    const v = f.none ? { none: true } : { us: f.us, de: f.de || null, fund: !!f.fund, type: f.type, name: f.name, ex: f.ex.map((e) => e[0]).filter((c, k, a) => a.indexOf(c) === k).slice(0, 8) };
     bySym[tk] = v;
     if (SYMBOL_MAP[tk]) bySym[SYMBOL_MAP[tk]] = v;
   });
@@ -2667,8 +2703,10 @@ async function figiDue(env) {
   try { pe = JSON.parse((await getKv(env, 'pos_extra')) || '{}'); } catch (e) { pe = {}; }
   try { map = JSON.parse((await getKv(env, 'figi')) || '{}'); } catch (e) { map = {}; }
   const today = parts(new Date()).day;
-  return Object.values(pe).some((x) => x && x.isin && (!map[x.isin] || dayGap(today, map[x.isin].d) >= FIGI_MAX_AGE_DAYS));
+  return Object.values(pe).some((x) => x && x.isin && figiStale(map[x.isin], today));
 }
+// Opnieuw vragen: geen regel, een regel van 30 dagen of ouder, of een oude regel van voor de Duitse ticker
+const figiStale = (f, today) => !f || dayGap(today, f.d) >= FIGI_MAX_AGE_DAYS || (!f.none && !('de' in f));
 async function figiSyms(env) {
   if (env._figiSym) return env._figiSym;
   let m = {};
@@ -3817,7 +3855,7 @@ function isDst(localIso) {
 export const _test = { parts, isLive, marketHours, shortTicker, isoLocal, isDst, hourStart, dayOf, newsHistTask, storeNews, noteOpinionDay, figiRecord, gdeltName, usTicker, heldStocks,
   tradingDay, usTradingDay, shiftDay, weekdayOf, srcPause, srcFail, srcOk, srcState, srcHistState, checkPositions, splitRatio,
   planResearch, uniqTasks, dbWatch, testKey, r2Backup, r2Info, r2Preview, healthInfo, budgetInfo, buildData, bumpMarket, ensureMarketTables, ensureIndexes, countingDb, flushCalls, srcFail, searchCompanies, checkPriceAlerts, saveMode, buildAllowed, seriesRows, todayState, seriesFull, newsKind, newsBreaking, flashMerge, newsWatch, marketDataCached, marketData, invalidateSeries, cfTrend, setBig, getBig, invalidateOrders,
-  usSym, QUOTES, sicSector, parseForm4, quarterlyEps, polyNewsItems, altTask, eodBackup, planMarket };
+  usSym, QUOTES, kvMemoClear: () => { kvMemo = new WeakMap(); }, sicSector, parseForm4, quarterlyEps, polyNewsItems, altTask, eodBackup, planMarket };
 
 
 // =====================================================================
@@ -4558,6 +4596,7 @@ async function restorePart(env, body) {
   const ok = table === 'kv' ? rows.filter((r) => BACKUP_KV.test(String(r[0])) && typeof r[1] === 'string' && r[1].length < 3e6) : rows;
   const st = env.DB.prepare('INSERT OR REPLACE INTO ' + table + ' (' + cols.join(', ') + ') VALUES (' + cols.map(() => '?').join(',') + ')');
   await batchChunks(env, ok.map((r) => st.bind(...r.map((v) => (v === undefined ? null : v)))));
+  if (table === 'kv') kvMemoOf(env).clear();
   if (['intraday', 'hours', 'days'].includes(table)) await invalidateSeries(env);
   if (table === 'orders') await invalidateOrders(env);
   if (body.done) await saveDataCache(env, await buildData(env));
@@ -5365,7 +5404,8 @@ async function liveCheck(env, tk) {
 // zodat open apparaten samen hoogstens één verzoek per QUOTES_MS doen. Bij een limiet (429) de vorige stand teruggeven.
 // fast=<ticker>: ook de Finnhub-sleutel en het Amerikaanse symbool, zodat de browser zelf de trades kan volgen
 // (alleen voor aandelen die in dollar op een Amerikaanse beurs noteren; anders wijken de koersen van elkaar af).
-async function liveQuotes(env, fast) {
+// us: ook de Finnhub-sleutel en de Amerikaanse symbolen van alle posities, zodat de site die per trade kan volgen (eens per half uur)
+async function liveQuotes(env, fast, us) {
   if (!env.T212_KEY || !env.T212_SECRET) throw new Error('De Trading 212-sleutel is nog niet ingesteld.');
   if (fast != null && !/^[A-Za-z0-9.\-]{1,20}$/.test(String(fast))) throw new Error('Ongeldige ticker.');
   let stale = false;
@@ -5386,6 +5426,14 @@ async function liveQuotes(env, fast) {
     const p = out.positions.find((x) => x.tk === fast);
     const sym = p && p.cur === 'USD' && /_US_EQ$/.test(p.t212 || '') ? await usTicker(env, p.tk) : null;
     out.fast = { sym, key: sym && env.FINNHUB_KEY ? env.FINNHUB_KEY : null, held: !!p };
+  }
+  if (us && env.FINNHUB_KEY) {
+    const syms = {};
+    for (const p of out.positions) {
+      const sym = p.cur === 'USD' && /_US_EQ$/.test(p.t212 || '') ? await usTicker(env, p.tk) : null;
+      if (sym) syms[p.tk] = sym;
+    }
+    out.us = { key: env.FINNHUB_KEY, syms };
   }
   return out;
 }

@@ -263,7 +263,7 @@ function plxFanTile() {
   const key = JSON.stringify(I);
   if (plx.fanKey !== key && !plx.fanBusy) {
     plx.fanBusy = true;
-    runOffThread(plxFanSim, I).then((res) => { plx.fanRes = res; plx.fanKey = key; plx.fanBusy = false; refresh('plan'); });
+    runOffThread(plxFanSim, I, 'fan', key).then((res) => { plx.fanRes = res; plx.fanKey = key; plx.fanBusy = false; refresh('plan'); });
   }
   const R = plx.fanKey === key ? plx.fanRes : null;
   const years = Math.round(I.months / 12);

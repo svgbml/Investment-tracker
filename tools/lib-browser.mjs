@@ -9,7 +9,8 @@ import { join, extname, normalize } from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
-export const DOCS = fileURLToPath(new URL('../docs/', import.meta.url));
+// SITE=_site: de gebouwde versie controleren (tools/bouw-site.mjs) in plaats van de bron
+export const DOCS = fileURLToPath(new URL('../' + (process.env.SITE || 'docs') + '/', import.meta.url));
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
@@ -20,7 +21,7 @@ const TYPES = {
 // Kleine statische server voor docs/ op een vrije poort. Met een eigen map kan ook een andere
 // uitgecheckte versie van de site worden bekeken (zie tools/visual.mjs).
 export async function serveDocs(root = DOCS) {
-  const dir = root.endsWith('/') ? root : root + '/';
+  const dir = normalize(/[\\/]$/.test(root) ? root : root + '/');   // op Windows eindigt de map op \ en geeft join() \
   const server = createServer(async (req, res) => {
     try {
       const path = decodeURIComponent(req.url.split('?')[0]);

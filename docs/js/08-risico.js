@@ -163,7 +163,7 @@ function corrMatrix(mat) {
   }
   if (!corrState.busy) {
     corrState.busy = key;
-    runOffThread(corrCompute, inp).then((res) => {
+    runOffThread(corrCompute, inp, 'corr', key).then((res) => {
       corrState.busy = null; corrState.key = key; corrState.mat = res;
       if (M && M._risk) M._risk.C2 = res;
       // Alleen wat de samenhang toont: de risicotegels op Start, Analyse, Plannen en de risicopagina. Een weergave

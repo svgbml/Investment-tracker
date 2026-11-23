@@ -65,3 +65,9 @@ jobs:
         run: node tools/smoke.mjs
       - name: Rekenwerk en opmaak
         run: node tools/test-reken.mjs
+      - name: Gebouwde site (verkleind en samengevoegd, zoals hij gepubliceerd wordt)
+        run: |
+          npm i --no-save --no-audit --no-fund esbuild@0.28.2 playwright@1.65.1
+          node tools/bouw-site.mjs --uit _site
+          SITE=_site node tools/check-demo.mjs
+          SITE=_site node tools/smoke.mjs --licht

@@ -620,8 +620,15 @@ function mcSimulate(o) {
   const pct = (a, q) => { const b = Array.from(a).sort((x, y) => x - y); return b[Math.min(b.length - 1, Math.floor(q * b.length))]; };
   return { band: paths.map((a, i) => ({ m: i * step, p10: pct(a, 0.1), p50: pct(a, 0.5), p90: pct(a, 0.9) })), probs: hit.map((h) => h / o.runs) };
 }
-// Draai een losse functie in een Web Worker; zonder Workers (of bij een fout) gewoon hier
-function runOffThread(fn, input) {
+// Draai een losse functie in een Web Worker; zonder Workers (of bij een fout) gewoon hier.
+// Met kind en key: de uitkomst blijft in IndexedDB (één per soort), zodat de volgende start met dezelfde invoer niet opnieuw rekent.
+async function runOffThread(fn, input, kind, key) {
+  if (kind) { try { const hit = await idbGet('calc:' + kind); if (hit && hit.key === key) return hit.res; } catch (e) { /* geen opslag: gewoon rekenen */ } }
+  const res = await runInWorker(fn, input);
+  if (kind) idbSet('calc:' + kind, { key, res }).catch(() => {});
+  return res;
+}
+function runInWorker(fn, input) {
   return new Promise((resolve) => {
     let w = null, url = null;
     try {
@@ -653,7 +660,7 @@ function mcTile() {
   const key = JSON.stringify(I);
   if (anState.mcKey !== key && !anState.mcBusy) {
     anState.mcBusy = true;
-    runOffThread(mcSimulate, I).then((res) => { anState.mcRes = res; anState.mcKey = key; anState.mcBusy = false; refresh('plan'); });
+    runOffThread(mcSimulate, I, 'mc', key).then((res) => { anState.mcRes = res; anState.mcKey = key; anState.mcBusy = false; refresh('plan'); });
   }
   const R = anState.mcKey === key ? anState.mcRes : null;
   const end = R ? R.band[R.band.length - 1] : null;

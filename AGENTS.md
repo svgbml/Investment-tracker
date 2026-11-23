@@ -7,7 +7,7 @@ Guidance for AI coding agents working in this repository.
 A personal Trading 212 investment tracker in two parts:
 
 - `worker/` — a Cloudflare Worker with a D1 database. It measures the portfolio on a schedule, stores history, fetches optional external data and serves everything as JSON.
-- `docs/` — a static website (GitHub Pages) that renders that JSON. No build step and no CDN libraries; the only library is Preact with htm, vendored in `docs/vendor/`.
+- `docs/` — a static website (GitHub Pages) that renders that JSON. No build step needed to run it and no CDN libraries; the only library is Preact with htm, vendored in `docs/vendor/`. The Pages deploy publishes a minified copy built by `tools/bouw-site.mjs` (the classic scripts from `index.html` merged into `js/app.js`, the rest minified); `docs/` stays the source, and `SITE=_site` runs the browser checks on the built copy.
 - `apps-script/` — the legacy Google Sheets version. Leave it alone unless asked.
 
 The user-facing language is **Dutch**: all UI text, code comments, commit messages and READMEs. Keep it that way. Write plain, neutral Dutch, sentence case, no marketing tone.

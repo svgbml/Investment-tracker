@@ -150,9 +150,24 @@ Object.assign(EN, {
   'Bedrag ter bevestiging': 'Amount to confirm', 'Grote order.': 'Large order.', 'Extra controle.': 'Extra check.',
   'Indeling': 'Grouping', 'Tegels': 'Tiles', 'Lijst': 'List', 'Eén lijst': 'One list', 'Munt': 'Currency', 'Pie': 'Pie', 'Deel': 'Share',
   'Koersalarm': 'Price alert', 'Live koers': 'Live price',
+  'Aanpassen': 'Change',
+  'Welke grafiek': 'Which chart',
+  'gettex (live)': 'gettex (live)',
+  'Controle': 'Check',
+  'gettex-symbool': 'gettex symbol',
+  'Controle: Nasdaq/NYSE': 'Check: Nasdaq/NYSE',
+  'Controle: Trading 212': 'Check: Trading 212',
+  'jouw keuze': 'your choice',
+  'zelfde ISIN als je positie': 'same ISIN as your position',
+  'uit de lijst van grote bedrijven': 'from the list of large companies',
+  'Live grafiek van gettex (TradingView)': 'Live gettex chart (TradingView)',
+  'Een gettex-symbool is 1 tot 8 letters of cijfers, zoals NVD of R6C0.': 'A gettex symbol is 1 to 8 letters or digits, such as NVD or R6C0.',
+  'Met een gettex-symbool toont de snelle modus eerst de live grafiek van gettex (beurs München, in euro) via TradingView. Die koers kan iets afwijken van die van Trading 212, en in de avond zijn er bij rustige aandelen weinig trades. Laadt de grafiek niet (geen internet, TradingView geblokkeerd), kies dan Controle.': 'With a gettex symbol, fast mode first shows the live gettex chart (Munich exchange, in euros) through TradingView. That price can differ slightly from Trading 212, and quiet stocks have few trades in the evening. If the chart does not load (no internet, TradingView blocked), choose Check.',
   'Dit aandeel noteert niet in dollar op een Amerikaanse beurs. De snelle modus kan dan geen losse trades volgen en vraagt elke 2 seconden de koers van Trading 212 via je Worker: ongeveer 1.800 verzoeken per uur, van de 100.000 per dag die het gratis plan van Cloudflare toestaat. Zet hem weer uit als je klaar bent.': 'This stock is not listed in dollars on a US exchange. Fast mode then cannot follow single trades and asks your Worker for the Trading 212 price every 2 seconds: about 1,800 requests an hour, out of the 100,000 a day the free Cloudflare plan allows. Turn it off again when you are done.',
   'Let op: de snelle modus vraagt nu elke 2 seconden de koers van Trading 212 via je Worker, ongeveer 1.800 verzoeken per uur (het gratis plan van Cloudflare staat 100.000 per dag toe). Zet hem weer uit als je klaar bent.': 'Note: fast mode now asks your Worker for the Trading 212 price every 2 seconds, about 1,800 requests an hour (the free Cloudflare plan allows 100,000 a day). Turn it off again when you are done.', 'Officieel en geruchten': 'Official and rumours', 'Officieel': 'Official', 'Gerucht': 'Rumour', 'Geruchten': 'Rumours', 'Belangrijk': 'Important', 'officieel, geruchten en ander nieuws': 'official, rumours and other news', 'alleen officiële berichten': 'official statements only', 'uit': 'off', 'Breaking nieuws over je aandelen': 'Breaking news about your stocks', 'Volgorde wijzigen': 'Change order', 'Volgorde van je volglijst': 'Order of your watchlist', 'Bovenaan': 'To top', 'Koers per aandeel': 'Price per share', 'Jouw positie': 'Your position', 'Winst of verlies sinds aankoop': 'Profit or loss since purchase', 'Live': 'Live', 'Snelle modus': 'Fast mode', 'Snelle modus uit': 'Fast mode off', 'Live uit': 'Live off', 'Live: geen verbinding': 'Live: no connection',
-  'Koersen elke 5 seconden van Trading 212. Klik om uit te zetten.': 'Prices every 5 seconds from Trading 212. Click to turn off.', 'Klik om de koersen elke 5 seconden te volgen.': 'Click to follow prices every 5 seconds.',
+  'Koersen elke 5 seconden van Trading 212. Klik om uit te zetten.': 'Prices every 5 seconds from Trading 212. Click to turn off.',
+  'Amerikaanse aandelen per trade via Finnhub, de rest van Trading 212. Klik om uit te zetten.': 'US stocks trade by trade via Finnhub, the rest from Trading 212. Click to turn off.',
+  'Finnhub weigerde de verbinding eerder': 'Finnhub refused the connection earlier', 'Klik om de koersen elke 5 seconden te volgen.': 'Click to follow prices every 5 seconds.',
   'Verbinden…': 'Connecting…', 'Verbinden met Finnhub…': 'Connecting to Finnhub…', 'Wacht op de eerste koers…': 'Waiting for the first price…', 'Nog geen trades in deze periode.': 'No trades in this period yet.',
   'Verbinding met Finnhub verbroken': 'Connection to Finnhub lost',
   'Verbonden; wacht op trades. Buiten de handelsuren van de Amerikaanse beurs komen er geen.': 'Connected; waiting for trades. None arrive outside US market hours.',
@@ -607,7 +622,7 @@ document.addEventListener('change', async (e) => {
 // ---------- Geschiedenis inlezen uit een Trading 212-export (CSV) ----------
 // In de app: Geschiedenis > exporteren. Orders en dividenden gaan naar je Worker; wat er al was, wordt overgeslagen.
 function parseT212Csv(text) {
-  const lines = text.replace(/^﻿/, '').split(/\r?\n/).filter((l) => l.trim());
+  const lines = (text.charCodeAt(0) === 0xfeff ? text.slice(1) : text).split(/\r?\n/).filter((l) => l.trim());
   if (lines.length < 2) throw new Error('het bestand is leeg');
   const head = parseCsvLine(lines[0], ',').map((h) => h.toLowerCase());
   const col = (re) => head.findIndex((h) => re.test(h));

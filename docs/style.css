@@ -2367,6 +2367,12 @@ html, body { overflow-x: clip; }
 .fast-day, .fast-pl { font-variant-numeric: tabular-nums; }
 .fast-ctl { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; margin-top: 10px; }
 .fast-chart { display: block; width: 100%; height: 240px; margin-top: 8px; }
+.fast-views { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; margin-top: 10px; }
+.fast-views .fast-gx { margin: 0; }
+.fast-gx-form { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
+.fast-gx-form input { width: 7em; text-transform: uppercase; }
+.fast-tv { height: 360px; margin-top: 8px; border-radius: 10px; overflow: hidden; background: var(--surface); }
+.fast-tv iframe { display: block; width: 100%; height: 100%; border: 0; }
 .fast-sync { min-height: 1.4em; }
 .fast-warn { margin: 10px 0 0; padding: 8px 10px; border-radius: 10px; background: #F5E7C8; color: #5C3F00; }
 :root[data-theme="dark"] .fast-warn { background: #4A3A14; color: #F2D48A; }

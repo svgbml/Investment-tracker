@@ -25,10 +25,13 @@ jobs:
         with:
           node-version: 24
 
-      - name: Lighthouse CI
+      - name: Lighthouse CI (op de gebouwde site, zoals hij gepubliceerd wordt)
         id: lhci
         continue-on-error: true
-        run: npx --yes @lhci/cli@0.14.0 autorun
+        run: |
+          npm i --no-save --no-audit --no-fund esbuild@0.28.2
+          node tools/bouw-site.mjs --uit _site
+          npx --yes @lhci/cli@0.14.0 autorun --collect.staticDistDir=./_site
 
       - name: Meetlat (langste taak bij laden en aantal elementen, zie tools/meetlat.mjs)
         continue-on-error: true

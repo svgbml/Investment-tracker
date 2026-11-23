@@ -592,6 +592,16 @@ function loadDemoScript() {
 // Automatisch verversen alleen als de tracker in beeld is: op de achtergrond (ander tabblad, app weggezet) wacht hij
 // tot je terugkomt. Dat scheelt verzoeken aan je Worker en gelezen rijen in zijn database.
 let refreshPending = false, lastLoadAt = 0;
+// De Worker meet elke 10 minuten (op :00, :10, …; zie worker/wrangler.toml). De site kijkt kort daarna, zodat een nieuw
+// bedrag vanzelf verschijnt, en niet op een willekeurig moment ertussen. Is de meting er dan nog niet (Cloudflare start
+// soms later), dan nog één keer 75 seconden later. Een vraag zonder nieuwe meting kost de Worker bijna niets (304).
+const MEASURE_MS = 10 * 60000, MEASURE_LAG = 45000;
+function refreshDelay(every, unchanged) {
+  if (every > 10) return every * 60000;   // zelf een langere tijd ingesteld: die houden
+  const now = Date.now(), since = (now - MEASURE_LAG) % MEASURE_MS;
+  if (unchanged && since < 3 * 60000) return 75000;
+  return Math.max(5000, MEASURE_MS - since);
+}
 function autoRefresh() {
   if (document.hidden) { refreshPending = true; return; }
   load();
@@ -680,7 +690,7 @@ async function load() {
     // Met live koersen aan (js/23-live.js) komen de getallen al elke 5 seconden binnen; het hele overzicht dan
     // hoogstens eens per 10 minuten, net zo vaak als de Worker meet
     const every = Math.max(Number(CFG.refreshMinutes) || 5, typeof liveQ === 'object' && liveQ.on ? 10 : 0);
-    refreshTimer = setTimeout(autoRefresh, every * 60000 * (serverSave ? 3 : 1));
+    refreshTimer = setTimeout(autoRefresh, serverSave ? every * 60000 * 3 : refreshDelay(every, !json));
   } catch (err) {
     const offline = !navigator.onLine || err instanceof TypeError;
     if (data && offline) {

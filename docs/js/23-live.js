@@ -4,6 +4,9 @@
  * Live: zolang de pagina in beeld is elke 5 seconden alle posities bij Trading 212 (via /api/quotes van de Worker).
  * Alleen de getallen veranderen (totaal, verandering vandaag, waarde per positie); de grafieken blijven bij de
  * metingen van 10 minuten. Er wordt niets opgeslagen. Komt er zes keer niets nieuws (beurs dicht), dan eens per minuut.
+ * Met een Finnhub-sleutel komen Amerikaanse posities per trade binnen over één WebSocket; Trading 212 is dan alleen
+ * nodig voor de rest (elke 20 seconden) of als controle (elke minuut). Staat de tracker in meer vensters open, dan
+ * vraagt één venster en luisteren de andere mee (BroadcastChannel).
  *
  * Snelle modus: voor één aandeel elke trade via de WebSocket van Finnhub (alleen dollaraandelen op een Amerikaanse
  * beurs), als kaarsengrafiek (30 seconden of 1 minuut per kaars). Elke minuut vergelijkt de site die koers met die van Trading 212. Voor andere aandelen
@@ -11,12 +14,13 @@
  * achtergrond; alleen bij een verschil van meer dan 0,5% toont de tegel een waarschuwing. */
 'use strict';
 
-const LIVE_MS = 5000, LIVE_FAST_MS = 2000, LIVE_SLOW_MS = 60000, LIVE_MAX_AGE = 120000;
+const LIVE_MS = 5000, LIVE_FAST_MS = 2000, LIVE_PART_MS = 20000, LIVE_SLOW_MS = 60000, LIVE_MAX_AGE = 120000;
 const LS_LIVE = 'tracker.live';
 const fLiveT = new Intl.DateTimeFormat(LOCALE, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 const liveQ = {
   on: (() => { try { return localStorage.getItem(LS_LIVE) !== '0'; } catch (e) { return true; } })(),
   snap: null, timer: 0, same: 0, fails: 0, busy: false, demoK: new Map(),
+  id: Math.random(), peerUntil: 0, px: new Map(), raf: 0,
 };
 const setTxt = (el, t) => { if (el && el.textContent !== t) el.textContent = t; };
 const liveAllowed = () => !sharedView && (demo || (isWorker() && !!getToken()));
@@ -34,6 +38,11 @@ function liveSchedule(ms) { clearTimeout(liveQ.timer); liveQ.timer = setTimeout(
 function liveDelay() {
   if (liveQ.fails) return Math.min(LIVE_SLOW_MS, LIVE_MS * 2 ** liveQ.fails);
   if (fastQ.tk && fastQ.src === 't212') return LIVE_FAST_MS;
+  if (liveQ.on && sock.open && sock.map.size) {
+    // Finnhub levert elke trade van de Amerikaanse posities: Trading 212 alleen nog voor de rest, of als controle
+    const viaSock = new Set(sock.map.values());
+    return liveQ.snap && liveQ.snap.positions.every((x) => !(x.value > 0) || viaSock.has(x.tk)) ? LIVE_SLOW_MS : LIVE_PART_MS;
+  }
   if (liveQ.on) return liveQ.same >= 6 ? LIVE_SLOW_MS : LIVE_MS;
   return LIVE_SLOW_MS;   // alleen de snelle modus via Finnhub: Trading 212 is dan alleen de controle van elke minuut
 }
@@ -41,19 +50,151 @@ function liveDelay() {
 async function livePoll() {
   clearTimeout(liveQ.timer);
   if (!liveWanted() || document.hidden) return;
+  // Een ander venster vraagt al: zijn stand komt via liveBc binnen
+  if (livePeer()) { sockSync(); liveSchedule(liveQ.peerUntil - Date.now()); return; }
   liveQ.busy = true;
   try {
-    const s = demo ? demoQuotes() : await workerCall('/api/quotes');
+    // Eens per half uur ook de Finnhub-sleutel en welke posities Finnhub per trade kan leveren
+    const askUs = !demo && liveQ.on && !sock.dead && Date.now() - sock.askedAt > 30 * 60e3;
+    const s = demo ? demoQuotes() : await workerCall('/api/quotes' + (askUs ? '?us=1' : ''));
+    if (askUs) {
+      sock.askedAt = Date.now();
+      if (s.us && s.us.key) { sock.key = s.us.key; sock.map = new Map(Object.entries(s.us.syms || {}).map(([tk, sym]) => [sym, tk])); }
+      delete s.us;
+    }
     s.got = Date.now();
     liveQ.same = liveQ.snap && liveQ.snap.total === s.total ? liveQ.same + 1 : 0;
     liveQ.snap = s;
     liveQ.fails = 0;
+    // Trades van Finnhub die nieuwer zijn dan deze stand van Trading 212 blijven staan
+    sock.last.forEach((v, tk) => { if (v.t > (s.at || 0)) liveTrade(tk, v.p, v.t, true); });
     liveApply();
     fastFromSnap(s, false);
+    liveShare({ id: liveQ.id, snap: s, next: liveDelay() });
   } catch (e) { liveQ.fails++; }
   liveQ.busy = false;
   livePills();
+  sockSync();
   liveSchedule(liveDelay());
+}
+
+// ---------- Meer vensters: één vraagt, de andere luisteren mee ----------
+// Het venster met het laagste willekeurige nummer blijft vragen; een ander neemt het pas over als er een tijd niets komt.
+const liveBc = (() => { try { return new BroadcastChannel('tracker-live'); } catch (e) { return null; } })();
+const livePeer = () => Date.now() < liveQ.peerUntil;
+function liveShare(m) { if (liveBc && !demo) { try { liveBc.postMessage(m); } catch (e) { /* venster sluit */ } } }
+if (liveBc) liveBc.onmessage = (e) => {
+  const m = e.data || {};
+  if (demo || !liveWanted() || document.hidden) return;
+  if (m.snap) {
+    liveQ.snap = m.snap;
+    liveQ.fails = 0;
+    liveApply();
+    fastFromSnap(m.snap, false);
+    livePills();
+    if (m.id < liveQ.id) {
+      liveQ.peerUntil = Date.now() + (m.next || LIVE_MS) + 3000;
+      sockSync();   // de verbinding met Finnhub hoort bij het vragende venster
+      if (!liveQ.busy) liveSchedule(liveQ.peerUntil - Date.now());
+    }
+  } else if (Array.isArray(m.px) && liveQ.snap) m.px.forEach(([tk, p, t]) => liveTrade(tk, p, t, true));
+};
+
+// Een trade van Finnhub (of van een ander venster): koers en waarde van die positie bijwerken, hoogstens één keer per frame tekenen.
+// De wisselkoers komt uit de laatste stand van Trading 212 (waarde gedeeld door aantal maal koers).
+function liveTrade(tk, p, t, quiet) {
+  sock.last.set(tk, { p, t });
+  const s = liveQ.snap, x = s && s.positions.find((y) => y.tk === tk);
+  if (!x || !(x.qty > 0) || !(x.price > 0) || !(x.value > 0)) return;
+  const fx = x.value / (x.qty * x.price);
+  x.price = p;
+  x.value = Math.round(x.qty * p * fx * 100) / 100;
+  s.total = Math.round(s.positions.reduce((a, y) => a + (y.value || 0), 0) * 100) / 100;
+  s.got = Date.now();
+  if (!quiet) liveQ.px.set(tk, [tk, p, t]);
+  if (!liveQ.raf) liveQ.raf = requestAnimationFrame(() => {
+    liveQ.raf = 0;
+    liveApply();
+    if (liveQ.px.size) { liveShare({ px: [...liveQ.px.values()] }); liveQ.px.clear(); }
+  });
+}
+
+// ---------- Eén verbinding met Finnhub, voor live en de snelle modus samen ----------
+// Het gratis plan van Finnhub staat één verbinding per sleutel toe, tot 50 symbolen. Weigert Finnhub of valt de verbinding
+// weg, dan niet opnieuw proberen tot live of de snelle modus opnieuw aan gaat; Trading 212 neemt het dan over.
+const SOCK_MAX = 50;
+const sock = {
+  ws: /** @type {WebSocket|null} */ (null), key: '', open: false, dead: false, askedAt: 0,
+  subs: new Set(), map: /** @type {Map<string,string>} */ (new Map()), last: new Map(), sim: 0,
+};
+function sockSync() {
+  if (demo) { liveDemoSock(); return; }
+  const want = [];
+  if (fastQ.tk && fastQ.src === 'finnhub' && fastQ.sym) want.push(fastQ.sym);
+  if (liveQ.on && !livePeer()) sock.map.forEach((_, sym) => { if (!want.includes(sym)) want.push(sym); });
+  const set = new Set(want.slice(0, SOCK_MAX));
+  if (!set.size || sock.dead || !sock.key || document.hidden) { sockClose(); return; }
+  if (!sock.ws) { sockOpen(); return; }   // bij het openen volgt het abonneren
+  if (!sock.open) return;
+  set.forEach((s) => { if (!sock.subs.has(s)) { sock.ws.send(JSON.stringify({ type: 'subscribe', symbol: s })); sock.subs.add(s); } });
+  sock.subs.forEach((s) => { if (!set.has(s)) { sock.ws.send(JSON.stringify({ type: 'unsubscribe', symbol: s })); sock.subs.delete(s); } });
+}
+function sockOpen() {
+  let ws;
+  try { ws = new WebSocket('wss://ws.finnhub.io?token=' + encodeURIComponent(sock.key)); }
+  catch (e) { sockDown('Finnhub niet bereikbaar'); return; }
+  sock.ws = ws; sock.open = false; sock.subs.clear();
+  ws.onopen = () => {
+    if (sock.ws !== ws) return;
+    sock.open = true;
+    if (fastQ.src === 'finnhub') { fastQ.note = T('Verbonden; wacht op trades. Buiten de handelsuren van de Amerikaanse beurs komen er geen.'); fastPaint(); }
+    sockSync();
+    livePills();
+    if (!liveQ.busy) liveSchedule(liveDelay());
+  };
+  ws.onmessage = (e) => {
+    let m = null;
+    try { m = JSON.parse(e.data); } catch (err) { return; }
+    if (m && m.type === 'trade' && Array.isArray(m.data)) {
+      let fast = false;
+      m.data.forEach((d) => {
+        if (!d || !(d.p > 0) || !isNum(d.t)) return;
+        if (fastQ.src === 'finnhub' && d.s === fastQ.sym) { fastAdd(d.t, d.p); fast = true; }
+        const tk = liveQ.on ? sock.map.get(d.s) : null;
+        if (tk) liveTrade(tk, d.p, d.t);
+      });
+      if (fast) { fastQ.note = ''; fastPaint(); }
+    } else if (m && m.type === 'error') sockDown('Finnhub: ' + String(m.msg || 'fout').slice(0, 120));
+  };
+  ws.onclose = () => { if (sock.ws === ws) sockDown(T('Verbinding met Finnhub verbroken')); };
+}
+function sockClose() {
+  const w = sock.ws;
+  sock.ws = null; sock.open = false; sock.subs.clear();
+  if (w) { try { w.close(); } catch (e) { /* al dicht */ } }
+}
+// Bijvoorbeeld een tweede apparaat met dezelfde sleutel: door met Trading 212, niet opnieuw proberen
+function sockDown(why) {
+  sock.dead = true;
+  sockClose();
+  if (fastQ.src === 'finnhub') fastFallback(why);
+  livePills();
+  if (!liveQ.busy) liveSchedule(liveDelay());
+}
+// Voorbeeld (?demo): Amerikaanse posities bewegen elke seconde, zoals met Finnhub
+function liveDemoSock() {
+  if (!liveQ.on || document.hidden || !M) { clearInterval(sock.sim); sock.sim = 0; sock.open = false; sock.map.clear(); return; }
+  if (sock.sim) return;
+  sock.map = new Map(M.companies.filter((c) => fastUsListed(c.tk) !== false).map((c) => [c.tk, c.tk]));
+  sock.open = !!sock.map.size;
+  livePills();
+  sock.sim = setInterval(() => sock.map.forEach((tk) => {
+    const c = M.byTk.get(tk);
+    if (tk === fastQ.tk || !c || !c.priceNative || Math.random() < 0.5) return;
+    const k = (liveQ.demoK.get(tk) || 1) * (1 + (Math.random() - 0.5) * 0.0006);
+    liveQ.demoK.set(tk, k);
+    liveTrade(tk, c.priceNative * k, Date.now());
+  }), 1000);
 }
 
 // Alleen tekst vervangen, niets opnieuw tekenen: dat blijft licht, ook op een trage telefoon
@@ -93,7 +234,9 @@ function livePills() {
     b.setAttribute('aria-pressed', String(liveQ.on));
     b.classList.toggle('on', liveQ.on && !liveQ.fails && liveFresh());
     setTxt(b, t);
-    b.title = liveQ.on ? T('Koersen elke 5 seconden van Trading 212. Klik om uit te zetten.') : T('Klik om de koersen elke 5 seconden te volgen.');
+    b.title = !liveQ.on ? T('Klik om de koersen elke 5 seconden te volgen.')
+      : sock.open && sock.map.size ? T('Amerikaanse aandelen per trade via Finnhub, de rest van Trading 212. Klik om uit te zetten.')
+      : T('Koersen elke 5 seconden van Trading 212. Klik om uit te zetten.');
   });
 }
 
@@ -102,11 +245,11 @@ document.addEventListener('click', (e) => {
   if (!b) return;
   liveQ.on = !liveQ.on;
   try { localStorage.setItem(LS_LIVE, liveQ.on ? '1' : '0'); } catch (err) { /* geldt dan alleen tot herladen */ }
-  if (liveQ.on) liveKick();
-  else { livePills(); refresh('home', 'list'); }   // terug naar de laatste meting
+  if (liveQ.on) { sock.dead = false; sock.askedAt = 0; liveKick(); }   // aan: Finnhub mag het opnieuw proberen
+  else { sockSync(); livePills(); refresh('home', 'list'); }   // terug naar de laatste meting
 });
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) { fastPause(); return; }
+  if (document.hidden) { fastPause(); sockSync(); return; }
   if (liveWanted()) liveSchedule(300);
   fastResume();
 });
@@ -132,9 +275,9 @@ const FAST_BUCKET = 30e3, FAST_KEEP = 60 * 60e3, FAST_SYNC_MS = 60e3, FAST_SYNC_
 const FAST_SIZES = [[30e3, '30 s'], [60e3, '1 min']];
 const FAST_WINS = [[5 * 60e3, '5 min'], [15 * 60e3, '15 min'], [60 * 60e3, '1 uur']];
 const fastQ = {
-  tk: /** @type {string|null} */ (null), sym: null, src: '', ws: /** @type {WebSocket|null} */ (null),
+  tk: /** @type {string|null} */ (null), sym: null, src: '',
   bars: /** @type {{t:number,o:number,h:number,l:number,c:number,n:number}[]} */ ([]), last: null, lastT: 0,
-  syncs: [], size: 30e3, win: 15 * 60e3, fx: null, qty: null, cur: null,
+  syncs: [], size: 30e3, win: 15 * 60e3, fx: null, qty: null, cur: null, view: 'tv',
   note: '', lastSync: 0, raf: 0, sim: 0, paused: false,
 };
 
@@ -146,6 +289,50 @@ function fastUsListed(tk) {
   return x.t212 ? /_US_EQ$/.test(x.t212) && x.cur === 'USD' : x.cur === 'USD';
 }
 const FAST_WARN_PRE = 'Dit aandeel noteert niet in dollar op een Amerikaanse beurs. De snelle modus kan dan geen losse trades volgen en vraagt elke 2 seconden de koers van Trading 212 via je Worker: ongeveer 1.800 verzoeken per uur, van de 100.000 per dag die het gratis plan van Cloudflare toestaat. Zet hem weer uit als je klaar bent.';
+// ---------- gettex: live grafiek van TradingView ----------
+// De gratis grafieken van TradingView tonen koersen van gettex (beurs München, 's ochtends tot 's avonds, in euro) live;
+// die van de Amerikaanse beurzen en Xetra zijn daar vertraagd. De grafiek staat in een los kader (iframe) van TradingView:
+// geen script van buiten op deze pagina, en TradingView krijgt alleen het symbool, niet je portefeuille.
+// Welk gettex-symbool: 1. je eigen keuze (prefs.gettex), 2. de Duitse ticker bij het ISIN van je positie (OpenFIGI, in de
+// Worker), 3. deze lijst voor grote Amerikaanse noteringen (Amerikaanse ticker: gettex-ticker, gemaakt met OpenFIGI).
+const GETTEX_DB = Object.fromEntries(('AAPL:APC,MSFT:MSF,NVDA:NVD,AMZN:AMZ,GOOGL:ABEA,META:FB2A,BRK-B:BRYN,AVGO:1YD,TSLA:TL0,LLY:LLY,JPM:CMC,V:3V64,UNH:UNH,XOM:7DZ,' +
+  'MA:M4I,COST:CTO,WMT:WMT,NFLX:NFC,HD:HDI,PG:PRG,JNJ:JNJ,ORCL:ORC,ABBV:4AB,BAC:NCB,CRM:FOO,KO:CCC3,CVX:CHV,MRK:6MK,AMD:AMD,' +
+  'PEP:PEP,ADBE:ADB,TMO:TN8,LIN:LIN,CSCO:CIS,ACN:CSA,MCD:MDO,AZN:ZEG,ABT:ABL,WFC:NWT,IBM:IBM,GE:GCP,PM:4I1,INTU:ITU,QCOM:QCI,' +
+  'TXN:TII,DIS:WDP,CAT:CAT1,NOW:4S0,AMGN:AMG,ISRG:IUI1,VZ:BAC,GS:GOS,UBER:UT8,PFE:PFE,AXP:AEC1,SPGI:MHL,MS:DWD,T:SOBA,BKNG:PCE1,' +
+  'RTX:5UR,LOW:LWE,NEE:FP3,HON:ALD0,UNP:UNP,BLK:UU2,AMAT:AP2,PLTR:PTX,TTE:TOTB,SBUX:SRB,NKE:NKE,BA:BCO,DE:DCO,LMT:LOM,MU:MTE,' +
+  'INTC:INL,PANW:5AP,ADP:ADP,GILD:GIS,MDT:2M6,SCHW:SWG,ANET:1170,CRWD:45C,SHOP:307,SPOT:639,MELI:MLB1,ABNB:6Z1,PYPL:2PP,COIN:1QZ,' +
+  'NU:M1Z,SNOW:5Q5,GM:8GM,MKL:MKV,GOOG:ABEC,TTWO:TKE,TSM:TSFA,ASML:ASMF,NVO:NOVA,SAP:SAPA,TM:TOMA,NVS:NOTA,SHEL:L3H,SONY:SONA,' +
+  'UL:UNV,HSBC:HBC2,BHP:BHP,RIO:RIOA,BABA:AHLA,ARM:O9T,BP:BSU,GSK:GS70,SNY:SNW2,DEO:GUIA,BTI:BMTA,ING:INNA,PHG:PHIA').split(',').map((x) => x.split(':')));
+const TV_URL = 'https://www.tradingview-widget.com/embed-widget/advanced-chart/';
+const GX_RE = /^[A-Z0-9]{1,8}$/;
+function fastGettex(tk) {
+  const own = (userPrefs().gettex || {})[tk];
+  if (own && GX_RE.test(own)) return { sym: own, how: 'own' };
+  const x = ((data && data.posExtra) || {})[tk] || {}, f = x.figi || {};
+  if (f.de && GX_RE.test(f.de)) return { sym: f.de, how: 'isin' };
+  // De lijst alleen voor een Amerikaanse notering, anders kan een Europees aandeel met dezelfde letters het verkeerde krijgen
+  const us = f.us || (fastUsListed(tk) !== false ? tk : null);
+  return us && GETTEX_DB[us] ? { sym: GETTEX_DB[us], how: 'list' } : null;
+}
+// Het kader maken of laten staan; alleen opnieuw laden als het symbool of het thema verandert
+function fastTvFrame(box, sym) {
+  const host = /** @type {HTMLElement} */ (box.querySelector('.fast-tv'));
+  if (!sym) { if (host.dataset.key) { host.replaceChildren(); host.dataset.key = ''; } return; }
+  const theme = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+  const key = sym + '|' + theme;
+  if (host.dataset.key === key) return;
+  host.dataset.key = key;
+  const loc = { en: 'en', de: 'de_DE', fr: 'fr' }[LANG] || 'nl_NL';
+  let tz = 'Europe/Amsterdam';
+  try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || tz; } catch (e) { /* standaard */ }
+  const cfg = { symbol: 'GETTEX:' + sym, interval: '1', timezone: tz, theme, style: '1', locale: loc, hide_side_toolbar: true, allow_symbol_change: false, width: '100%', height: '100%' };
+  const f = document.createElement('iframe');
+  f.src = TV_URL + '?locale=' + loc + '#' + encodeURIComponent(JSON.stringify(cfg));
+  f.title = T('Live grafiek van gettex (TradingView)');
+  f.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox');
+  f.referrerPolicy = 'no-referrer';
+  host.replaceChildren(f);
+}
 const FAST_WARN_ON = 'Let op: de snelle modus vraagt nu elke 2 seconden de koers van Trading 212 via je Worker, ongeveer 1.800 verzoeken per uur (het gratis plan van Cloudflare staat 100.000 per dag toe). Zet hem weer uit als je klaar bent.';
 
 function fastTile(c) {
@@ -158,11 +345,16 @@ function fastTile(c) {
     <div class="fast-top"><div><p class="fast-lbl">${T('Koers per aandeel')}</p><p class="fast-price">${money(c.priceNative, c.cur)}</p><p class="small fast-day"></p></div>
       <div class="fast-pos"><p class="fast-lbl">${T('Jouw positie')}</p><p class="fast-val">${eur(c.value)}</p><p class="small fast-pl"></p></div></div>
     <p class="small fast-warn" hidden></p>
+    <div class="fast-views" hidden><div class="seg" role="group" aria-label="${T('Welke grafiek')}"><button type="button" data-fast-view="tv" aria-pressed="true">${T('gettex (live)')}</button><button type="button" data-fast-view="own" aria-pressed="false">${T('Controle')}</button></div>
+      <p class="small muted fast-gx"></p></div>
+    <form class="fast-gx-form" hidden><label class="small">${T('gettex-symbool')} <input name="gx" maxlength="8" autocomplete="off" spellcheck="false" autocapitalize="characters"></label>
+      <button class="btn small primary">${T('Opslaan')}</button> <button type="button" class="btn small ghost" data-gx-reset>${T('Standaard')}</button></form>
+    <div class="fast-tv" hidden></div>
     <p class="sub fast-sub"></p>
     <div class="fast-ctl" hidden>${seg('data-fast-size', FAST_SIZES, 'Grootte van een kaars')}${seg('data-fast-win', FAST_WINS, 'Periode van de grafiek')}</div>
     <canvas class="fast-chart" role="img" aria-label="${'Kaarsengrafiek van ' + c.name + ' tijdens de snelle modus'}" hidden></canvas>
     <p class="small loss fast-sync" role="status"></p>
-    <p class="sub">${T('De snelle modus volgt elke trade van dit aandeel via Finnhub (Amerikaanse aandelen, met een Finnhub-sleutel); anders elke 2 seconden de koers van Trading 212. Elke kaars is 30 seconden of 1 minuut: groen als de koers in die tijd steeg, rood als hij daalde. Op de achtergrond vergelijkt de tracker elke minuut beide bronnen; alleen als ze meer dan 0,5% verschillen, zie je een waarschuwing. Er wordt niets opgeslagen.')}</p>
+    <p class="sub">${T('Met een gettex-symbool toont de snelle modus eerst de live grafiek van gettex (beurs München, in euro) via TradingView. Die koers kan iets afwijken van die van Trading 212, en in de avond zijn er bij rustige aandelen weinig trades. Laadt de grafiek niet (geen internet, TradingView geblokkeerd), kies dan Controle.')} ${T('De snelle modus volgt elke trade van dit aandeel via Finnhub (Amerikaanse aandelen, met een Finnhub-sleutel); anders elke 2 seconden de koers van Trading 212. Elke kaars is 30 seconden of 1 minuut: groen als de koers in die tijd steeg, rood als hij daalde. Op de achtergrond vergelijkt de tracker elke minuut beide bronnen; alleen als ze meer dan 0,5% verschillen, zie je een waarschuwing. Er wordt niets opgeslagen.')}</p>
   </section>`);
 }
 
@@ -170,6 +362,7 @@ async function fastStart(tk, keep) {
   const kept = keep ? { bars: fastQ.bars, syncs: fastQ.syncs, last: fastQ.last, lastT: fastQ.lastT } : { bars: [], syncs: [], last: null, lastT: 0 };
   fastStop();
   const c = M && M.companies.find((x) => x.tk === tk);
+  if (!keep) { fastQ.view = 'tv'; sock.dead = false; }   // opnieuw aan: Finnhub mag het opnieuw proberen
   Object.assign(fastQ, kept, { tk, sym: null, src: '', note: T('Verbinden…'), lastSync: 0, paused: false,
     qty: c ? c.qty : null, cur: c ? c.cur : null, fx: null });
   fastPaint();
@@ -205,45 +398,32 @@ async function fastStart(tk, keep) {
   fastPaint();
 }
 
+// Het symbool gaat mee in de gedeelde verbinding met Finnhub (zie sockSync)
 function fastOpen(key) {
+  if (sock.dead) { fastFallback(T('Finnhub weigerde de verbinding eerder')); return; }
+  sock.key = key;
   fastQ.src = 'finnhub';
-  fastQ.note = T('Verbinden met Finnhub…');
-  const sym = fastQ.sym;
-  let ws;
-  try { ws = new WebSocket('wss://ws.finnhub.io?token=' + encodeURIComponent(key)); }
-  catch (e) { fastFallback('Finnhub niet bereikbaar'); return; }
-  fastQ.ws = ws;
-  ws.onopen = () => { ws.send(JSON.stringify({ type: 'subscribe', symbol: sym })); fastQ.note = T('Verbonden; wacht op trades. Buiten de handelsuren van de Amerikaanse beurs komen er geen.'); fastPaint(); };
-  ws.onmessage = (e) => {
-    let m = null;
-    try { m = JSON.parse(e.data); } catch (err) { return; }
-    if (m && m.type === 'trade' && Array.isArray(m.data)) {
-      m.data.forEach((d) => { if (d && d.s === sym && d.p > 0 && isNum(d.t)) fastAdd(d.t, d.p); });
-      fastQ.note = '';
-      fastPaint();
-    } else if (m && m.type === 'error') fastFallback('Finnhub: ' + String(m.msg || 'fout').slice(0, 120));
-  };
-  ws.onclose = () => { if (fastQ.ws === ws) { fastQ.ws = null; fastFallback(T('Verbinding met Finnhub verbroken')); } };
+  fastQ.note = sock.open ? T('Verbonden; wacht op trades. Buiten de handelsuren van de Amerikaanse beurs komen er geen.') : T('Verbinden met Finnhub…');
+  sockSync();
 }
 // Finnhub weigert of valt weg (bijvoorbeeld een tweede apparaat met dezelfde sleutel): door met Trading 212, niet opnieuw proberen
 function fastFallback(why) {
-  if (fastQ.ws) { const w = fastQ.ws; fastQ.ws = null; try { w.close(); } catch (e) { /* al dicht */ } }
   fastQ.src = 't212';
   fastQ.note = why + '. ' + T('Nu de koers van Trading 212 elke 2 seconden; zet de snelle modus uit en aan om Finnhub opnieuw te proberen.');
+  sockSync();
   liveSchedule(LIVE_FAST_MS);
   fastPaint();
 }
 function fastStop() {
-  if (fastQ.ws) { const w = fastQ.ws; fastQ.ws = null; try { w.close(); } catch (e) { /* al dicht */ } }
   clearInterval(fastQ.sim);
   fastQ.sim = 0;
   fastQ.tk = null;
   fastQ.src = '';
+  sockSync();
 }
-// Op de achtergrond niets openhouden; terug in beeld verder met dezelfde kaarsen
+// Op de achtergrond niets openhouden (de verbinding met Finnhub sluit sockSync); terug in beeld verder met dezelfde kaarsen
 function fastPause() {
   if (!fastQ.tk || fastQ.paused) return;
-  if (fastQ.ws) { const w = fastQ.ws; fastQ.ws = null; try { w.close(); } catch (e) { /* al dicht */ } }
   clearInterval(fastQ.sim);
   fastQ.paused = true;
 }
@@ -321,7 +501,22 @@ function fastDraw() {
     btn.className = 'btn ' + (on ? 'primary' : 'ghost');
     const ctl = /** @type {HTMLElement} */ (box.querySelector('.fast-ctl'));
     const cv = /** @type {HTMLCanvasElement} */ (box.querySelector('.fast-chart'));
-    ctl.hidden = cv.hidden = !on;
+    // gettex-grafiek (TradingView) of de eigen kaarsen als controle: Finnhub (Amerikaanse beurs) of Trading 212
+    const gx = on ? fastGettex(tk) : null, tv = !!gx && fastQ.view === 'tv';
+    const views = /** @type {HTMLElement} */ (box.querySelector('.fast-views'));
+    views.hidden = !gx;
+    if (gx) {
+      views.querySelectorAll('[data-fast-view]').forEach((b) => b.setAttribute('aria-pressed', String((/** @type {HTMLElement} */ (b).dataset.fastView === 'tv') === tv)));
+      setTxt(views.querySelector('[data-fast-view="own"]'), fastQ.src === 'finnhub' || fastQ.src === 'demo' ? T('Controle: Nasdaq/NYSE') : T('Controle: Trading 212'));
+      const how = { own: T('jouw keuze'), isin: T('zelfde ISIN als je positie'), list: T('uit de lijst van grote bedrijven') }[gx.how];
+      const gl = box.querySelector('.fast-gx');
+      if (!gl.querySelector('button')) gl.innerHTML = String(tpl`<span></span> <button type="button" class="linklike small" data-gx-edit>${T('Aanpassen')}</button>`);
+      setTxt(gl.firstElementChild, 'gettex: ' + gx.sym + ' (' + how + ')');
+    }
+    fastTvFrame(box, tv ? gx.sym : null);
+    /** @type {HTMLElement} */ (box.querySelector('.fast-tv')).hidden = !tv;
+    ctl.hidden = cv.hidden = !on || tv;
+    if (!on) /** @type {HTMLElement} */ (box.querySelector('.fast-gx-form')).hidden = true;
     const h = fastHead(tk, on);
     if (h) {
       setTxt(box.querySelector('.fast-price'), money(h.price, h.cur));
@@ -350,9 +545,10 @@ function fastDraw() {
     // De controle loopt op de achtergrond; alleen bij een afwijking een waarschuwing
     const sy = fastQ.syncs[fastQ.syncs.length - 1];
     const off = fastQ.src !== 't212' && sy && Math.abs(sy.b / sy.a - 1) > FAST_SYNC_WARN;
+    if (tv) setTxt(sub, (fastQ.src === 'finnhub' ? 'Controle op de achtergrond: Finnhub en Trading 212' : fastQ.src === 'demo' ? 'Controle op de achtergrond: voorbeeldkoers' : 'Controle op de achtergrond: Trading 212 elke 2 seconden') + (fastQ.note ? '. ' + fastQ.note : ''));
     setTxt(sync, off ? 'Let op: ' + (fastQ.src === 'demo' ? 'de voorbeeldkoers' : 'de koers van Finnhub') + ' (' + money(sy.b, fastQ.cur) + ') wijkt ' + P1.format(Math.abs(sy.b / sy.a - 1)) +
       ' af van die van Trading 212 (' + money(sy.a, fastQ.cur) + ') bij de controle van ' + fLiveT.format(sy.t) + '. Een van beide kan vertraagd zijn; reken met de koers van Trading 212.' : '');
-    fastChart(cv, cs);
+    if (!tv) fastChart(cv, cs);
   });
 }
 // Bovenaan de tegel: links de koers van één aandeel met de verandering van vandaag, rechts je positie met winst of
@@ -439,8 +635,37 @@ document.addEventListener('click', (e) => {
     else fastStart(tk, false);
     return;
   }
+  const v = /** @type {HTMLElement|null} */ (t.closest('[data-fast-view]'));
+  if (v) { fastQ.view = v.dataset.fastView === 'own' ? 'own' : 'tv'; fastPaint(); return; }
+  const ge = t.closest('[data-gx-edit]');
+  if (ge) {
+    const box = /** @type {HTMLElement} */ (ge.closest('[data-fast-tk]')), form = /** @type {HTMLFormElement} */ (box.querySelector('.fast-gx-form'));
+    const g = fastGettex(box.dataset.fastTk), inp = /** @type {HTMLInputElement} */ (form.elements.namedItem('gx'));
+    form.hidden = !form.hidden;
+    inp.value = g ? g.sym : '';
+    if (!form.hidden) inp.focus();
+    return;
+  }
+  if (t.closest('[data-gx-reset]')) { gettexSave(/** @type {HTMLElement} */ (t.closest('[data-fast-tk]')), null); return; }
   const s = /** @type {HTMLElement|null} */ (t.closest('[data-fast-size]'));
   if (s) { fastQ.size = Number(s.dataset.fastSize); fastPaint(); return; }
   const w = /** @type {HTMLElement|null} */ (t.closest('[data-fast-win]'));
   if (w) { fastQ.win = Number(w.dataset.fastWin); fastPaint(); }
+});
+
+// Eigen gettex-symbool per aandeel (prefs.gettex); null zet het terug naar het standaardsymbool
+async function gettexSave(box, sym) {
+  const tk = box.dataset.fastTk, form = /** @type {HTMLFormElement} */ (box.querySelector('.fast-gx-form'));
+  const next = Object.assign({}, userPrefs().gettex || {});
+  if (sym) next[tk] = sym; else delete next[tk];
+  try { await savePrefsSafe({ gettex: next }); form.hidden = true; fastPaint(); }
+  catch (e) { toast('Opslaan mislukt: ' + String(e && e.message || e).slice(0, 120)); }
+}
+document.addEventListener('submit', (e) => {
+  const form = /** @type {HTMLFormElement} */ (e.target);
+  if (!form || !form.classList || !form.classList.contains('fast-gx-form')) return;
+  e.preventDefault();
+  const v = String(/** @type {HTMLInputElement} */ (form.elements.namedItem('gx')).value || '').trim().toUpperCase();
+  if (!GX_RE.test(v)) { toast(T('Een gettex-symbool is 1 tot 8 letters of cijfers, zoals NVD of R6C0.')); return; }
+  gettexSave(/** @type {HTMLElement} */ (form.closest('[data-fast-tk]')), v);
 });

@@ -42,7 +42,8 @@ class D1 {
 }
 const DB = new D1();
 const kv = (k) => { const r = DB.db.prepare('SELECT value FROM kv WHERE key = ?').get(k); return r ? r.value : null; };
-const setKv = (k, v) => DB.db.prepare('INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)').run(k, typeof v === 'string' ? v : JSON.stringify(v));
+// Schrijft buiten de Worker om: daarom ook zijn geheugen van sessies en sleutels leegmaken
+const setKv = (k, v) => { DB.db.prepare('INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)').run(k, typeof v === 'string' ? v : JSON.stringify(v)); WM._test.kvMemoClear(); };
 
 // ---------- Nep-fetch: per test een lijst [patroon, antwoord] ----------
 let routes = [], calls = [];
@@ -66,7 +67,7 @@ const jsonOf = async (r) => JSON.parse(await r.text());
 
 let failed = 0, passed = 0;
 async function test(name, fn) {
-  routes = []; calls = [];
+  routes = []; calls = []; WM._test.kvMemoClear();
   try { await fn(); passed++; console.log('  ok  ' + name); }
   catch (e) { failed++; console.log('  FOUT ' + name + '\n       ' + (e && e.stack || e).toString().split('\n').slice(0, 4).join('\n       ')); }
 }
@@ -185,6 +186,47 @@ await test('wisselkoersen: Frankfurter stuk, dan de ECB', async () => {
   assert.equal(health.frankfurter.backup, 'ECB Data Portal');
   const f = await jsonOf(await req('/api/features'));
   assert.ok(f.features.health.frankfurter, 'status zichtbaar voor de site');
+});
+
+await test('voorwaardelijk ophalen: HICP en fondslijst met 304 houden de vorige stand en schrijven niets', async () => {
+  // Eerste keer: de ECB stuurt Last-Modified mee, die gaat met de reeks mee in kv
+  const csv = ['KEY,FREQ,TIME_PERIOD,OBS_VALUE', 'HICP,M,2026-09,130.1', 'HICP,M,2026-10,130.4', ''].join('\n');
+  routes = [[/data-api\.ecb\.europa\.eu\/service\/data\/HICP/, () => reply(csv, 200, { 'Last-Modified': 'Mon, 16 Nov 2026 10:00:00 GMT' })]];
+  setKv('mkt_queue', ['hicp']);
+  await req('/api/market', { method: 'POST' });
+  const h1 = JSON.parse(kv('hicp'));
+  assert.equal(h1.series.NL[1][1], 130.4);
+  assert.equal(h1.cond.NL.lm, 'Mon, 16 Nov 2026 10:00:00 GMT');
+  // Tweede keer: If-Modified-Since mee, de ECB zegt 304; de rij blijft letterlijk dezelfde
+  routes = [[/data-api\.ecb\.europa\.eu\/service\/data\/HICP/, () => new Response(null, { status: 304 })]];
+  setKv('mkt_queue', ['hicp']);
+  calls = [];
+  await req('/api/market', { method: 'POST' });
+  const asked = calls.filter((c) => /HICP/.test(c.url));
+  assert.equal(asked.length, 2, asked.map((c) => c.url).join(' '));
+  assert.ok(asked.every((c) => c.init.headers['If-Modified-Since'] === 'Mon, 16 Nov 2026 10:00:00 GMT'));
+  assert.equal(kv('hicp'), JSON.stringify(h1), 'niets opnieuw geschreven');
+  // Fondslijst van iShares: met ETag, de tweede keer 304
+  const hold = ['Fund Holdings as of,"Nov 20, 2026"', '', 'Ticker,Name,Sector,Asset Class,Weight (%)', 'AAPL,APPLE INC,Information Technology,Equity,7.01', 'MSFT,MICROSOFT CORP,Information Technology,Equity,6.50', ''].join('\n');
+  routes = [[/ishares\.com/, () => reply(hold, 200, { ETag: '"v1"' })]];
+  await req('/api/etf', { method: 'POST' });
+  const e1 = kv('etf_SP500');
+  assert.ok(e1 && JSON.parse(e1).cond.etag === '"v1"', String(e1).slice(0, 200));
+  routes = [[/ishares\.com/, (u, init) => init.headers['If-None-Match'] === '"v1"' ? new Response(null, { status: 304 }) : reply('', 500)]];
+  const r = await jsonOf(await req('/api/etf', { method: 'POST' }));
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(kv('etf_SP500'), e1);
+});
+
+await test('sessies en sleutels: binnen 30 seconden niet opnieuw uit D1', async () => {
+  WM._test.QUOTES.t = Date.now(); WM._test.QUOTES.out = { at: 1, positions: [], total: 0 };
+  routes = [];
+  MEASURE.on = true; MEASURE.log = [];
+  await req('/api/quotes'); await req('/api/quotes'); await req('/api/quotes');
+  const reads = MEASURE.log.filter(([, sql]) => /FROM kv WHERE key = \?/.test(sql)).length;
+  MEASURE.on = false; MEASURE.log = null;
+  assert.ok(reads <= 1, 'kv-rijen gelezen voor 3 verzoeken: ' + reads);
+  WM._test.QUOTES.t = 0; WM._test.QUOTES.out = null;
 });
 
 await test('profielen: FMP aan zijn limiet, dan Finnhub', async () => {
@@ -623,7 +665,7 @@ await test('nu controleren en verkopen naar de stand van dit moment (deel of vas
 await test('live koersen: alle posities nu, kort in het geheugen, Finnhub alleen voor Amerikaanse aandelen', async () => {
   WM._test.QUOTES.t = 0; WM._test.QUOTES.out = null;
   const savedKeys = kv('keys');   // een eerdere test bewaarde een Finnhub-sleutel via de site
-  DB.db.prepare("DELETE FROM kv WHERE key = 'keys'").run();
+  DB.db.prepare("DELETE FROM kv WHERE key = 'keys'").run(); WM._test.kvMemoClear();
   let n = 0;
   routes = [[/t212\.test\/api\/v0\/equity\/positions/, () => { n++; return reply(T212_POS); }]];
   let r = await jsonOf(await req('/api/quotes'));
@@ -639,6 +681,11 @@ await test('live koersen: alle posities nu, kort in het geheugen, Finnhub alleen
   assert.deepEqual(r.fast, { sym: 'AAPL', key: 'fh-test-key', held: true }, JSON.stringify(r.fast));
   r = await jsonOf(await req('/api/quotes?fast=VUAG', { env: fenv }));
   assert.deepEqual(r.fast, { sym: null, key: null, held: true }, JSON.stringify(r.fast));
+  // Live via Finnhub: sleutel en symbolen van alle Amerikaanse posities in één keer
+  r = await jsonOf(await req('/api/quotes?us=1', { env: fenv }));
+  assert.deepEqual(r.us, { key: 'fh-test-key', syms: { AAPL: 'AAPL' } }, JSON.stringify(r.us));
+  r = await jsonOf(await req('/api/quotes?us=1'));
+  assert.equal(r.us, undefined, 'zonder Finnhub-sleutel niets');
   r = await jsonOf(await req('/api/quotes?fast=AAPL'));
   assert.deepEqual(r.fast, { sym: 'AAPL', key: null, held: true }, 'zonder Finnhub-sleutel geen sleutel: ' + JSON.stringify(r.fast));
   assert.equal((await req('/api/quotes?fast=%3Cx%3E')).status, 400);
@@ -1205,6 +1252,8 @@ await test('OpenFIGI: ISIN naar beurzen; Amerikaanse bronnen alleen voor effecte
   const map = JSON.parse(kv('figi'));
   assert.equal(map.US0378331005.us, 'AAPL');
   assert.deepEqual(map.US0378331005.ex, [['US', 'AAPL'], ['GY', 'APC']]);
+  assert.equal(map.US0378331005.de, 'APC', 'Duitse ticker (ook die van gettex)');
+  assert.equal(map.NL0000379121.de, null);
   assert.equal(map.NL0000379121.us, null, 'Randstad noteert niet in de VS');
   assert.equal(map.IE00BFMXXD54.fund, true, 'ETP is een fonds');
   assert.equal(map.XS0000000001.none, true);
@@ -1212,6 +1261,7 @@ await test('OpenFIGI: ISIN naar beurzen; Amerikaanse bronnen alleen voor effecte
   assert.equal(fs.RAND.us, null);
   assert.equal(fs.VUAG.fund, true);
   assert.deepEqual(fs.AAPL.ex, ['US', 'GY']);
+  assert.equal(fs.AAPL.de, 'APC');
   const e2 = Object.create(env);
   assert.equal(await T.usTicker(e2, 'AAPL'), 'AAPL');
   assert.equal(await T.usTicker(e2, 'RAND'), null, 'geen Amerikaanse bron voor Randstad');
@@ -1228,6 +1278,16 @@ await test('OpenFIGI: ISIN naar beurzen; Amerikaanse bronnen alleen voor effecte
   setKv('mkt_queue', ['figi']);
   await req('/api/market', { method: 'POST' });
   assert.ok(!calls.some((c) => /openfigi/.test(c.url)), 'binnen 30 dagen niet opnieuw');
+  // Een regel van voor de Duitse ticker wordt meteen opnieuw gevraagd
+  const old = JSON.parse(kv('figi'));
+  delete old.US0378331005.de;
+  setKv('figi', old);
+  calls = [];
+  routes = [[/api\.openfigi\.com\/v3\/mapping/, (u, init) => reply(JSON.parse(init.body).map(() => ({ data: [{ name: 'APPLE INC', ticker: 'AAPL', exchCode: 'US', securityType: 'Common Stock' }, { ticker: 'APC', exchCode: 'GR' }] })))]];
+  setKv('mkt_queue', ['figi']);
+  await req('/api/market', { method: 'POST' });
+  assert.equal(calls.filter((c) => /openfigi/.test(c.url)).length, 1, 'oude regel zonder Duitse ticker: opnieuw');
+  assert.equal(JSON.parse(kv('figi')).US0378331005.de, 'APC', 'GR gaat voor');
   // Te veel verzoeken: korte pauze, niets overschreven
   setKv('figi', {});
   setKv('mkt_queue', ['figi']);
