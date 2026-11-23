@@ -242,7 +242,7 @@ function renderNews() {
   if (window.NewsView && window.NewsView.ok && !off) { window.NewsView.draw(host); return; }
   if (window.NewsView && window.NewsView.ok) window.NewsView.clear(host);
   if (off) { host.innerHTML = '<div class="grid wide">' + offTile('Nieuws en analisten', 'Zet Finnhub aan (gratis sleutel) bij Koppelingen voor nieuws per aandeel, marktnieuws, analisten en insiderhandel.', 'FINNHUB_KEY') + '</div>'; return; }
-  host.innerHTML = '<div class="grid wide">' + newsListTile() + missedTile() + '</div>' +
+  host.innerHTML = '<div class="grid wide">' + newsListTile() + officialTile() + missedTile() + '</div>' +
     '<div class="grid wide" style="margin-top:16px">' + suggestTile() + newsToolsTile() + '</div>' +
     '<div class="section-head"><h2>Analisten</h2><p class="muted small">Aanbevelingen, koersdoelen en hoe betrouwbaar ze zijn</p></div><div class="grid wide">' + analystTableTile() + reliabilityTile() + opinionTile() + earnSeasonTile() + analystScoreTile() + '</div>' +
     '<div class="section-head"><h2>Insiders</h2><p class="muted small">Kopen en verkopen bestuurders zelf?</p></div><div class="grid wide">' + insiderTile() + '</div>';
@@ -255,6 +255,8 @@ function watchSuggestions() {
   const add = (sym, why, w, name) => { if (!sym || have.has(sym) || !/^[A-Z0-9][A-Z0-9.\-]{0,11}$/.test(sym)) return; const o = cand.get(sym) || { sym, why: new Set(), w: 0, name: name || '' }; o.why.add(why); o.w += w; if (!o.name && name) o.name = name; cand.set(sym, o); };
   if (M.mk.ok) M.companies.forEach((c) => M.mk.peersOf(c.tk).forEach((s) => { const p = M.mk.prof(s); add(s, 'lijkt op ' + c.tk, 2 + (c.weight || 0) * 5, p && p.name); }));
   const O = overlapModel();
+  // Daarna een vaste lijst van grote beursbedrijven (js/27-volglijst.js), achteraan: wat bij jou past gaat voor
+  BIG_COMPANIES.forEach(([s, nm], i) => add(s, BIG_WHY[s] || 'groot beursbedrijf in de VS', 0.01 * (1 - i / BIG_COMPANIES.length), nm));
   O.per.forEach((list, tk) => { const eurV = sum(list.map((x) => x.eur)); if (eurV > 0) add(tk, 'zit al voor ' + eur(eurV) + ' in je fondsen', eurV / Math.max(1, M.totalValue || 1) * 40, ''); });
   (data.etf ? Object.values(data.etf) : []).forEach((E) => (E.rows || []).forEach((r) => { const k = normTk(r[0]); if (cand.has(k) && !cand.get(k).name) cand.get(k).name = String(r[1] || '').replace(/\b(INC|CORP|CLASS [A-C]|LTD)\b\.?/g, '').trim(); }));
   return [...cand.values()].sort((a, b) => b.w - a.w);
@@ -268,16 +270,16 @@ function watchSuggestTile() {
   const L = all.slice(off, off + n).concat(off + n > all.length && all.length > n ? all.slice(0, Math.min(n, off + n - all.length)) : []);
   const item = (o) => {
     const p = M.mk.ok ? M.mk.prof(o.sym) : null;
-    return tpl`<div class="alt"><b>${o.sym} <span class="muted small">${(p && p.name) || o.name || ''}</span></b>
+    return tpl`<div class="alt"><b>${o.sym} <span class="muted small">${o.name || (p && p.name) || ''}</span></b>
       <span class="small muted">${[...o.why].slice(0, 2).join('; ')}</span>
       ${p && isNum(p.change) ? tpl`<span class="small ${tone(p.change)}">${spct(p.change / 100)} laatste dag</span>` : null}
       <button type="button" class="btn ghost" data-xa="watch-add" data-k="${o.sym}">Volgen</button></div>`;
   };
   return String(tpl`<section class="tile pad watch-sugg"><div class="plan-head"><h3>Suggesties om te volgen</h3>
       <span class="plan-actions">${all.length > n ? tpl`<button type="button" class="btn ghost" data-xa="watch-next">Andere suggesties</button>` : null}
-      ${all.length > 10 ? tpl`<button type="button" class="btn ghost" data-xa="watch-more">${n === 20 ? 'Minder tonen' : 'Meer tonen'}</button>` : null}</span></div>
+      ${all.length > 10 ? tpl`<button type="button" class="btn ghost" data-xa="watch-more">${n === 30 ? 'Minder tonen' : 'Meer tonen'}</button>` : null}</span></div>
     <p class="small muted">${L.length} van ${all.length} suggesties</p><p class="small watch-status" role="status" aria-live="polite"></p><div class="alt-list">${L.map(item)}</div>
-    <p class="sub" style="margin-top:8px">Vergelijkbare bedrijven van je posities (FMP) en de grootste bedrijven in je indexfondsen die je nog niet los volgt. Volgen is gratis en verandert niets aan je portefeuille.</p></section>`);
+    <p class="sub" style="margin-top:8px">Vergelijkbare bedrijven van je posities (FMP), de grootste bedrijven in je indexfondsen die je nog niet los volgt en ruim honderd grote beursbedrijven. Zoek je iets anders, gebruik dan het zoekveld van je volglijst. Je kunt tot ${WATCH_MAX} aandelen volgen; volgen is gratis en verandert niets aan je portefeuille.</p></section>`);
 }
 
 // ---------- Klikken en invoer voor de uitbreidingen ----------
@@ -321,9 +323,9 @@ document.addEventListener('click', async (e) => {
   if (a === 'watch-add') {
     const sym = b.dataset.k, tile = b.closest('.watch-sugg'), st = tile && tile.querySelector('.watch-status');
     if (watchSyms().includes(sym)) return;
-    if (watchSyms().length >= 30) { if (st) { st.textContent = 'Je volglijst zit vol (maximaal 30 aandelen).'; st.className = 'small watch-status loss'; } return; }
+    if (watchSyms().length >= WATCH_MAX) { if (st) { st.textContent = 'Je volglijst zit vol (maximaal ' + WATCH_MAX + ' aandelen).'; st.className = 'small watch-status loss'; } return; }
     b.disabled = true; b.textContent = 'Bezig…';
-    setWatchlist((cur) => (cur.includes(sym) || cur.length >= 30 ? cur : cur.concat([sym])), st, sym + ' staat op je volglijst.')
+    setWatchlist((cur) => (cur.includes(sym) || cur.length >= WATCH_MAX ? cur : cur.concat([sym])), st, sym + ' staat op je volglijst.')
       .catch(() => { b.disabled = false; b.textContent = 'Opnieuw'; });
     return;
   }

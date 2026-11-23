@@ -125,7 +125,7 @@ await test('inloggen met de Trading 212-sleutel, met limiet per verbinding', asy
 
 await test('instellingen: meldingsregels, notities en rekeningen', async () => {
   const r = await jsonOf(await req('/api/settings', { method: 'POST', body: { alerts: { move: 4, earnings: true, insider: false, drift: 6 }, mailAmounts: false, notes: { 'AAPL|1767348000000': 'Waarom' }, accounts: [{ name: 'Broker', cash: 10, holdings: [{ name: 'X', value: 5 }] }] } }));
-  assert.deepEqual(r.settings.alerts, { move: 4, earnings: true, insider: false, drift: 6, quietFrom: 0, quietTo: 0, digest: false, digestHour: 18, ratings: true });
+  assert.deepEqual(r.settings.alerts, { move: 4, earnings: true, insider: false, drift: 6, quietFrom: 0, quietTo: 0, digest: false, digestHour: 18, ratings: true, news: 'all' });
   assert.equal(r.settings.mailAmounts, false);
   assert.equal(r.settings.accounts[0].holdings[0].value, 5);
 });
@@ -292,6 +292,9 @@ await test('bijkopen is geen koersbeweging: geen melding, en het aantal stuks ga
   assert.ok(!pushes.some((p) => /AAPL/.test(p.title)), 'bijkopen gaf toch een melding: ' + JSON.stringify(pushes));
   assert.ok(!pushes.some((p) => /portefeuille/i.test(p.title)), 'ook het totaal telt de aankoop niet: ' + JSON.stringify(pushes));
   // De site krijgt per meting het aantal stuks (volledig en als aanvulling)
+  // Deze meting ligt vóór een latere meting van een eerdere test; in het echt kan dat niet, dus de bewaarde
+  // volledige reeksen hier vergeten (zoals op een nieuw apparaat na een nieuwe meting)
+  setKv('data_etags', Object.assign(JSON.parse(kv('data_etags') || '{}'), { seriesStamp: '' }));
   const s = await jsonOf(await req('/api/data?part=series'));
   assert.deepEqual(s.intraday.columns, ['time', 'ticker', 'value', 'qty']);
   const row = s.intraday.rows.find((r) => r[1] === 'AAPL' && r[0].startsWith('2026-11-18'));
@@ -615,6 +618,59 @@ await test('nu controleren en verkopen naar de stand van dit moment (deel of vas
   assert.equal(r.ok, false); assert.match(r.error, /niet/);
   assert.equal(sent.length, 4);
   await req('/api/features', { method: 'POST', body: { features: { trading: false } } });
+});
+
+await test('live koersen: alle posities nu, kort in het geheugen, Finnhub alleen voor Amerikaanse aandelen', async () => {
+  WM._test.QUOTES.t = 0; WM._test.QUOTES.out = null;
+  const savedKeys = kv('keys');   // een eerdere test bewaarde een Finnhub-sleutel via de site
+  DB.db.prepare("DELETE FROM kv WHERE key = 'keys'").run();
+  let n = 0;
+  routes = [[/t212\.test\/api\/v0\/equity\/positions/, () => { n++; return reply(T212_POS); }]];
+  let r = await jsonOf(await req('/api/quotes'));
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(r.total, 920); assert.equal(r.positions.length, 2);
+  assert.deepEqual(r.positions[0], { tk: 'AAPL', t212: 'AAPL_US_EQ', cur: 'USD', price: 230, qty: 2, value: 400 }, JSON.stringify(r.positions[0]));
+  assert.equal(r.fast, undefined, 'zonder fast geen sleutel');
+  // Binnen twee seconden: uit het geheugen, geen tweede verzoek bij Trading 212
+  await req('/api/quotes'); assert.equal(n, 1);
+  // Snelle modus: sleutel en symbool alleen voor een dollaraandeel op een Amerikaanse beurs
+  const fenv = Object.assign({}, env, { FINNHUB_KEY: 'fh-test-key' });
+  r = await jsonOf(await req('/api/quotes?fast=AAPL', { env: fenv }));
+  assert.deepEqual(r.fast, { sym: 'AAPL', key: 'fh-test-key', held: true }, JSON.stringify(r.fast));
+  r = await jsonOf(await req('/api/quotes?fast=VUAG', { env: fenv }));
+  assert.deepEqual(r.fast, { sym: null, key: null, held: true }, JSON.stringify(r.fast));
+  r = await jsonOf(await req('/api/quotes?fast=AAPL'));
+  assert.deepEqual(r.fast, { sym: 'AAPL', key: null, held: true }, 'zonder Finnhub-sleutel geen sleutel: ' + JSON.stringify(r.fast));
+  assert.equal((await req('/api/quotes?fast=%3Cx%3E')).status, 400);
+  // Limiet bij Trading 212: de vorige stand, gemarkeerd als oud
+  WM._test.QUOTES.t = 0;
+  routes = [[/t212\.test\/api\/v0\/equity\/positions/, () => reply({ code: 'TooManyRequests' }, 429)]];
+  r = await jsonOf(await req('/api/quotes'));
+  assert.equal(r.ok, true); assert.equal(r.stale, true); assert.equal(r.total, 920);
+  // Zonder eerdere stand: een duidelijke fout, geen herhaalpogingen
+  WM._test.QUOTES.out = null; calls = [];
+  r = await jsonOf(await req('/api/quotes'));
+  assert.equal(r.ok, false); assert.match(r.error, /wachten/); assert.equal(calls.length, 1);
+  // Tellingen van live koersen hoogstens eens per minuut wegschrijven
+  WM._test.QUOTES.out = { at: 1, positions: [], total: 0 }; WM._test.QUOTES.t = Date.now();
+  let flushes = 0;
+  const ctx = { waitUntil: () => { flushes++; } };
+  const hdr = { headers: { Authorization: 'Bearer ' + TOKEN, Origin: 'https://site.test' } };
+  await W.fetch(new Request('https://worker.test/api/quotes', hdr), env, ctx);
+  await W.fetch(new Request('https://worker.test/api/quotes', hdr), env, ctx);
+  assert.equal(flushes, 1);
+  WM._test.QUOTES.t = 0; WM._test.QUOTES.out = null;
+  if (savedKeys != null) setKv('keys', savedKeys);
+});
+
+await test('volglijst: tot 100 aandelen, dubbele en ongeldige symbolen eruit', async () => {
+  const before = kv('settings');
+  const list = Array.from({ length: 120 }, (_, i) => 'W' + i).concat(['W1', 'geen symbool!']);
+  await req('/api/settings', { method: 'POST', body: { watchlist: list } });
+  const saved = JSON.parse(kv('settings')).watchlist;
+  assert.equal(saved.length, 100);
+  assert.equal(saved[0], 'W0'); assert.equal(saved[99], 'W99');
+  if (before != null) setKv('settings', before);
 });
 
 await test('order met te veel decimalen: met minder decimalen opnieuw, en de reden van Trading 212 in de melding', async () => {
@@ -1866,9 +1922,10 @@ await test('geen volle tabelscans op groeiende tabellen (behalve de bekende, zel
 // posities (met echte, lange namen) en 1500 orders, en meet (via rows_read, zoals D1 telt) wat een gewone ronde, een
 // ronde met samenvatten en een ververs-vraag kosten. Ook mag geen enkele kv-regel groter zijn dan D1 toestaat (2 MB).
 const ROUND_MAX = 3000;          // gewone ronde van 10 minuten (vijf jaar, 30 posities)
-const HOURLY_MAX = 40000;        // ronde waarin het afgelopen uur wordt samengevat
+const HOURLY_MAX = 5000;         // ronde waarin het afgelopen uur wordt samengevat (de opbouw leest geen geschiedenis meer)
 const RARE_MAX = 150000;         // zelden: alle jaren dagen opnieuw (splitsing, import, jaarwisseling)
-const DAY_BUDGET = 1.5e6;        // geschat per dag: 30% van de gratis 5 miljoen
+const DAY_BUDGET = 4e5;          // geschat per dag: 8% van de gratis 5 miljoen
+const FULL_MAX = 80000;          // een nieuw apparaat haalt één keer alle reeksen op
 await test('vijf jaar, 30 posities: een ronde blijft ruim binnen de D1-daglimiet en elke kv-regel past', async () => {
   const T = WM._test;
   const HOUR = 3600e3, DAYMS = 864e5, YEARS = 5;
@@ -1909,8 +1966,11 @@ await test('vijf jaar, 30 posities: een ronde blijft ruim binnen de D1-daglimiet
     MEASURE.on = true;
     try { await fn(); } finally { MEASURE.on = false; }
     await WM._test.flushCalls(env);
-    return Number(JSON.parse(kv('cf_usage') || '{}').d1_read) || 0;
+    const u = JSON.parse(kv('cf_usage') || '{}');
+    WRITES.push(Number(u.d1_write) || 0);
+    return Number(u.d1_read) || 0;
   };
+  const WRITES = [];
   // Een tijdstip binnen de meettijden, zo dicht mogelijk bij nu
   let at = Math.floor(now / 600e3) * 600e3;
   // (met ruimte voor de rondes erna: alle vier binnen de meettijden)
@@ -1938,8 +1998,16 @@ await test('vijf jaar, 30 posities: een ronde blijft ruim binnen de D1-daglimiet
     await req('/api/data?part=core&split=1', { headers: { 'If-None-Match': tag } });
     await req('/api/data?part=series&since=' + ser.seriesTs);
   });
+  // Een nieuw apparaat (of een gewist apparaat) haalt één keer alle reeksen op; een tweede apparaat daarna leest ze uit de cache
+  await WM._test.invalidateSeries(env);
+  const full1 = await measure(() => req('/api/data?part=series'));
+  const full2 = await measure(() => req('/api/data?part=series'));
+  console.log('       nieuw apparaat: alle reeksen ' + full1 + ' rijen, nog een apparaat ' + full2);
+  assert.ok(full1 <= FULL_MAX, 'alle reeksen lazen ' + full1 + ' rijen (grens ' + FULL_MAX + ')');
+  assert.ok(full2 <= 50, 'tweede keer uit de cache: ' + full2);
   // Per dag: 144 rondes, waarvan 24 met samenvatten, plus twee apparaten die elke 5 minuten verversen
   const perDay = 120 * normal + 24 * hourly + 2 * 288 * poll;
+  console.log('       geschreven rijen: gewone ronde ' + WRITES[0] + ', met samenvatten ' + WRITES[1] + ', zelden ' + WRITES[2] + ', ververs-vraag ' + WRITES[3]);
   console.log('       gelezen rijen: gewone ronde ' + normal + ', met samenvatten ' + hourly + ', zelden (alle jaren) ' + rare + ', ververs-vraag ' + poll + '; geschat per dag ' + Math.round(perDay));
   assert.ok(rare <= RARE_MAX, 'ronde met alle jaren opnieuw las ' + rare + ' rijen (grens ' + RARE_MAX + ')');
   assert.ok(normal <= ROUND_MAX, 'gewone ronde las ' + normal + ' rijen (grens ' + ROUND_MAX + ')');
@@ -1967,6 +2035,139 @@ await test('grote waarde in stukken: de verwijzing bevat geen NUL-teken en komt 
   assert.equal(await T.getBig(env, 'test_groot'), '{"klein":1}');
   assert.equal(DB.db.prepare("SELECT COUNT(*) AS n FROM kv WHERE key LIKE 'test_groot#%'").get().n, 0, 'oude stukken opgeruimd');
   DB.db.prepare("DELETE FROM kv WHERE key = 'test_groot'").run();
+});
+
+await test('vandaag per positie: bijgehouden met alleen nieuwe metingen, ook als een meting vervangen wordt of de dag wisselt', async () => {
+  const T = WM._test;
+  const base = Date.UTC(2031, 0, 7, 10, 0);   // een dinsdag, na alle andere metingen in deze tests
+  const ins = DB.db.prepare('INSERT OR REPLACE INTO intraday (ts, ticker, name, value, unrealized, price, qty) VALUES (?,?,?,?,?,?,?)');
+  const put = (ts, v) => { ins.run(ts, 'ZZZ', 'Test', v, 1, v / 2, 2); ins.run(ts, 'TOTAAL', 'Totaal', v, 1, null, null); };
+  setKv('today_state', '');
+  put(base, 100);
+  let st = await T.todayState(env);
+  assert.equal(st.t.ZZZ.o, 100); assert.equal(st.pos.length, 1); assert.equal(st.pos[0].ticker, 'ZZZ');
+  put(base + 600e3, 120);
+  put(base + 1200e3, 110);
+  st = await T.todayState(env);
+  assert.deepEqual([st.t.ZZZ.o, st.t.ZZZ.l, st.t.ZZZ.h, st.t.ZZZ.c, st.t.ZZZ.n], [100, 100, 120, 110, 3]);
+  assert.equal(st.t.ZZZ.s / st.t.ZZZ.n, 110, 'gemiddelde');
+  // Dezelfde meting opnieuw (zelfde tijdstip, andere waarde): vervangen, niet dubbel geteld
+  put(base + 1200e3, 80);
+  st = await T.todayState(env);
+  assert.deepEqual([st.t.ZZZ.l, st.t.ZZZ.c, st.t.ZZZ.n], [80, 80, 3]);
+  assert.equal(st.t.ZZZ.s, 300);
+  assert.equal(st.pos[0].value, 80, 'positie van de laatste meting');
+  // Niets nieuw: niets schrijven
+  const before = kv('today_state');
+  await T.todayState(env);
+  assert.equal(kv('today_state'), before);
+  // Een nieuwe dag begint opnieuw
+  put(base + 864e5, 90);
+  st = await T.todayState(env);
+  assert.deepEqual([st.t.ZZZ.o, st.t.ZZZ.l, st.t.ZZZ.h, st.t.ZZZ.n], [90, 90, 90, 1]);
+  // Hetzelfde in het overzicht voor de site
+  const data = await T.buildData(env);
+  const z = data.today.find((r) => r.ticker === 'ZZZ');
+  assert.equal(z.current, 90); assert.equal(z.open, 90);
+  assert.equal(data.intraday, undefined, 'het overzicht heeft geen reeksen meer');
+  // Na een splitsing of import (invalidateSeries) begint hij opnieuw
+  await T.invalidateSeries(env);
+  assert.equal(kv('today_state'), '');
+  DB.db.prepare('DELETE FROM intraday WHERE ts >= ?').run(base);
+  setKv('today_state', '');
+});
+
+await test('marktgegevens: na een marktstap alleen de koersen van de gewijzigde symbolen opnieuw lezen', async () => {
+  const T = WM._test;
+  await T.ensureMarketTables(env);
+  setKv('market_schema', '1');
+  const before = kv('settings');
+  setKv('settings', Object.assign(JSON.parse(before || '{}'), { watchlist: ['MKA', 'MKB'] }));
+  const ins = DB.db.prepare('INSERT OR REPLACE INTO ext_prices (symbol, day, price) VALUES (?,?,?)');
+  const day = (d) => new Date(Date.now() - d * 864e5).toISOString().slice(0, 10);
+  for (let d = 1; d <= 300; d++) { ins.run('MKA', day(d), 10); ins.run('MKB', day(d), 20); }
+  const ce = Object.create(env); ce.DB = T.countingDb(DB);   // telt de gelezen rijen zoals de Worker zelf
+  const reads = async (fn) => { setKv('cf_usage', {}); MEASURE.on = true; let out; try { out = await fn(); } finally { MEASURE.on = false; } await T.flushCalls(env); return [out, Number(JSON.parse(kv('cf_usage') || '{}').d1_read) || 0]; };
+  await T.bumpMarket(env);
+  const [full, rFull] = await reads(() => T.marketDataCached(ce));
+  assert.equal(full.prices.MKA.length, 300); assert.equal(full.prices.MKB.length, 300);
+  // Een marktstap gaf MKA een nieuwe slotkoers
+  ins.run('MKA', day(0), 11);
+  await T.bumpMarket(env, ['MKA']);
+  const [inc, rInc] = await reads(() => T.marketDataCached(ce));
+  assert.equal(inc.prices.MKA.length, 301); assert.equal(inc.prices.MKA[300][1], 11, 'nieuwe koers van MKA');
+  assert.equal(inc.prices.MKB.length, 300, 'MKB uit de vorige versie');
+  console.log('       marktgegevens: alles ' + rFull + ' rijen, na een marktstap ' + rInc);
+  assert.ok(rInc < rFull - 250, 'de koersen van MKB niet opnieuw gelezen (' + rInc + ' tegen ' + rFull + ')');
+  // Een andere wijziging (zonder symbolen): alles opnieuw
+  await T.bumpMarket(env);
+  assert.equal(kv('mkt_px_dirty'), '"all"');
+  const [, rAll] = await reads(() => T.marketDataCached(ce));
+  assert.ok(rAll >= rFull - 5, 'alles opnieuw: ' + rAll);
+  DB.db.prepare("DELETE FROM ext_prices WHERE symbol IN ('MKA', 'MKB')").run();
+  if (before != null) setKv('settings', before);
+  setKv('market_cache', '');
+  setKv('cf_usage', {});
+});
+
+await test('officieel, geruchten en belangrijk nieuws: herkennen, bewaren en één melding per bericht', async () => {
+  const T = WM._test;
+  // Herkennen
+  assert.equal(T.newsKind({ source: 'Business Wire', headline: 'Acme announces third quarter results' }), 'official');
+  assert.equal(T.newsKind({ source: 'GlobeNewswire', headline: 'Acme to present at conference' }), 'official');
+  assert.equal(T.newsKind({ source: 'Reuters', headline: 'Acme in talks to buy Beta, people familiar with the matter say' }), 'rumour');
+  assert.equal(T.newsKind({ source: 'Bloomberg', headline: 'Acme reportedly weighs sale of cloud unit' }), 'rumour');
+  assert.equal(T.newsKind({ source: 'Reuters', headline: 'Acme shares rise after strong demand' }), null);
+  assert.equal(T.newsBreaking({ headline: 'Nvidia reinstated Jensen Huang as CEO after board review' }), true);
+  assert.equal(T.newsBreaking({ headline: 'Acme files for Chapter 11 bankruptcy' }), true);
+  assert.equal(T.newsBreaking({ headline: 'Acme shares rise after strong demand' }), false);
+  // Elke ronde een paar aandelen; alleen officieel, gerucht of belangrijk komt in de lijst
+  const at = Date.parse('2026-11-23T15:20:00Z'), sec = (ms) => Math.floor(ms / 1000);
+  const NEWS = [
+    { datetime: sec(at - 20 * 60e3), headline: 'Apple reinstates chief executive after board review', source: 'Reuters', url: 'https://n.test/1', summary: '' },
+    { datetime: sec(at - 50 * 60e3), headline: 'Apple reportedly in talks to buy a chip designer', source: 'Bloomberg', url: 'https://n.test/2', summary: '' },
+    { datetime: sec(at - 30 * 60e3), headline: 'Apple to present at investor conference', source: 'Business Wire', url: 'https://n.test/3', summary: '' },
+    { datetime: sec(at - 40 * 60e3), headline: 'Apple shares edge higher', source: 'Reuters', url: 'https://n.test/4', summary: '' },
+    { datetime: sec(at - 26 * 3600e3), headline: 'Apple CEO resigns', source: 'Reuters', url: 'https://n.test/5', summary: '' },
+  ];
+  const pushes = [];
+  let asked = 0;
+  routes = t212Routes().concat([[/finnhub\.io\/api\/v1\/company-news/, () => { asked++; return reply(NEWS); }],
+    [/push\.test/, async (u, init) => { pushes.push(await decryptPush(init.body)); return reply('', 201); }]]);
+  await req('/api/push/subscribe', { method: 'POST', body: { sub: { endpoint: 'https://push.test/news', keys: { p256dh: b64u(pubRaw), auth: b64u(sub.auth) } } } });
+  setKv('news_flash', '');
+  await req('/api/settings', { method: 'POST', body: { alerts: { move: 5, earnings: true, insider: true, drift: 5, news: 'all' } } });
+  const fenv = Object.assign(Object.create(env), { FINNHUB_KEY: 'fh-test' });
+  const calls = await T.newsWatch(fenv, at);
+  assert.ok(calls >= 1 && asked === calls, 'Finnhub gevraagd: ' + asked);
+  const fl = JSON.parse(kv('news_flash'));
+  const urls = fl.items.map((x) => x.url).sort();
+  assert.deepEqual(urls, ['https://n.test/1', 'https://n.test/2', 'https://n.test/3', 'https://n.test/5'], 'gewoon nieuws niet in de lijst');
+  assert.equal(fl.items.find((x) => x.url === 'https://n.test/2').kind, 'rumour');
+  assert.equal(fl.items.find((x) => x.url === 'https://n.test/3').kind, 'official');
+  assert.equal(fl.items.find((x) => x.url === 'https://n.test/1').breaking, true);
+  // Eén melding: het verse belangrijke bericht; het oude (26 uur) en de niet-belangrijke niet
+  // (Elk aangemeld testapparaat krijgt dezelfde melding: tel unieke berichten)
+  const uniq = () => [...new Map(pushes.filter((p) => /^news-/.test(p.tag || '')).map((p) => [p.body, p])).values()];
+  const news = uniq();
+  assert.equal(news.length, 1, JSON.stringify(pushes));
+  assert.match(news[0].title, /belangrijk nieuws/);
+  assert.match(news[0].body, /reinstates/);
+  // Nog een ronde: dezelfde berichten geven geen tweede melding
+  await T.newsWatch(fenv, at + 600e3);
+  assert.equal(uniq().length, 1);
+  // Alleen officieel: een vers belangrijk gerucht geeft geen melding
+  await req('/api/settings', { method: 'POST', body: { alerts: { move: 5, earnings: true, insider: true, drift: 5, news: 'official' } } });
+  NEWS.push({ datetime: sec(at), headline: 'Apple reportedly plans takeover of a streaming firm', source: 'Bloomberg', url: 'https://n.test/6', summary: '' });
+  await T.newsWatch(fenv, at + 1200e3);
+  assert.equal(uniq().length, 1, 'gerucht niet gemeld bij "alleen officieel"');
+  assert.ok(JSON.parse(kv('news_flash')).items.some((x) => x.url === 'https://n.test/6'), 'wel in de lijst');
+  // De site krijgt de lijst mee
+  const data = await T.buildData(env);
+  assert.ok(Array.isArray(data.newsFlash) && data.newsFlash.length >= 5);
+  await req('/api/settings', { method: 'POST', body: { alerts: { move: 5, earnings: true, insider: true, drift: 5, news: 'all' } } });
+  setKv('news_flash', '');
+  routes = [];
 });
 
 console.log((failed ? failed + ' fout, ' : '') + passed + ' geslaagd');

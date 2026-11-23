@@ -487,8 +487,16 @@ function makeDemoData() {
     ] },
     friend: { pct: { week: 0.0062, month: 0.0184, ytd: 0.1142, total: 0.0917 }, since: dIn(-60), generated: dIn(0), weeks: 40 },
   };
+  // Officieel en geruchten (js/21-nieuwsplus.js): verzonnen berichten met de vorm die de Worker levert
+  const newsFlash = [
+    [40 / 60, 'NVDA', 'official', true, 'Business Wire', 'Voorbeeld: Nvidia benoemt een nieuwe financieel directeur'],
+    [3, 'AAPL', 'rumour', true, 'Bloomberg', 'Voorbeeld: Apple zou in gesprek zijn over de overname van een chipontwerper, zeggen ingewijden'],
+    [20, 'MSFT', 'official', false, 'PR Newswire', 'Voorbeeld: Microsoft presenteert op een investeerdersconferentie'],
+    [44, 'AMZN', 'rumour', false, 'Reuters', 'Voorbeeld: Amazon overweegt naar verluidt de verkoop van een dochterbedrijf'],
+    [70, 'TSLA', null, true, 'Reuters', 'Voorbeeld: toezichthouder opent onderzoek naar Tesla'],
+  ].map(([h, tk, kind, breaking, source, headline], k) => Object.assign({ t: now.getTime() - Number(h) * HOUR, tk, source, headline: headline + ' (geen echt nieuws)', url: '#flash-' + k }, kind ? { kind } : {}, breaking ? { breaking } : {}));
   return Object.assign({
-    ok: true, generated: iso(now), currency: 'EUR', weeks, positionsDate: iso(now), positions, today, events, market, marketNews, demoNotes, demoAccounts, demoPrefs, demoViews, demoPriv,
+    ok: true, generated: iso(now), currency: 'EUR', weeks, positionsDate: iso(now), positions, today, events, market, marketNews, newsFlash, demoNotes, demoAccounts, demoPrefs, demoViews, demoPriv,
     orders: { columns: ['time', 'ticker', 'name', 'side', 'qty', 'price', 'currency', 'fxRate', 'net', 'realised', 'feeFx', 'feeOther', 'kind'], rows: orders },
     posExtra, etf, peil: peilDemo, settings: {}, demoTrade,
     intraday: { columns: ['time', 'ticker', 'value', 'qty'], rows: intraday },

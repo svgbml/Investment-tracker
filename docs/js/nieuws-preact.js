@@ -273,13 +273,13 @@ function NewsPage({ stamp }) {
   const list = html`<${NewsList} items=${items} tk=${sel} onClear=${() => setSel(null)} />`;
   if (mode === 'm') {
     return html`<div class="m-ptabs news-tabs" role="group" aria-label="Onderdeel">${NEWS_SEGS.map(([k, l]) => html`<button type="button" key=${k} aria-pressed=${String(seg === k)} onClick=${() => pickSeg(k)}>${l}</button>`)}</div>
-      ${seg === 'news' ? html`<div class="grid wide">${map}${list}<${Legacy} markup=${missedTile()} /><${Legacy} markup=${newsToolsTile()} /></div>` : null}
+      ${seg === 'news' ? html`<div class="grid wide">${map}${list}<${Legacy} markup=${officialTile()} /><${Legacy} markup=${missedTile()} /><${Legacy} markup=${newsToolsTile()} /></div>` : null}
       ${seg === 'an' ? html`<div class="grid wide"><${Legacy} markup=${suggestTile()} /><${AnalystTable} rows=${rows} /><${OpinionTile} stamp=${stamp} /><${Legacy} markup=${earnSeasonTile()} /><${Legacy} markup=${analystScoreTile()} /><${Legacy} markup=${reliabilityTile()} /></div>` : null}
       ${seg === 'ins' ? html`<div class="grid wide"><${Legacy} markup=${insiderTile()} /></div>` : null}`;
   }
   return html`
     <div class="grid wide">${list}${map}</div>
-    <div class="grid wide" style="margin-top:16px"><${Legacy} markup=${missedTile()} /><${Legacy} markup=${suggestTile()} /><${Legacy} markup=${newsToolsTile()} /></div>
+    <div class="grid wide" style="margin-top:16px"><${Legacy} markup=${officialTile()} /><${Legacy} markup=${missedTile()} /><${Legacy} markup=${suggestTile()} /><${Legacy} markup=${newsToolsTile()} /></div>
     <div class="section-head"><h2>Analisten</h2><p class="muted small">Aanbevelingen, koersdoelen en hoe betrouwbaar ze zijn</p></div>
     <div class="grid wide"><${AnalystTable} rows=${rows} /><${Legacy} markup=${reliabilityTile()} /><${OpinionTile} stamp=${stamp} /><${Legacy} markup=${earnSeasonTile()} /><${Legacy} markup=${analystScoreTile()} /></div>
     <div class="section-head"><h2>Insiders</h2><p class="muted small">Kopen en verkopen bestuurders zelf?</p></div>

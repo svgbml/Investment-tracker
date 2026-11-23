@@ -233,13 +233,16 @@ function watchAddForm(id) {
 }
 
 function renderWatch() {
-  const syms = watchSyms().filter(watchTagFilter);
+  // Volgorde wijzigen (js/27-volglijst.js): dan de hele lijst als rijen met knoppen, zonder labelfilter
+  const ordering = wOrder.on && watchSyms().length > 1;
+  const syms = ordering ? watchSyms() : watchSyms().filter(watchTagFilter);
   const empty = '<p class="empty">Nog niets op je volglijst. Voeg een beurssymbool toe (zoals NVDA of LMT) om koers, agenda, nieuws en cijfers te volgen zonder het aandeel te hebben.</p>';
-  if ($('watch-grid')) { if (!$('watch-in')) $('watch-add').innerHTML = watchAddForm('watch-in'); fill('watch-grid', syms.length ? syms.map((x) => watchTile(x, false)) : [empty]); }
-  if ($('m-watch-rows')) { if (!$('m-watch-in')) $('m-watch-add').innerHTML = watchAddForm('m-watch-in'); fill('m-watch-rows', syms.length ? syms.map((x) => watchTile(x, true)) : ['<p class="m-sub" style="padding:16px">Nog niets op je volglijst.</p>']); }
+  if ($('watch-grid')) { if (!$('watch-in')) $('watch-add').innerHTML = watchAddForm('watch-in'); fill('watch-grid', ordering ? [watchOrderHtml()] : syms.length ? syms.map((x) => watchTile(x, false)) : [empty]); }
+  if ($('m-watch-rows')) { if (!$('m-watch-in')) $('m-watch-add').innerHTML = watchAddForm('m-watch-in'); fill('m-watch-rows', ordering ? [watchOrderHtml()] : syms.length ? syms.map((x) => watchTile(x, true)) : ['<p class="m-sub" style="padding:16px">Nog niets op je volglijst.</p>']); }
   const bad = unknownSyms();
   const clean = bad.length ? '<p class="small loss watch-clean">' + esc(bad.length + (bad.length === 1 ? ' symbool wordt' : ' symbolen worden') + ' niet gevonden: ' + bad.join(', ') + '.') + ' <button type="button" class="linklike" data-xa="watch-clean">Ongeldige verwijderen</button></p>' : '';
-  ['watch-add', 'm-watch-add'].forEach((id) => { const host = $(id); if (!host) return; const old = host.querySelector('.watch-clean'); if (old) old.remove(); if (clean) host.insertAdjacentHTML('beforeend', clean); const oc = host.querySelector('.watch-tags'); if (oc) oc.remove(); host.insertAdjacentHTML('beforeend', watchTagChips()); });
+  ['watch-add', 'm-watch-add'].forEach((id) => { const host = $(id); if (!host) return; const old = host.querySelector('.watch-clean'); if (old) old.remove(); if (clean) host.insertAdjacentHTML('beforeend', clean); const oc = host.querySelector('.watch-tags'); if (oc) oc.remove(); host.insertAdjacentHTML('beforeend', watchTagChips());
+    const ob = host.querySelector('.wo-start'); if (ob) ob.remove(); if (!ordering && watchSyms().length > 1 && !sharedView) host.insertAdjacentHTML('beforeend', '<p class="wo-start"><button type="button" class="btn ghost" data-wo="start">' + esc(T('Volgorde wijzigen')) + '</button></p>'); });
   const sg = watchSuggestTile();
   if ($('watch-sugg')) $('watch-sugg').innerHTML = sg;
   if ($('m-watch-sugg')) $('m-watch-sugg').innerHTML = sg;
@@ -256,7 +259,7 @@ function setWatchlist(next, statusEl, note) {
       say('Bezig met opslaan…');
       const list = typeof next === 'function' ? next(watchSyms().slice()) : next;
       await saveSettings({ watchlist: list });
-      renderAll();
+      await renderAll();   // klaar met tekenen, zodat wie hierna de focus zet de nieuwe knoppen vindt
       say(note, 'gain');
       // Koersen en profielen van nieuwe symbolen op de achtergrond ophalen; niet wachten, de lijst staat al goed
       if (!demo && isWorker()) {
@@ -300,7 +303,7 @@ document.addEventListener('submit', async (e) => {
   if (heldSyms.has(hit.sym)) { bad('Dit aandeel heb je al.'); return; }
   const list = watchSyms().slice();
   if (list.includes(hit.sym)) { bad('Staat al op je volglijst.'); return; }
-  if (list.length >= 30) { bad('Maximaal 30 aandelen.'); return; }
+  if (list.length >= WATCH_MAX) { bad('Maximaal ' + WATCH_MAX + ' aandelen.'); return; }
   inp.value = ''; const box = f.querySelector('.ws-results'); if (box) { box.innerHTML = ''; box.hidden = true; }
   setWatchlist((cur) => (cur.includes(hit.sym) ? cur : cur.concat([hit.sym])), st, hit.sym + (hit.name ? ' (' + hit.name + ')' : '') + ' staat op je volglijst.');
 });

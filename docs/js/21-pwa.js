@@ -279,7 +279,7 @@ async function shareIntake() {
     const b = /** @type {HTMLElement|null} */ (t.closest ? t.closest('[data-share-add]') : null);
     if (!b) return;
     const sym = b.dataset.shareAdd || '';
-    if (watchSyms().length >= 30) { st.textContent = 'Je volglijst zit vol (maximaal 30 aandelen).'; st.className = 'small share-st loss'; return; }
+    if (watchSyms().length >= WATCH_MAX) { st.textContent = 'Je volglijst zit vol (maximaal ' + WATCH_MAX + ' aandelen).'; st.className = 'small share-st loss'; return; }
     b.setAttribute('disabled', 'disabled');
     setWatchlist((cur) => (cur.includes(sym) ? cur : cur.concat([sym])), st, sym + ' staat op je volglijst.')
       .catch(() => { b.removeAttribute('disabled'); });

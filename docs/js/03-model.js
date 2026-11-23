@@ -45,6 +45,17 @@ function derive() {
   M = m;   // seriesOf() hieronder gebruikt M
 
   const todayMap = new Map((data.today || []).map((r) => [r.ticker, r]));
+  // Gemiddeld dagbereik (hoog min laag) uit de eigen dagreeks. Vroeger rekende de Worker dit elk uur over de hele
+  // geschiedenis uit; dat kostte hem tienduizenden gelezen rijen. Een oudere Worker stuurt het nog mee (t.avgRange).
+  const rangeOf = (tk, t) => {
+    let r = 0, rp = 0, n = 0, np = 0;
+    (m.days.get(tk) || []).forEach((d) => {
+      if (!isNum(d.high) || !isNum(d.low)) return;
+      r += d.high - d.low; n++;
+      if (d.avg > 0) { rp += (d.high - d.low) / d.avg; np++; }
+    });
+    return n ? { avgRange: r / n, avgRangePct: np ? rp / np : null, histDays: n } : { avgRange: t.avgRange, avgRangePct: t.avgRangePct, histDays: t.days || 0 };
+  };
   const posMap = new Map((data.positions || []).map((p) => [p.ticker, p]));
   const tks = new Set([...todayMap.keys(), ...posMap.keys()]);
   tks.delete(TOTAL);
@@ -55,10 +66,11 @@ function derive() {
     const value = isNum(t.current) ? t.current : isNum(p.value) ? p.value : null;
     const cost = isNum(p.cost) ? p.cost : (isNum(p.value) && isNum(p.unrealized) ? p.value - p.unrealized : null);
     const unreal = isNum(cost) && isNum(value) ? value - cost : isNum(p.unrealized) ? p.unrealized : null;
+    const rg = rangeOf(tk, t);
     const c = {
       tk, name: t.name || p.name || tk, value,
       change: t.change, changePct: t.changePct, open: t.open, low: t.low, high: t.high, avg: t.avg,
-      avgRange: t.avgRange, avgRangePct: t.avgRangePct,
+      avgRange: rg.avgRange, avgRangePct: rg.avgRangePct, histDays: rg.histDays,
       cost, unreal, qty: isNum(p.quantity) && p.quantity > 0 ? p.quantity : null,
       resultPct: isNum(cost) && cost > 0 && isNum(unreal) ? unreal / cost : isNum(p.resultPct) ? p.resultPct : null,
     };
@@ -76,10 +88,11 @@ function derive() {
   } else m.soldToday = [];
 
   const T = todayMap.get(TOTAL) || {};
+  const rgT = rangeOf(TOTAL, T);
   m.tot = {
     tk: TOTAL, value: isNum(T.current) ? T.current : sum(m.companies.map((c) => c.value)),
     change: T.change, changePct: T.changePct, open: T.open, low: T.low, high: T.high, avg: T.avg,
-    avgRange: T.avgRange, avgRangePct: T.avgRangePct,
+    avgRange: rgT.avgRange, avgRangePct: rgT.avgRangePct, histDays: rgT.histDays,
   };
   dayChange(m.tot);
   totalDayChange(m);

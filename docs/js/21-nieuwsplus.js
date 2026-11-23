@@ -322,6 +322,46 @@ function missedModel() {
 }
 
 // Compacte tegel op de nieuwspagina, met een knop naar de hele pagina
+// ---------- Officieel en geruchten ----------
+// Van de Worker (data.newsFlash): persberichten, geruchten en belangrijk nieuws over je aandelen en volglijst, de
+// laatste 7 dagen. Daarbij de deponeringen 8-K en 6-K bij de SEC (data.ext2.filings), want die zijn altijd officieel.
+// Breaking: belangrijk (bestuur, overname, onderzoek ...) en van het afgelopen etmaal.
+const FORM8K = { '1.01': 'belangrijke overeenkomst', '1.02': 'overeenkomst beëindigd', '1.03': 'faillissement', '2.01': 'overname of verkoop afgerond',
+  '2.02': 'resultaten', '2.05': 'reorganisatie', '2.06': 'afwaardering', '3.01': 'beursnotering', '4.02': 'eerdere cijfers niet meer betrouwbaar',
+  '5.02': 'wisseling in het bestuur', '5.03': 'statuten', '5.07': 'stemming van aandeelhouders', '7.01': 'mededeling aan beleggers', '8.01': 'overige gebeurtenis' };
+const FLASH_BIG_ITEMS = /1\.03|2\.01|4\.02|5\.02/;
+function flashItems() {
+  const since = Date.now() - 14 * DAY;
+  const out = (data.newsFlash || []).filter((n) => n && n.t >= since && !newsMuted(n)).map((n) => Object.assign({}, n));
+  const per = (data.ext2 && data.ext2.filings && data.ext2.filings.per) || {};
+  Object.entries(per).forEach(([tk, f]) => ((f && f.list) || []).forEach((x) => {
+    if (!/^(8-K|6-K)$/.test(x.form)) return;
+    const t = ymd(x.date);
+    if (!isNum(t) || t < since) return;
+    const its = String(x.items || '').split(',').map((s) => FORM8K[s.trim()]).filter(Boolean);
+    out.push({ t, tk, kind: 'official', source: 'SEC', url: x.url, headline: x.form + ' bij de SEC' + (its.length ? ': ' + its.join(', ') : ''), breaking: FLASH_BIG_ITEMS.test(x.items || '') });
+  }));
+  return out.sort((a, b) => b.t - a.t);
+}
+function officialTile() {
+  if (!M) return '';
+  const f = xs.flashF || 'all';
+  const all = flashItems();
+  const list = all.filter((n) => f === 'all' || n.kind === f).slice(0, 25);
+  const fresh = (n) => n.breaking && Date.now() - n.t < DAY;
+  const item = (n) => tpl`<a class="news-i" href="${n.url}" target="_blank" rel="noopener"><span class="news-m">
+      <span class="${'tag' + (M.byTk.has(n.tk) ? ' gain' : '')}">${n.tk}</span>
+      ${n.kind === 'official' ? tpl`<span class="tag flash-off">${T('Officieel')}</span>` : n.kind === 'rumour' ? tpl`<span class="tag flash-rum">${T('Gerucht')}</span>` : null}
+      ${fresh(n) ? tpl`<span class="tag loss">Breaking</span>` : n.breaking ? tpl`<span class="tag">${T('Belangrijk')}</span>` : null}
+      ${(n.source === 'SEC' ? fD.format(n.t) : fDT.format(n.t)) + (n.source ? ', ' + n.source : '')}</span><span class="news-t">${n.headline}</span></a>`;
+  const c = { official: 0, rumour: 0 };
+  all.forEach((n) => { if (c[n.kind] != null) c[n.kind]++; });
+  return String(tpl`<section class="${'tile pad flash-tile' + (mode === 'm' ? '' : ' span-2')}"><div class="plan-head"><h3>${T('Officieel en geruchten')}</h3>${raw(segX('flashF', [['all', 'Alles'], ['official', 'Officieel'], ['rumour', 'Geruchten']], f, 'Berichten filteren'))}</div>
+    <p class="small muted" style="margin:2px 0 6px">${c.official + ' officieel, ' + c.rumour + ' geruchten' + (all.filter(fresh).length ? ', ' + all.filter(fresh).length + ' breaking' : '') + ' in de laatste twee weken'}</p>
+    ${list.length ? tpl`<div class="news">${list.map(item)}</div>` : tpl`<p class="muted">${f === 'rumour' ? 'Geen geruchten over je aandelen gevonden.' : f === 'official' ? 'Geen officiële berichten gevonden.' : 'Nog niets gevonden.'}${FEAT().has.finnhub || demo ? '' : ' Met een gratis Finnhub-sleutel kijkt de Worker elke 10 minuten naar het nieuws van je aandelen.'}</p>`}
+    <p class="sub" style="margin-top:8px">Officieel: persberichten van het bedrijf zelf (via Business Wire, PR Newswire, GlobeNewswire en dergelijke) en deponeringen bij de SEC (8-K, 6-K). Gerucht: een bericht dat zich baseert op niet genoemde bronnen ("reportedly", "people familiar", "in talks"); dat is niet bevestigd en kan onjuist zijn. Breaking: over bestuur, overnames, onderzoeken en dergelijke, van het afgelopen etmaal. De herkenning gaat op woorden in de kop en de bron, dus lees bij twijfel het bericht zelf. De Worker kijkt elke 10 minuten bij een paar van je aandelen om de beurt; een melding bij breaking nieuws stel je in bij Instellingen, Meldingen. Geen beleggingsadvies.</p></section>`);
+}
+
 function missedTile() {
   const X = missedModel();
   const bits = [];

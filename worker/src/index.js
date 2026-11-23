@@ -31,6 +31,10 @@ const EVENTS_CRON = '17 5 * * *';
 // ---------- Verbruik per bron: elk extern verzoek telt mee (zie /api/status) ----------
 // Deze functie overschaduwt de globale fetch binnen dit bestand; de echte staat in globalThis.fetch.
 const CALL_COUNTS = new Map();
+let flushedAt = 0;
+// Live koersen in het geheugen (zie liveQuotes)
+const QUOTES_MS = 2000;
+const QUOTES = { t: 0, out: null };
 const CALL_HOSTS = [
   [/financialmodelingprep/, 'fmp'], [/finnhub/, 'finnhub'], [/alphavantage/, 'alphavantage'], [/twelvedata/, 'twelvedata'],
   [/tiingo\.com/, 'tiingo'], [/massive\.com|polygon\.io/, 'polygon'], [/marketaux\.com/, 'marketaux'], [/openfigi\.com/, 'openfigi'], [/gdeltproject\.org/, 'gdelt'],
@@ -191,6 +195,7 @@ const WORKER = {
       .then(() => tickOk(env))
       .then(() => setKv(env, 'last_cron', new Date().toISOString()))
       .then(() => morningPush(env, at).catch((e) => console.error('ochtend', e)))
+      .then(() => newsWatch(env, at.getTime()).catch((e) => console.error('nieuwswacht', e)))
       .then(async () => {
         if (marketHours(at)) return null;
         // Buiten de handelsuren: eerst (1x per dag) de orders, anders een portie marktgegevens
@@ -210,8 +215,11 @@ const WORKER = {
     const env0 = countedEnv(envIn);
     CALL_COUNTS.set('worker_req', (CALL_COUNTS.get('worker_req') || 0) + 1);
     const res = await WORKER.handleFetch(request, env0);
-    // Tellingen van dit verzoek (bronnen, D1-rijen) wegschrijven nadat het antwoord weg is
-    if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(flushCalls(env0).catch(() => {}));
+    // Tellingen van dit verzoek (bronnen, D1-rijen) wegschrijven nadat het antwoord weg is. Live koersen komen elke
+    // paar seconden: die tellingen hoogstens eens per minuut wegschrijven, anders kost elk verzoek een schrijfactie.
+    // shortcut: tellingen van live koersen gaan verloren als Cloudflare de Worker binnen die minuut stopt; klein verschil.
+    const quiet = new URL(request.url).pathname === '/api/quotes' && Date.now() - flushedAt < 60e3;
+    if (!quiet && ctx && typeof ctx.waitUntil === 'function') { flushedAt = Date.now(); ctx.waitUntil(flushCalls(env0).catch(() => {})); }
     return res;
   },
 
@@ -233,8 +241,7 @@ const WORKER = {
       const c = await shareConf(envIn);
       if (!c || !c.token || !safeEqual(c.token, shr[1])) return json({ ok: false, error: 'Deze deel-link werkt niet (meer).' }, 404, cors);
       if (shareExpired(c)) return json({ ok: false, error: 'Deze deel-link is verlopen op ' + String(c.until).slice(0, 10) + '.' }, 410, cors);
-      let body = await getBig(envIn, 'data_share');
-      if (!body) { await saveDataCache(envIn, await buildData(await withKeys(envIn))); body = await getBig(envIn, 'data_share'); }
+      const body = await shareBody(envIn, c);
       return new Response(body, { status: 200, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...cors } });
     }
     if (!envIn.WEB_TOKEN) {
@@ -331,6 +338,10 @@ const WORKER = {
       }
       if (url.pathname === '/api/live' && request.method === 'GET') {
         try { return json(Object.assign({ ok: true }, await liveCheck(env, url.searchParams.get('tk'))), 200, cors); }
+        catch (e) { return json({ ok: false, error: String(e && e.message || e) }, 400, cors); }
+      }
+      if (url.pathname === '/api/quotes' && request.method === 'GET') {
+        try { return json(Object.assign({ ok: true }, await liveQuotes(env, url.searchParams.get('fast'))), 200, cors); }
         catch (e) { return json({ ok: false, error: String(e && e.message || e) }, 400, cors); }
       }
       if (url.pathname === '/api/trade/instruments' && request.method === 'GET') {
@@ -433,21 +444,24 @@ const WORKER = {
         if (await saveMode(env)) jh['X-Tracker-Save'] = '1';
         // Heeft de site deze versie al (If-None-Match), dan alleen de vingerafdrukken lezen: één rij in plaats van vier
         const inm = request.headers.get('If-None-Match');
-        if (inm && (part === 'core' || part === 'extra' || part === 'series') && !url.searchParams.has('fresh')) {
+        if (inm && (part === 'core' || part === 'extra') && !url.searchParams.has('fresh')) {
           let t0 = {};
           try { t0 = JSON.parse((await getKv(env, 'data_etags')) || '{}'); } catch (e) { t0 = {}; }
           const split0 = url.searchParams.get('split') === '1';
           const tag0 = part === 'core' && !split0 ? (t0.core && t0.series ? '"' + t0.core.slice(1, 13) + t0.series.slice(1, 13) + '"' : null) : t0[part];
           if (tag0 && inm === tag0) return new Response(null, { status: 304, headers: { ...jh, ETag: tag0 } });
         }
-        let core = await getBig(env, 'data_core'), extra = await getBig(env, 'data_extra'), series = await getBig(env, 'data_series');
-        if (!core || !extra || !series || url.searchParams.has('fresh')) {
+        let core = await getBig(env, 'data_core'), extra = await getBig(env, 'data_extra');
+        if (!core || !extra || url.searchParams.has('fresh')) {
           await saveDataCache(env, await buildData(env));
-          core = await getBig(env, 'data_core'); extra = await getBig(env, 'data_extra'); series = await getBig(env, 'data_series');
+          core = await getBig(env, 'data_core'); extra = await getBig(env, 'data_extra');
         }
+        // De volledige reeksen alleen voor wie ze vraagt (nieuw apparaat, oude versie van de site)
+        const split = url.searchParams.get('split') === '1';
+        const sf = part === 'series' || (part !== 'extra' && part !== 'research' && !split) ? await seriesFull(env) : null;
+        const series = sf ? sf.body : '';
         const glue = (a, b) => a.slice(0, -1) + ',' + b.slice(1);
         // De site vanaf versie 38 vraagt core zonder reeksen (split=1); oudere versies krijgen core met reeksen
-        const split = url.searchParams.get('split') === '1';
         // Eén aandeel uit het onderzoek (koersdoelen, profiel, cijfers), voor een bedrijfspagina:
         // veel kleiner dan het hele 'extra'-deel ophalen.
         if (part === 'research') {
@@ -466,6 +480,7 @@ const WORKER = {
         if (part === 'core' || part === 'extra' || part === 'series') {
           let tags = {};
           try { tags = JSON.parse((await getKv(env, 'data_etags')) || '{}'); } catch (e) { tags = {}; }
+          if (sf) tags.series = sf.tag;
           const tag = part === 'core' && !split ? (tags.core && tags.series ? '"' + tags.core.slice(1, 13) + tags.series.slice(1, 13) + '"' : null) : tags[part];
           const h = { ...jh, ...(tag ? { ETag: tag } : {}) };
           if (tag && request.headers.get('If-None-Match') === tag) return new Response(null, { status: 304, headers: h });
@@ -779,23 +794,23 @@ async function sha256Hex(s) {
   return [...new Uint8Array(h)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+// Het overzicht bewaren in twee delen (core en extra). De reeksen staan apart (seriesFull) en worden niet bij elke
+// opbouw opnieuw geschreven; hun vingerafdruk blijft staan. De deel-link wordt pas opgebouwd als iemand hem opent.
 async function saveDataCache(env, data) {
-  const core = {}, extra = { ok: true, part: 'extra' }, series = { ok: true, part: 'series' };
-  Object.keys(data).forEach((k) => { if (EXTRA_KEYS.includes(k)) extra[k] = data[k]; else if (SERIES_KEYS.includes(k)) series[k] = data[k]; else core[k] = data[k]; });
+  const core = {}, extra = { ok: true, part: 'extra' };
+  Object.keys(data).forEach((k) => { if (EXTRA_KEYS.includes(k)) extra[k] = data[k]; else if (!SERIES_KEYS.includes(k)) core[k] = data[k]; });
   core.part = 'core';
-  const last = await env.DB.prepare('SELECT MAX(ts) AS ts FROM intraday').first().catch(() => null);
-  series.seriesTs = (last && last.ts) || 0;
-  const cs = JSON.stringify(core), es = JSON.stringify(extra), ss = JSON.stringify(series);
+  const cs = JSON.stringify(core), es = JSON.stringify(extra);
   // generated verandert bij elke opbouw; zonder dat veld is de vingerafdruk alleen anders als de inhoud anders is
   const tagOf = async (o) => '"' + (await sha256Hex(JSON.stringify(Object.assign({}, o, { generated: null })))).slice(0, 24) + '"';
+  let old = {};
+  try { old = JSON.parse((await getKv(env, 'data_etags')) || '{}'); } catch (e) { old = {}; }
   await env.DB.batch([
     ...bigStmts(env, 'data_core', cs),
     ...bigStmts(env, 'data_extra', es),
-    ...bigStmts(env, 'data_series', ss),
-    env.DB.prepare('INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)').bind('data_etags', JSON.stringify({ core: await tagOf(core), extra: await tagOf(extra), series: await tagOf(series), at: Date.now() })),
+    env.DB.prepare('INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)').bind('data_etags', JSON.stringify({ core: await tagOf(core), extra: await tagOf(extra), series: old.series || null, seriesStamp: old.seriesStamp || '', at: Date.now() })),
     env.DB.prepare('DELETE FROM kv WHERE key = ?').bind('data_cache'),
   ]);
-  try { await saveShareCache(env, data); } catch (e) { console.error('share', e); }
   return data;
 }
 
@@ -1184,7 +1199,7 @@ async function applySplit(env, ticker, ratio) {
     env.DB.prepare('UPDATE days SET close_price = close_price / ? WHERE ticker = ? AND close_price IS NOT NULL').bind(ratio, ticker),
     env.DB.prepare('UPDATE positions SET qty = qty * ? WHERE ticker = ?').bind(ratio, ticker),
   ]);
-  await bumpMarket(env);
+  await bumpMarket(env, [SYMBOL_MAP[ticker] || ticker]);
   try { await env.DB.prepare('UPDATE ext_prices SET price = price / ? WHERE symbol = ?').bind(ratio, SYMBOL_MAP[ticker] || ticker).run(); } catch (e) { /* tabel bestaat nog niet */ }
 }
 // Naamswijziging: hetzelfde ISIN onder een nieuwe ticker, terwijl de oude ticker weg is
@@ -1385,7 +1400,7 @@ async function cleanupOld(env, now) {
   await run('DELETE FROM hours WHERE hour < ?', now.getTime() - KEEP_HOURS_DAYS * 864e5, 'uurregels');
   await invalidateRecent(env);
   await run('DELETE FROM ext_prices WHERE day < ?', day(KEEP_EXT_DAYS), 'koersen');
-  await bumpMarket(env);
+  await bumpMarket(env, []);   // de marktcache laat oude dagen zelf al weg
   await run('DELETE FROM ext_perf WHERE day < ?', day(KEEP_EXT_DAYS), 'sectordagen');
   await setKv(env, 'cleanup_day', today);
   return out.length ? 'Opgeruimd: ' + out.join(', ') + '.' : '';
@@ -1518,7 +1533,9 @@ async function getBig(env, key) {
 // van vóór de vorige opbouw veranderen niet meer. Die staan daarom in een cache in kv; elke 10 minuten leest de Worker
 // alleen de metingen die er sindsdien bij kwamen. Elke schrijver van intraday/hours/days roept invalidateSeries aan.
 async function invalidateOrders(env) { try { await setKv(env, 'orders_ver', String(Date.now())); } catch (e) { /* niet erg */ } }
-async function invalidateSeries(env) { try { await setKv(env, 'series_ver', String(Date.now())); } catch (e) { /* niet erg */ } }
+async function invalidateSeries(env) {
+  try { await setKv(env, 'series_ver', String(Date.now())); await setKv(env, 'today_state', ''); } catch (e) { /* niet erg */ }
+}
 // Alleen metingen of uren veranderd (opruimen van oude metingen en uren): de dagen van eerdere jaren blijven geldig,
 // dus alleen de cache van dit jaar opnieuw. Anders las elk uur de hele dagtabel van eerdere jaren opnieuw.
 async function invalidateRecent(env) { try { await setKv(env, 'series_recent', String(Date.now())); } catch (e) { /* niet erg */ } }
@@ -1550,10 +1567,47 @@ async function seriesRows(env, now) {
   return { intra: c.intra.concat(fresh), hrs: c.hrs.filter((h) => h.hour >= now - 31 * 864e5), dys: old.dys.concat(c.dys) };
 }
 
+// Vandaag per positie (open, laag, hoog, gemiddelde, nu) en de posities van de laatste meting, bijgehouden met alleen
+// de metingen die sinds de vorige keer zijn bijgekomen (kv 'today_state'). Zo leest een opbouw een paar dozijn rijen
+// in plaats van elk uur de hele geschiedenis. Hoogste en laagste ooit en het gemiddelde dagbereik rekent de site zelf
+// uit zijn eigen reeksen uit; de volledige reeksen bouwt de Worker alleen als een apparaat ze vraagt (seriesFull).
+async function todayState(env) {
+  let st = null;
+  try { st = JSON.parse((await getKv(env, 'today_state')) || 'null'); } catch (e) { st = null; }
+  if (!st || st.v !== 1) {
+    const last = await env.DB.prepare('SELECT MAX(ts) AS ts FROM intraday').first().catch(() => null);
+    st = { v: 1, day: null, until: last && last.ts ? last.ts - 864e5 : 0, lastTs: 0, t: {}, pos: [] };
+  }
+  // Vanaf de laatste meting (die opnieuw): een meting die vervangen is (zelfde tijdstip), telt zo ook mee
+  const { results } = await env.DB.prepare('SELECT ts, ticker, name, value, unrealized, qty, price FROM intraday WHERE ts >= ? ORDER BY ts').bind(st.until).all();
+  const lastDay = results.length ? dayOf(results[results.length - 1].ts) : st.day;
+  let changed = false;
+  results.forEach((r) => {
+    const d = dayOf(r.ts);
+    if (d !== lastDay) return;
+    if (d !== st.day) { st.day = d; st.t = {}; st.pos = []; st.lastTs = 0; }
+    const a = st.t[r.ticker], v = r.value;
+    if (!a) { st.t[r.ticker] = { o: v, l: v, h: v, s: v, n: 1, c: v, lt: r.ts, name: r.name }; changed = true; }
+    else if (r.ts > a.lt || (r.ts === a.lt && v !== a.c)) {
+      if (r.ts > a.lt) { a.s += v; a.n++; a.lt = r.ts; } else a.s += v - a.c;
+      a.c = v; a.l = Math.min(a.l, v); a.h = Math.max(a.h, v); a.name = r.name;
+      changed = true;
+    }
+    if (r.ts > st.lastTs) { st.lastTs = r.ts; st.pos = []; changed = true; }
+    if (r.ts === st.lastTs && r.ticker !== TOTAL) {
+      const row = { ticker: r.ticker, name: r.name, value: r.value, unrealized: r.unrealized, qty: r.qty, price: r.price };
+      const i = st.pos.findIndex((x) => x.ticker === r.ticker);
+      if (i < 0) st.pos.push(row);
+      else if (JSON.stringify(st.pos[i]) !== JSON.stringify(row)) { st.pos[i] = row; changed = true; }
+    }
+  });
+  if (st.lastTs) st.until = st.lastTs;
+  if (changed) await setKv(env, 'today_state', JSON.stringify(st));
+  return st;
+}
+
 async function buildData(env) {
   const now = Date.now();
-  const S = await seriesRows(env, now);
-  const allDays = async () => S.dys;
 
   const { results: wk } = await env.DB.prepare('SELECT * FROM weeks ORDER BY date').all();
   const weeks = [];
@@ -1575,14 +1629,13 @@ async function buildData(env) {
     });
   });
 
-  const intra = S.intra;
+  const st = await todayState(env);
 
   // Posities: laatste meting, anders laatste weeksnapshot
   let positions = [], positionsDate = null;
-  if (intra.length) {
-    const lastTs = intra[intra.length - 1].ts;
-    positionsDate = isoLocal(lastTs);
-    positions = intra.filter((r) => r.ts === lastTs && r.ticker !== TOTAL).map((r) => ({
+  if (st.lastTs) {
+    positionsDate = isoLocal(st.lastTs);
+    positions = st.pos.map((r) => ({
       ticker: r.ticker, name: r.name, value: r.value, unrealized: r.unrealized,
       cost: r2(r.value - r.unrealized), resultPct: r.value - r.unrealized ? r.unrealized / (r.value - r.unrealized) : 0,
       quantity: r.qty, price: r.price,
@@ -1598,64 +1651,11 @@ async function buildData(env) {
   }
 
   // Vandaag per positie (laatste handelsdag in de metingen)
-  const today = [];
-  if (intra.length) {
-    const lastDay = dayOf(intra[intra.length - 1].ts);
-    const dayRows = intra.filter((r) => dayOf(r.ts) === lastDay);
-    const byT = new Map();
-    dayRows.forEach((r) => { if (!byT.has(r.ticker)) byT.set(r.ticker, []); byT.get(r.ticker).push(r); });
-    // Hoogste/laagste ooit: uit de dagtabel, plus uren die nog niet in een dag zijn samengevat
-    const lastDayDone = (await getKv(env, 'last_day')) || '';
-    const sinceHour = lastDayDone ? Date.parse(lastDayDone + 'T00:00:00Z') + 22 * HOUR_MS : 0;
-    // Uit de dagregels die hieronder toch al gelezen worden (scheelt twee keer de hele dagtabel)
-    const histD = [], ranges = [];
-    const agg = new Map();
-    (await allDays()).forEach((d) => {
-      let a = agg.get(d.ticker);
-      if (!a) { a = { hi: -Infinity, lo: Infinity, r: 0, rp: 0, nr: 0, nrp: 0, n: 0 }; agg.set(d.ticker, a); }
-      if (d.high != null) a.hi = Math.max(a.hi, d.high);
-      if (d.low != null) a.lo = Math.min(a.lo, d.low);
-      if (d.range != null) { a.r += d.range; a.nr++; }
-      if (d.range_pct != null) { a.rp += d.range_pct; a.nrp++; }
-      a.n++;
-    });
-    agg.forEach((a, ticker) => {
-      if (isFinite(a.hi) && isFinite(a.lo)) histD.push({ ticker, hi: a.hi, lo: a.lo });
-      ranges.push({ ticker, ar: a.nr ? a.r / a.nr : null, arp: a.nrp ? a.rp / a.nrp : null, n: a.n });
-    });
-    // Uit de uren in de reekscache (de laatste 31 dagen), niet opnieuw uit de database
-    const hAgg = new Map();
-    S.hrs.forEach((h) => {
-      if (h.hour < sinceHour) return;
-      const a = hAgg.get(h.ticker);
-      if (!a) hAgg.set(h.ticker, { ticker: h.ticker, hi: h.high, lo: h.low });
-      else { if (h.high != null) a.hi = a.hi == null ? h.high : Math.max(a.hi, h.high); if (h.low != null) a.lo = a.lo == null ? h.low : Math.min(a.lo, h.low); }
-    });
-    const histH = [...hAgg.values()];
-    const histMap = new Map();
-    [...histD, ...histH].forEach((h) => {
-      const o = histMap.get(h.ticker);
-      histMap.set(h.ticker, o ? { hi: Math.max(o.hi, h.hi), lo: Math.min(o.lo, h.lo) } : { hi: h.hi, lo: h.lo });
-    });
-    const rangeMap = new Map(ranges.map((h) => [h.ticker, h]));
-    for (const [t, list] of byT) {
-      const v = list.map((x) => x.value);
-      const lo = Math.min(...v), hi = Math.max(...v), avg = v.reduce((s, x) => s + x, 0) / v.length;
-      const open = v[0], cur = v[v.length - 1];
-      const h = histMap.get(t), rg = rangeMap.get(t);
-      today.push({
-        ticker: t, name: list[list.length - 1].name, current: cur, low: lo, high: hi, avg: r2(avg), open: open,
-        change: r2(cur - open), changePct: open ? (cur - open) / open : 0,
-        allTimeHigh: h ? Math.max(h.hi, hi) : hi, allTimeLow: h ? Math.min(h.lo, lo) : lo,
-        avgRange: rg ? r2(rg.ar) : r2(hi - lo), avgRangePct: rg ? rg.arp : (avg ? (hi - lo) / avg : 0),
-        days: rg ? rg.n : 0,
-      });
-    }
-    today.sort((a, b) => (a.ticker === TOTAL ? -1 : b.ticker === TOTAL ? 1 : a.ticker.localeCompare(b.ticker)));
-  }
-
-  const hrs = S.hrs;
-  const dys = await allDays();
+  const today = Object.entries(st.t).map(([ticker, a]) => ({
+    ticker, name: a.name, current: a.c, low: a.l, high: a.h, avg: r2(a.s / a.n), open: a.o,
+    change: r2(a.c - a.o), changePct: a.o ? (a.c - a.o) / a.o : 0,
+  }));
+  today.sort((a, b) => (a.ticker === TOTAL ? -1 : b.ticker === TOTAL ? 1 : a.ticker.localeCompare(b.ticker)));
 
   let events = null;
   try { events = JSON.parse((await getKv(env, 'events')) || 'null'); } catch (e) { events = null; }
@@ -1689,13 +1689,42 @@ async function buildData(env) {
     positions,
     cashNow: await cashNowOf(env),
     today,
-    // Met het aantal stuks per meting, zodat de site aan- en verkopen uit koersbewegingen kan halen
-    intraday: { columns: ['time', 'ticker', 'value', 'qty'], rows: intra.map((r) => [isoLocal(r.ts), r.ticker, r.value, r.qty == null ? null : r.qty]) },
-    hours: { columns: ['hour', 'ticker', 'open', 'close', 'low', 'high', 'avg'],
-      rows: hrs.map((r) => [isoLocal(r.hour), r.ticker, r.open, r.close, r.low, r.high, r.avg]) },
-    days: { columns: ['date', 'ticker', 'open', 'close', 'low', 'high', 'avg', 'range', 'rangePct'],
-      rows: dys.map((r) => [r.day + 'T00:00:00', r.ticker, r.open, r.close, r.low, r.high, r.avg, r.range, r.range_pct]) },
+    newsFlash: await (async () => { try { return JSON.parse((await getKv(env, 'news_flash')) || '{}').items || []; } catch (e) { return []; } })(),
   };
+}
+
+// De volledige reeksen (metingen, uren, alle dagen) voor een apparaat zonder eigen kopie, een oude versie van de site
+// of de deel-link. Gewone verversingen vragen alleen wat er sinds ?since= bijkwam (seriesDelta). Opnieuw opgebouwd
+// als er sinds de vorige keer een meting bij is gekomen; seriesRows houdt daarvoor zijn eigen caches bij.
+function seriesJson(S, ts) {
+  return {
+    ok: true, part: 'series', seriesTs: ts,
+    // Met het aantal stuks per meting, zodat de site aan- en verkopen uit koersbewegingen kan halen
+    intraday: { columns: ['time', 'ticker', 'value', 'qty'], rows: S.intra.map((r) => [isoLocal(r.ts), r.ticker, r.value, r.qty == null ? null : r.qty]) },
+    hours: { columns: ['hour', 'ticker', 'open', 'close', 'low', 'high', 'avg'],
+      rows: S.hrs.map((r) => [isoLocal(r.hour), r.ticker, r.open, r.close, r.low, r.high, r.avg]) },
+    days: { columns: ['date', 'ticker', 'open', 'close', 'low', 'high', 'avg', 'range', 'rangePct'],
+      rows: S.dys.map((r) => [r.day + 'T00:00:00', r.ticker, r.open, r.close, r.low, r.high, r.avg, r.range, r.range_pct]) },
+  };
+}
+async function seriesFull(env) {
+  const last = await env.DB.prepare('SELECT MAX(ts) AS ts FROM intraday').first().catch(() => null);
+  const ts = (last && last.ts) || 0;
+  // Ook opnieuw na een splitsing, import of herstel (series_ver) en na het samenvatten van een uur of dag
+  const stamp = [ts, (await getKv(env, 'series_ver')) || '', (await getKv(env, 'last_hour')) || '', (await getKv(env, 'last_day')) || ''].join('|');
+  let tags = {};
+  try { tags = JSON.parse((await getKv(env, 'data_etags')) || '{}'); } catch (e) { tags = {}; }
+  let body = tags.series && tags.seriesStamp === stamp ? await getBig(env, 'data_series') : null;
+  if (!body) {
+    body = JSON.stringify(seriesJson(await seriesRows(env, Date.now()), ts));
+    const tag = '"' + (await sha256Hex(body)).slice(0, 24) + '"';
+    await setBig(env, 'data_series', body);
+    // De vingerafdrukken opnieuw lezen: een opbouw kan intussen core en extra hebben vernieuwd
+    try { tags = JSON.parse((await getKv(env, 'data_etags')) || '{}'); } catch (e) { tags = {}; }
+    tags.series = tag; tags.seriesStamp = stamp;
+    await setKv(env, 'data_etags', JSON.stringify(tags));
+  }
+  return { body, tag: tags.series };
 }
 
 // ---------- Eenmalig overnemen uit de Google Sheet ----------
@@ -1899,7 +1928,7 @@ async function saveSettings(env, body) {
   });
   if (body && typeof body.targetMode === 'string' && /^(position|sector)$/.test(body.targetMode)) clean.targetMode = body.targetMode;
   if (body && Array.isArray(body.watchlist)) {
-    clean.watchlist = [...new Set(body.watchlist.map((x) => String(x || '').trim().toUpperCase()).filter((x) => /^[A-Z0-9][A-Z0-9.\-]{0,11}$/.test(x)))].slice(0, 30);
+    clean.watchlist = [...new Set(body.watchlist.map((x) => String(x || '').trim().toUpperCase()).filter((x) => /^[A-Z0-9][A-Z0-9.\-]{0,11}$/.test(x)))].slice(0, WATCH_MAX);
   }
   // Aankoopdagboek: korte notitie per aankoop (sleutel = ticker|tijdstip in ms)
   if (body && body.notes && typeof body.notes === 'object') {
@@ -1927,7 +1956,8 @@ async function saveSettings(env, body) {
     const a = body.alerts, num2 = (x, lo, hi) => { const v = Number(x); return isFinite(v) && v >= lo && v <= hi ? v : null; };
     const hr = (x) => { const v = Math.floor(Number(x)); return isFinite(v) && v >= 0 && v <= 23 ? v : 0; };
     clean.alerts = { move: num2(a.move, 0, 50), earnings: !!a.earnings, insider: !!a.insider, drift: num2(a.drift, 0, 50),
-      quietFrom: hr(a.quietFrom), quietTo: hr(a.quietTo), digest: !!a.digest, digestHour: a.digestHour === undefined ? 18 : hr(a.digestHour), ratings: a.ratings !== false };
+      quietFrom: hr(a.quietFrom), quietTo: hr(a.quietTo), digest: !!a.digest, digestHour: a.digestHour === undefined ? 18 : hr(a.digestHour), ratings: a.ratings !== false,
+      news: ['all', 'official', 'off'].includes(a.news) ? a.news : 'all' };
   }
   if (body && typeof body.mailAmounts === 'boolean') clean.mailAmounts = body.mailAmounts;
   if (body && typeof body.depositReminder === 'boolean') clean.depositReminder = body.depositReminder;
@@ -3044,6 +3074,7 @@ async function finnhubTask(env, tk) {
         .map((n) => ({ t: n.datetime * 1000, headline: String(n.headline).slice(0, 220), source: n.source || '', url: n.url }));
       // Alles bewaren in het archief, niet alleen de nieuwste zes
       try { await storeNews(env, tk, b, 100); } catch (e) { console.error('nieuwsarchief', e); }
+      try { await flashFromList(env, tk, b, Date.now()); } catch (e) { console.error('nieuwslijst', e); }
     } else if (k === 'rec') {
       out.rec = (Array.isArray(b) ? b : []).slice(0, 6).map((x) => ({ period: x.period, sb: x.strongBuy, b: x.buy, h: x.hold, s: x.sell, ss: x.strongSell }));
     } else if (k === 'eps') {
@@ -3227,6 +3258,9 @@ async function extraStocks(env) {
 // want die kost hetzelfde budget zonder dat er een positie aan hangt. Rond kwartaalcijfers (van twee dagen
 // ervoor tot vijf dagen erna) gaat een aandeel vooraan in de rij, ook als het op de volglijst staat.
 const WATCH_EVERY_DAYS = 2;
+// Hoeveel aandelen er op de volglijst mogen. Elk aandeel krijgt hoogstens eens per twee dagen onderzoek en een
+// dagkoers; bij een vol dagbudget (FMP) schuift de rij gewoon door naar de volgende dag.
+const WATCH_MAX = 100;
 const EARN_BEFORE = 5, EARN_AFTER = 2;
 const dayGap = (a, b) => Math.round((Date.parse(String(a).slice(0, 10) + 'T12:00:00Z') - Date.parse(String(b).slice(0, 10) + 'T12:00:00Z')) / 864e5);
 function planResearch(held, watch, rsMap, events, today) {
@@ -3425,6 +3459,7 @@ async function marketStep(env) {
   const usDay = lastUsDay(new Date());
   let calls = 0, done = 0, stop = false;
   const writes = [];
+  const pxDirty = new Set();   // symbolen met nieuwe koersen (zie bumpMarket)
   const errors = [];
   const noHist = JSON.parse((await getKv(env, 'eod_unavailable')) || '[]');
   const deferred = [];
@@ -3439,7 +3474,7 @@ async function marketStep(env) {
     writes.push(env.DB.prepare('INSERT OR REPLACE INTO ext_profile (symbol, data, updated) VALUES (?,?,?)').bind(sym, JSON.stringify(keep), usDay));
     const pn = parts(new Date());
     const inSession = pn.weekday <= 5 && pn.hm >= '15:30' && pn.hm < '22:30';
-    if (keep.price != null && !inSession) writes.push(env.DB.prepare('INSERT OR REPLACE INTO ext_prices (symbol, day, price) VALUES (?,?,?)').bind(sym, usDay, keep.price));
+    if (keep.price != null && !inSession) { writes.push(env.DB.prepare('INSERT OR REPLACE INTO ext_prices (symbol, day, price) VALUES (?,?,?)').bind(sym, usDay, keep.price)); pxDirty.add(sym); }
   };
   // Profiel als FMP niets geeft: Finnhub (3 verzoeken), anders Polygon (1 verzoek, zonder koers en beta)
   const backupProfile = async (sym) => {
@@ -3459,6 +3494,7 @@ async function marketStep(env) {
   const putRows = (sym, rows) => {
     const st = env.DB.prepare('INSERT OR REPLACE INTO ext_prices (symbol, day, price) VALUES (?,?,?)');
     rows.forEach(([d, v]) => writes.push(st.bind(sym, d, v)));
+    if (rows.length) pxDirty.add(sym);
   };
   // Reserve-taken voor het onderzoek van één aandeel, in volgorde: eerst de ruime bronnen, dan Alpha Vantage
   const backupResearch = (tk) => [altKeys(env) ? 'alt:' + tk : null, env.ALPHAVANTAGE_KEY ? 'av:' + tk : null].filter(Boolean);
@@ -3538,7 +3574,7 @@ async function marketStep(env) {
           // Alleen als slotkoers bewaren buiten de Amerikaanse handelsuren (15:30–22:30 Amsterdamse tijd)
           const pn = parts(new Date());
           const inSession = pn.weekday <= 5 && pn.hm >= '15:30' && pn.hm < '22:30';
-          if (keep.price != null && !inSession) writes.push(env.DB.prepare('INSERT OR REPLACE INTO ext_prices (symbol, day, price) VALUES (?,?,?)').bind(arg, usDay, keep.price));
+          if (keep.price != null && !inSession) { writes.push(env.DB.prepare('INSERT OR REPLACE INTO ext_prices (symbol, day, price) VALUES (?,?,?)').bind(arg, usDay, keep.price)); pxDirty.add(arg); }
         }
       } else if (kind === 'eod') {
         calls++;
@@ -3548,6 +3584,7 @@ async function marketStep(env) {
           const rows = await fmp(env, '/historical-price-eod/light?symbol=' + encodeURIComponent(arg) + '&from=' + from);
           const st = env.DB.prepare('INSERT OR REPLACE INTO ext_prices (symbol, day, price) VALUES (?,?,?)');
           rows.filter((r) => r.date && isFinite(Number(r.price))).forEach((r) => writes.push(st.bind(arg, r.date, Number(r.price))));
+          pxDirty.add(arg);
         } catch (e) {
           if (/402/.test(e.message)) { if (!noHist.includes(arg)) noHist.push(arg); if (eodBackupKeys(env) && !queue.includes('eod2:' + arg)) queue.push('eod2:' + arg); } else throw e;
         }
@@ -3633,7 +3670,7 @@ async function marketStep(env) {
   await setKv(env, 'eod_unavailable', JSON.stringify(noHist));
   await setKv(env, 'mkt_unknown', JSON.stringify(unknown));
   if (errors.length) await setKv(env, 'mkt_errors', JSON.stringify(errors.slice(-20)));
-  if (done || writes.length) await bumpMarket(env);
+  if (done || writes.length) await bumpMarket(env, [...pxDirty]);
   if (done) await saveDataCache(env, await buildData(env));
   return `Markt: ${done} taken gedaan, ${queue.length} over${errors.length ? ', ' + errors.length + ' fouten' : ''}.`;
 }
@@ -3642,22 +3679,37 @@ async function marketStep(env) {
 // opbouw gebeurt elke 10 minuten. Die gegevens veranderen alleen als marketStep of planMarket iets schrijft
 // (dan wordt mkt_ver opgehoogd) of als posities, volglijst of maatstaf anders zijn (dan verandert de vingerafdruk).
 const MARKET_CACHE_MS = 12 * 3600e3;
-async function bumpMarket(env) { try { await setKv(env, 'mkt_ver', String(Date.now())); } catch (e) { /* niet erg */ } }
+// syms: alleen de koersen van deze symbolen zijn veranderd (de marktstap); dan leest de volgende opbouw van de
+// marktgegevens alleen hun koersen opnieuw (kv 'mkt_px_dirty'). Zonder syms: alles opnieuw.
+async function bumpMarket(env, syms) {
+  try {
+    let cur = 'all';
+    if (syms) { try { cur = JSON.parse((await getKv(env, 'mkt_px_dirty')) || '[]'); } catch (e) { cur = 'all'; } }
+    const next = Array.isArray(cur) ? [...new Set(cur.concat(syms))] : 'all';
+    await setKv(env, 'mkt_px_dirty', JSON.stringify(Array.isArray(next) && next.length > 300 ? 'all' : next));
+    await setKv(env, 'mkt_ver', String(Date.now()));
+  } catch (e) { /* niet erg */ }
+}
 async function marketDataCached(env) {
   if ((await getKv(env, 'market_schema')) !== '1') return null;
   const held = await heldStocks(env);
   const watch = await extraStocks(env);
   const sig = JSON.stringify([(await getKv(env, 'mkt_ver')) || '', held.map((h) => h.ticker + '=' + h.symbol).sort(), watch.map((w) => w.symbol).sort()]);
-  try {
-    const c = JSON.parse((await getBig(env, 'market_cache')) || 'null');
-    if (c && c.sig === sig && Date.now() - c.at < MARKET_CACHE_MS) return c.data;
-  } catch (e) { /* opnieuw opbouwen */ }
-  const data = await marketData(env);
-  try { await setBig(env, 'market_cache', JSON.stringify({ sig, at: Date.now(), data })); } catch (e) { console.error('marktcache', e); }
+  let c = null;
+  try { c = JSON.parse((await getBig(env, 'market_cache')) || 'null'); } catch (e) { c = null; }
+  if (c && c.sig === sig && Date.now() - c.at < MARKET_CACHE_MS) return c.data;
+  // Alleen nieuwe koersen van een paar symbolen: de rest van de koersen uit de vorige versie (scheelt tienduizenden
+  // gelezen rijen per marktstap). Eens per MARKET_CACHE_MS, en na andere wijzigingen, alles opnieuw.
+  let dirty = 'all';
+  try { dirty = JSON.parse((await getKv(env, 'mkt_px_dirty')) || '"all"'); } catch (e) { dirty = 'all'; }
+  const fresh = c && c.data && c.data.prices && Array.isArray(dirty) && Date.now() - (c.full || 0) < MARKET_CACHE_MS;
+  const data = await marketData(env, fresh ? { prices: c.data.prices, dirty } : null);
+  try { await setBig(env, 'market_cache', JSON.stringify({ sig, at: Date.now(), full: fresh ? c.full : Date.now(), data })); } catch (e) { console.error('marktcache', e); }
+  await setKv(env, 'mkt_px_dirty', '[]');
   return data;
 }
 
-async function marketData(env) {
+async function marketData(env, inc) {
   if ((await getKv(env, 'market_schema')) !== '1') return null;
   const held = await heldStocks(env);
   const { results: peerRows } = await env.DB.prepare('SELECT symbol, peers FROM ext_peers').all();
@@ -3677,8 +3729,17 @@ async function marketData(env) {
   const profiles = {};
   profRows.forEach((r) => { if (want.has(r.symbol)) profiles[r.symbol] = JSON.parse(r.data); });
   const since = new Date(Date.now() - 380 * 864e5).toISOString().slice(0, 10);
-  const { results: pr } = await env.DB.prepare('SELECT symbol, day, price FROM ext_prices WHERE day >= ? ORDER BY day').bind(since).all();
   const prices = {};
+  let pr = [];
+  if (inc) {
+    // Koersen van de vorige versie houden; alleen gewijzigde of nog ontbrekende symbolen lezen (via de primaire sleutel)
+    const need = [...want].filter((x) => inc.dirty.includes(x) || !inc.prices[x]);
+    want.forEach((x) => { if (!need.includes(x) && inc.prices[x]) prices[x] = inc.prices[x].filter((r) => r[0] >= since); });
+    for (let i = 0; i < need.length; i += 50) {
+      const part = need.slice(i, i + 50);
+      pr = pr.concat((await env.DB.prepare('SELECT symbol, day, price FROM ext_prices WHERE symbol IN (' + part.map(() => '?').join(',') + ') AND day >= ? ORDER BY day').bind(...part, since).all()).results);
+    }
+  } else pr = (await env.DB.prepare('SELECT symbol, day, price FROM ext_prices WHERE day >= ? ORDER BY day').bind(since).all()).results;
   pr.forEach((r) => { if (!want.has(r.symbol)) return; (prices[r.symbol] = prices[r.symbol] || []).push([r.day, r.price]); });
   const industries = new Set(Object.values(profiles).map((p) => p.industry).filter(Boolean));
   const { results: perf } = await env.DB.prepare("SELECT day, kind, name, exchange, change FROM ext_perf WHERE name != '-' ORDER BY day").all();
@@ -3755,8 +3816,8 @@ function isDst(localIso) {
 
 export const _test = { parts, isLive, marketHours, shortTicker, isoLocal, isDst, hourStart, dayOf, newsHistTask, storeNews, noteOpinionDay, figiRecord, gdeltName, usTicker, heldStocks,
   tradingDay, usTradingDay, shiftDay, weekdayOf, srcPause, srcFail, srcOk, srcState, srcHistState, checkPositions, splitRatio,
-  planResearch, uniqTasks, dbWatch, testKey, r2Backup, r2Info, r2Preview, healthInfo, budgetInfo, buildData, bumpMarket, ensureMarketTables, ensureIndexes, countingDb, flushCalls, srcFail, searchCompanies, checkPriceAlerts, saveMode, buildAllowed, seriesRows, invalidateSeries, cfTrend, setBig, getBig, invalidateOrders,
-  usSym, sicSector, parseForm4, quarterlyEps, polyNewsItems, altTask, eodBackup, planMarket };
+  planResearch, uniqTasks, dbWatch, testKey, r2Backup, r2Info, r2Preview, healthInfo, budgetInfo, buildData, bumpMarket, ensureMarketTables, ensureIndexes, countingDb, flushCalls, srcFail, searchCompanies, checkPriceAlerts, saveMode, buildAllowed, seriesRows, todayState, seriesFull, newsKind, newsBreaking, flashMerge, newsWatch, marketDataCached, marketData, invalidateSeries, cfTrend, setBig, getBig, invalidateOrders,
+  usSym, QUOTES, sicSector, parseForm4, quarterlyEps, polyNewsItems, altTask, eodBackup, planMarket };
 
 
 // =====================================================================
@@ -3841,7 +3902,7 @@ async function sendPush(env, msg) {
 }
 
 // Stille uren staan uit (quietFrom gelijk aan quietTo) en meldingen gaan los, niet gebundeld
-const ALERT_DEFAULTS = { move: 5, earnings: true, insider: true, drift: 5, quietFrom: 0, quietTo: 0, digest: false, digestHour: 18, ratings: true };
+const ALERT_DEFAULTS = { move: 5, earnings: true, insider: true, drift: 5, quietFrom: 0, quietTo: 0, digest: false, digestHour: 18, ratings: true, news: 'all' };
 async function alertRules(env) { const s = await getSettings(env); return Object.assign({}, ALERT_DEFAULTS, (s && s.alerts) || {}); }
 
 // Eén keer per sleutel (bijvoorbeeld "move|2026-11-17|AAPL"); de laatste 400 sleutels worden onthouden.
@@ -4281,7 +4342,7 @@ function scaleMoney(d) {
 // nieuw veld in buildData nooit per ongeluk meegaat. Notities, andere rekeningen, voorkeuren, koersalarmen,
 // sleutels, logboeken en apparaatcodes blijven dus altijd binnen je eigen Worker (idee 163).
 const SHARE_KEYS = ['ok', 'generated', 'currency', 'weeks', 'positions', 'positionsDate', 'today', 'cashNow', 'orders', 'posExtra',
-  'peil', 'events', 'market', 'marketNews', 'research', 'fin', 'etf', 'fx', 'hicp', 'idx', 'ext2', 'intraday', 'hours', 'days'];
+  'peil', 'events', 'market', 'marketNews', 'research', 'fin', 'etf', 'fx', 'hicp', 'idx', 'ext2', 'intraday', 'hours', 'days', 'newsFlash'];
 // Uit ext2 mag alleen openbare marktinformatie mee; 'pies' heeft namen die je zelf hebt gekozen
 const SHARE_EXT2_KEYS = ['filings', 'f13', 'econ', 'earnHist'];
 
@@ -4298,10 +4359,23 @@ function shareData(data, conf) {
   return d;
 }
 
-async function saveShareCache(env, data) {
-  const c = await shareConf(env);
-  if (!c || !c.token) return;
-  await setBig(env, 'data_share', JSON.stringify(shareData(data, c)));
+// De kopie voor de deel-link: alleen opnieuw als het overzicht sinds de vorige kopie veranderd is (kv 'share_stamp')
+async function shareBody(env, c) {
+  let tags = {};
+  try { tags = JSON.parse((await getKv(env, 'data_etags')) || '{}'); } catch (e) { tags = {}; }
+  let body = await getBig(env, 'data_share');
+  if (body && tags.core && (await getKv(env, 'share_stamp')) === tags.core) return body;
+  let core = await getBig(env, 'data_core'), extra = await getBig(env, 'data_extra');
+  if (!core || !extra) {
+    await saveDataCache(env, await buildData(await withKeys(env)));
+    core = await getBig(env, 'data_core'); extra = await getBig(env, 'data_extra');
+    try { tags = JSON.parse((await getKv(env, 'data_etags')) || '{}'); } catch (e) { tags = {}; }
+  }
+  const data = Object.assign({}, JSON.parse((await seriesFull(env)).body), JSON.parse(extra), JSON.parse(core));
+  body = JSON.stringify(shareData(data, c));
+  await setBig(env, 'data_share', body);
+  await setKv(env, 'share_stamp', tags.core || '');
+  return body;
 }
 
 async function shareAction(env, body) {
@@ -4322,7 +4396,7 @@ async function shareAction(env, body) {
   }
   c.amounts = !!c.amounts;
   await setKv(env, 'share', JSON.stringify(c));
-  await saveDataCache(env, await buildData(env));
+  await setKv(env, 'share_stamp', '');   // de kopie opnieuw opbouwen bij het volgende bezoek (bedragen of einddatum kunnen anders zijn)
   return { on: true, token: c.token, amounts: c.amounts, since: c.since, until: c.until || null };
 }
 
@@ -4607,21 +4681,21 @@ async function searchCompanies(env, q, url) {
     results.forEach((r) => { try { JSON.parse(r.value).rows.forEach((x) => list.push([String(x[0]).toUpperCase(), String(x[1] || '')])); } catch (e) { /* leeg */ } });
   } catch (e) { /* geen fondsen */ }
   const exact = list.filter((x) => x[0] === Q), starts = list.filter((x) => x[0] !== Q && x[0].startsWith(Q)), named = list.filter((x) => !x[0].startsWith(Q) && x[1].toUpperCase().includes(Q));
-  exact.concat(starts.slice(0, 8), named.slice(0, 12)).forEach((x) => add(x[0], x[1], 'VS', 'lijst'));
+  exact.concat(starts.slice(0, 15), named.slice(0, 20)).forEach((x) => add(x[0], x[1], 'VS', 'lijst'));
   if (seen.size < 8 && env.FINNHUB_KEY && !(await srcDown(env, 'finnhub'))) {
     const r = await getJson(FINNHUB_BASE + '/search?q=' + encodeURIComponent(query) + '&token=' + encodeURIComponent(env.FINNHUB_KEY));
-    if (r.ok && r.body && Array.isArray(r.body.result)) r.body.result.filter((x) => /Common Stock|ADR|ETP|ETF/i.test(x.type || '')).slice(0, 12).forEach((x) => add(x.symbol, x.description, x.displaySymbol !== x.symbol ? x.displaySymbol : '', 'Finnhub'));
+    if (r.ok && r.body && Array.isArray(r.body.result)) r.body.result.filter((x) => /Common Stock|ADR|ETP|ETF/i.test(x.type || '')).slice(0, 20).forEach((x) => add(x.symbol, x.description, x.displaySymbol !== x.symbol ? x.displaySymbol : '', 'Finnhub'));
     else if (r.status === 429) await srcFail(env, 'finnhub', 'Finnhub-limiet', true);
   }
   if (seen.size < 8 && env.TWELVEDATA_KEY && (!env.FINNHUB_KEY || (await srcDown(env, 'finnhub'))) && !(await srcDown(env, 'twelvedata'))) {
     // Reserve voor Finnhub: zoeken bij Twelve Data (alleen Amerikaanse en Europese aandelen en fondsen)
-    const r = await getJson('https://api.twelvedata.com/symbol_search?symbol=' + encodeURIComponent(query) + '&outputsize=12&apikey=' + encodeURIComponent(env.TWELVEDATA_KEY));
+    const r = await getJson('https://api.twelvedata.com/symbol_search?symbol=' + encodeURIComponent(query) + '&outputsize=20&apikey=' + encodeURIComponent(env.TWELVEDATA_KEY));
     const data = r.ok && r.body && Array.isArray(r.body.data) ? r.body.data : [];
     data.filter((x) => /Common Stock|ETF|Depositary/i.test(x.instrument_type || '')).forEach((x) => add(x.symbol, x.instrument_name, x.exchange !== 'NASDAQ' && x.exchange !== 'NYSE' ? x.exchange : '', 'Twelve Data'));
     if (data.length) await srcBackup(env, 'finnhub', 'Twelve Data (zoeken)');
     else if (r.status === 429) await srcFail(env, 'twelvedata', 'Twelve Data-limiet', true);
   }
-  return [...seen.values()].slice(0, 15);
+  return [...seen.values()].slice(0, 30);
 }
 
 // ---------- Koersgeschiedenis van Twelve Data (gratis sleutel: 800 verzoeken per dag, 8 per minuut) ----------
@@ -4669,6 +4743,99 @@ async function morningPush(env, at) {
   const tks = [...new Set(items.map((x) => x.tk))];
   const body = items.length + ' berichten over ' + tks.slice(0, 5).join(', ') + (tks.length > 5 ? ' en meer' : '') + '. Laatste: ' + items[0].tk + ' – ' + items[0].headline;
   return alertOnce(env, 'morning|' + p.day, { title: 'Nieuws over je aandelen', body: body.slice(0, 230), url: '#nieuws' });
+}
+
+// =====================================================================
+// ---------- Officieel, geruchten en belangrijk nieuws ----------
+// Elke ronde haalt de Worker het nieuws van vandaag en gisteren op voor een paar van je aandelen (eerst wat je hebt,
+// dan de volglijst, om de beurt; alleen Amerikaanse noteringen, want die heeft Finnhub gratis). Berichten die
+// officieel zijn (een persbericht via een persbureau), een gerucht (een kop met "reportedly", "people familiar",
+// "in talks" en dergelijke) of belangrijk (bestuur, overname, faillissement, onderzoek ...) komen in kv 'news_flash'
+// (7 dagen) en op de nieuwspagina. Over een vers belangrijk bericht gaat één melding uit (regel alerts.news).
+// De officiële SEC-deponeringen (8-K) voegt de site zelf toe uit ext2.filings.
+const NEWS_WATCH_N = 5, FLASH_DAYS = 7, FLASH_MAX = 80, NEWS_PUSH_MAX = 3, NEWS_FRESH_MS = 3 * 3600e3;
+const OFFICIAL_SRC = /business ?wire|pr ?newswire|globe ?newswire|accesswire|access newswire|newsfile|cision|press release|company release/i;
+const RUMOUR_RE = /\b(reportedly|rumou?rs?|rumou?red|speculation|speculates?|unconfirmed|people (familiar|with knowledge|close to)|according to (people|sources|a person|persons)|sources? (say|said|says|tell|told)|said to be|is said to|in (early |advanced )?talks|weighs?|weighing|mulls?|mulling|considering|explores? (a )?(sale|bid|options|deal)|exploring (a )?(sale|bid|options|deal)|could be (sold|acquired|taken)|naar verluidt|geruchten?|zou (worden )?overwegen|in gesprek)\b/i;
+const BREAKING_RE = /\b(ceo|chief executive|cfo|chairman|founder|resigns?|resignation|steps? down|ousted|fired|reinstated?|reinstates|appoints?|named (as )?(ceo|chief)|merger|merge|acquires?|acquisition|takeover|buyout|bids? for|tender offer|bankrupt(cy)?|chapter 11|insolven|fda (approv|reject|clear)|recall|investigation|probe|subpoena|indict|lawsuit|sues|sued|sec charges|antitrust|guidance|profit warning|warns|halts?|halted|suspends?|delist|stock split|dividend (cut|suspen)|layoffs?|job cuts|data breach|hack(ed)?|cyberattack|sanction|export (ban|curb|control)|ontslag|overname|faillissement|onderzoek naar)\b/i;
+function newsKind(n) {
+  const src = String((n && n.source) || ''), head = String((n && n.headline) || '');
+  if (OFFICIAL_SRC.test(src) || /^(press release|form 8-k)\b/i.test(head)) return 'official';
+  if (RUMOUR_RE.test(head + ' ' + String((n && n.summary) || ''))) return 'rumour';
+  return null;
+}
+function newsBreaking(n) { return BREAKING_RE.test(String((n && n.headline) || '')); }
+// Nieuwe berichten (Finnhub-vorm) toevoegen aan de lijst; geeft de berichten terug die er nog niet in stonden
+function flashMerge(fl, tk, list, at) {
+  const items = Array.isArray(fl.items) ? fl.items : [];
+  const have = new Set(items.map((x) => x.url));
+  const since = at - FLASH_DAYS * 864e5;
+  const fresh = [];
+  (Array.isArray(list) ? list : []).forEach((n) => {
+    if (!n || !n.headline || !n.url || have.has(n.url)) return;
+    const t = Number(n.datetime) * 1000;
+    if (!(t >= since) || t > at + 3600e3) return;
+    const kind = newsKind(n), breaking = newsBreaking(n);
+    if (!kind && !breaking) return;
+    const o = { t, tk, headline: String(n.headline).slice(0, 220), source: String(n.source || '').slice(0, 60), url: String(n.url).slice(0, 500) };
+    if (kind) o.kind = kind;
+    if (breaking) o.breaking = true;
+    items.push(o); have.add(o.url); fresh.push(o);
+  });
+  fl.items = items.filter((x) => x.t >= since).sort((a, b) => b.t - a.t).slice(0, FLASH_MAX);
+  return fresh;
+}
+// Eén melding per vers belangrijk bericht (hoogstens drie per ronde), via alertOnce
+async function newsPush(env, fresh, at) {
+  if (!fresh.length || !(await pushSubs(env)).length) return 0;
+  const rules = await alertRules(env);
+  const how = rules.news || 'all';
+  if (how === 'off') return 0;
+  const st = await getSettings(env);
+  const mute = new Set(((st.prefs && st.prefs.newsMute) || []).map((x) => String(x).toLowerCase()));
+  const held = new Set((await heldStocks(env)).map((h) => h.ticker));
+  let n = 0;
+  for (const o of fresh.slice().sort((a, b) => b.t - a.t)) {
+    if (n >= NEWS_PUSH_MAX) break;
+    if (!o.breaking || o.t < at - NEWS_FRESH_MS || mute.has(o.source.toLowerCase())) continue;
+    if (how === 'official' && o.kind !== 'official') continue;
+    const label = o.kind === 'official' ? 'officieel bericht' : o.kind === 'rumour' ? 'gerucht' : 'belangrijk nieuws';
+    const key = 'news|' + (await sha256Hex(o.url)).slice(0, 16);
+    if (await alertOnce(env, key, { title: o.tk + ': ' + label + (held.has(o.tk) ? '' : ' (volglijst)'), body: o.headline, url: '#nieuws', tag: 'news-' + o.tk, urgent: true }, at)) n++;
+  }
+  return n;
+}
+// Berichten van een ander onderdeel (de dagelijkse onderzoeksronde) ook in de lijst en eventueel een melding
+async function flashFromList(env, tk, list, at) {
+  let fl = {};
+  try { fl = JSON.parse((await getKv(env, 'news_flash')) || '{}'); } catch (e) { fl = {}; }
+  const fresh = flashMerge(fl, tk, list, at);
+  if (!fresh.length) return 0;
+  await setKv(env, 'news_flash', JSON.stringify(fl));
+  return newsPush(env, fresh, at);
+}
+async function newsWatch(env, at) {
+  if (!env.FINNHUB_KEY || (await srcDown(env, 'finnhub'))) return 0;
+  const held = await heldStocks(env);
+  const watch = (await watchStocks(env)).filter((w) => !held.some((h) => h.symbol === w.symbol));
+  const syms = [];
+  for (const h of held.concat(watch)) { const us = await usTicker(env, h.symbol); if (us && !syms.some((x) => x.sym === us)) syms.push({ tk: h.ticker, sym: us }); }
+  if (!syms.length) return 0;
+  let fl = {};
+  try { fl = JSON.parse((await getKv(env, 'news_flash')) || '{}'); } catch (e) { fl = {}; }
+  const start = Number(fl.i) || 0, fresh = [];
+  let calls = 0;
+  for (let k = 0; k < Math.min(NEWS_WATCH_N, syms.length); k++) {
+    const x = syms[(start + k) % syms.length];
+    calls++;
+    const r = await getJson(FINNHUB_BASE + '/company-news?symbol=' + encodeURIComponent(x.sym) + '&from=' + ymdUTC(at - 2 * 864e5) + '&to=' + ymdUTC(at) + '&token=' + encodeURIComponent(env.FINNHUB_KEY));
+    if (r.status === 429) { await srcFail(env, 'finnhub', 'Finnhub-limiet (nieuwswacht)', true); break; }
+    if (r.status === 401 || r.status === 403) break;
+    if (r.ok) fresh.push(...flashMerge(fl, x.tk, r.body, at));
+  }
+  fl.i = (start + calls) % syms.length;
+  await setKv(env, 'news_flash', JSON.stringify(fl));
+  await newsPush(env, fresh, at);
+  return calls;
 }
 
 // ---------- Reservekopie naar Cloudflare R2 (optioneel, elke dag) (idee 150) ----------
@@ -5192,6 +5359,34 @@ async function liveCheck(env, tk) {
   if (s.ok && s.body) out.cash = r2(num(s.body.cash && s.body.cash.availableToTrade));
   else out.errors.push('saldo: ' + t212Error(s));
   if (out.position == null && out.cash == null && out.errors.length) throw new Error(out.errors.join(' '));
+  return out;
+}
+// Live koersen voor de site: alle posities nu bij Trading 212, niets opslaan. Een paar seconden in het geheugen,
+// zodat open apparaten samen hoogstens één verzoek per QUOTES_MS doen. Bij een limiet (429) de vorige stand teruggeven.
+// fast=<ticker>: ook de Finnhub-sleutel en het Amerikaanse symbool, zodat de browser zelf de trades kan volgen
+// (alleen voor aandelen die in dollar op een Amerikaanse beurs noteren; anders wijken de koersen van elkaar af).
+async function liveQuotes(env, fast) {
+  if (!env.T212_KEY || !env.T212_SECRET) throw new Error('De Trading 212-sleutel is nog niet ingesteld.');
+  if (fast != null && !/^[A-Za-z0-9.\-]{1,20}$/.test(String(fast))) throw new Error('Ongeldige ticker.');
+  let stale = false;
+  if (!QUOTES.out || Date.now() - QUOTES.t >= QUOTES_MS) {
+    const r = await t212Send(env, 'GET', '/api/v0/equity/positions');
+    if (r.ok && Array.isArray(r.body)) {
+      const positions = r.body.filter((p) => p && p.instrument).map((p) => ({
+        tk: shortTicker(p.instrument.ticker), t212: p.instrument.ticker, cur: p.instrument.currency || null,
+        price: num(p.currentPrice), qty: num(p.quantity), value: r2(num(p.walletImpact && p.walletImpact.currentValue)),
+      }));
+      QUOTES.t = Date.now();
+      QUOTES.out = { at: QUOTES.t, positions, total: r2(positions.reduce((a, p) => a + p.value, 0)) };
+    } else if (r.status === 429 && QUOTES.out) stale = true;
+    else throw new Error(r.status === 429 ? 'Trading 212 vraagt even te wachten (te veel verzoeken).' : t212Error(r));
+  }
+  const out = Object.assign({ stale }, QUOTES.out);
+  if (fast) {
+    const p = out.positions.find((x) => x.tk === fast);
+    const sym = p && p.cur === 'USD' && /_US_EQ$/.test(p.t212 || '') ? await usTicker(env, p.tk) : null;
+    out.fast = { sym, key: sym && env.FINNHUB_KEY ? env.FINNHUB_KEY : null, held: !!p };
+  }
   return out;
 }
 const floor4 = (x) => Math.floor(x * 10000 + 1e-9) / 10000;

@@ -313,7 +313,7 @@ function renderLinks(msg) {
   if (!linkState) { box.innerHTML = '<p class="muted small">Bezig met laden…</p>'; return; }
   const F = linkState;
   const errFor = (id) => F.errors && F.errors[id === 'inflation' ? 'inflation' : id];
-  box.innerHTML = '<p class="muted small">De basis heeft alleen Trading 212 nodig. Extra functies zet je aan met een gratis sleutel of een schakelaar. Sleutels gaan naar je eigen Worker en worden nooit teruggestuurd naar de browser.</p>' +
+  box.innerHTML = '<p class="muted small">De basis heeft alleen Trading 212 nodig. Extra functies zet je aan met een gratis sleutel of een schakelaar. Sleutels gaan naar je eigen Worker en worden nooit teruggestuurd naar de browser. Eén uitzondering: zet je bij een Amerikaans aandeel de snelle modus aan, dan krijgt je ingelogde browser de Finnhub-sleutel om de trades zelf te volgen (nooit een deellink).</p>' +
     cloudflareRow(F.budgets) + backupRow(F) + LINKS.map((L) => {
       const keysSet = (L.keys || []).filter((k) => !k[2]).map(([k]) => F.keys[String(k)]);
       const on = L.flag ? F.flags[L.flag] !== false && (!L.keys || L.optKeys || keysSet.every(Boolean)) : keysSet.every(Boolean);
@@ -569,7 +569,8 @@ async function fetchWorkerData(url, token) {
   const a = await fetchPart(url, token, 'core', '&split=1');
   if (a === 'full') { const d = Object.assign({}, dataParts.core); d.ok = true; delete d.part; return d; }
   const b = await fetchPart(url, token, 'extra');
-  const c = await fetchSeries(url, token);
+  // Overzicht onveranderd (304): dan is er ook niets gemeten en hoeft de vraag naar nieuwe reeksregels niet
+  const c = a || !dataParts.series ? await fetchSeries(url, token) : null;
   if (!a && !b && (!c || c === 'none')) return null; // niets veranderd
   const d = Object.assign({}, dataParts.series || {}, dataParts.core, dataParts.extra);
   d.ok = true; delete d.part; delete d.seriesTs;
@@ -676,7 +677,10 @@ async function load() {
       $$('.updated').forEach((e) => { e.textContent = (mode === 'm' ? '' : 'Bijgewerkt ') + fDT.format(new Date()); });
     }
     // In de spaarstand van de Worker drie keer zo lang wachten (tot middernacht UTC, daarna weer normaal)
-    refreshTimer = setTimeout(autoRefresh, (Number(CFG.refreshMinutes) || 5) * 60000 * (serverSave ? 3 : 1));
+    // Met live koersen aan (js/23-live.js) komen de getallen al elke 5 seconden binnen; het hele overzicht dan
+    // hoogstens eens per 10 minuten, net zo vaak als de Worker meet
+    const every = Math.max(Number(CFG.refreshMinutes) || 5, typeof liveQ === 'object' && liveQ.on ? 10 : 0);
+    refreshTimer = setTimeout(autoRefresh, every * 60000 * (serverSave ? 3 : 1));
   } catch (err) {
     const offline = !navigator.onLine || err instanceof TypeError;
     if (data && offline) {

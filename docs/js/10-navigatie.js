@@ -545,4 +545,5 @@ function render() {
   }
   if (firstRender) { firstRender = false; route(true); }
   if (typeof snapSoon === 'function') snapSoon();     // deze tekening bewaren voor de volgende start
+  liveKick();   // live koersen er weer overheen (zie js/23-live.js)
 }

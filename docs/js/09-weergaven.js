@@ -7,10 +7,11 @@
 // Is het saldo nog onbekend, dan alleen de beleggingen. De grafiek eronder blijft de lijn van je beleggingen.
 const heroWithCash = () => M.cash != null && M.cash > 0;
 const heroAmount = () => (heroWithCash() ? M.accountNow : M.totalValue);
-function heroLabelText() {
-  const when = M.lastT ? fDT.format(M.lastT) : 'laatste meting';
+// at en inv: tijd en waarde van een live stand (zie js/23-live.js); zonder: de laatste meting
+function heroLabelText(at, inv) {
+  const when = at ? 'live ' + fLiveT.format(at) : M.lastT ? fDT.format(M.lastT) : 'laatste meting';
   return heroWithCash()
-    ? 'Accountwaarde, ' + when + ' · beleggingen ' + eur(M.totalValue) + ' + ' + eur(M.cash) + ' vrij saldo'
+    ? 'Accountwaarde, ' + when + ' · beleggingen ' + eur(isNum(inv) ? inv : M.totalValue) + ' + ' + eur(M.cash) + ' vrij saldo'
     : 'Waarde beleggingen, ' + when;
 }
 function renderHome() {
@@ -172,7 +173,7 @@ function renderDetailDesktop(c, swapDir) {
     '</div>' +
     '<div class="wrap' + sw + '">' +
       '<div class="grid">' + I.kpis.join('') + '</div>' +
-      '<div class="grid wide" style="margin-top:16px">' + I.rangeTile + I.posTile + I.tradeTile + lotsTile(c) + myTargetTile(c.tk) + diaryTile(c.tk) + I.histTile + I.agendaTile + I.riskTile + valuationTile(c) + overlapTileC(c) + priceAlertTile(c.tk, c.priceNative, c.cur) + '</div>' +
+      '<div class="grid wide" style="margin-top:16px">' + fastTile(c) + I.rangeTile + I.posTile + I.tradeTile + lotsTile(c) + myTargetTile(c.tk) + diaryTile(c.tk) + I.histTile + I.agendaTile + I.riskTile + valuationTile(c) + overlapTileC(c) + priceAlertTile(c.tk, c.priceNative, c.cur) + '</div>' +
       '<div class="section-head"><h2>Nieuws, analisten en cijfers</h2></div>' +
       '<div class="grid wide">' + I.research.join('') + '</div>' +
       '<div class="section-head"><h2>Sector en vergelijkbare bedrijven</h2></div>' +
@@ -390,6 +391,7 @@ function renderDetailMobile(c, swapDir) {
     '<div class="m-body' + sw + '">' +
       '<div class="m-grid2">' + I.kpis.join('') + '</div>' +
       block('Je positie', I.posTile + I.tradeTile + lotsTile(c)) +
+      block('Live koers', fastTile(c)) +
       block('Mijn koersdoel en dagboek', myTargetTile(c.tk) + diaryTile(c.tk)) +
       block('Koers en bereik', I.rangeTile) +
       block('Agenda', I.agendaTile) +

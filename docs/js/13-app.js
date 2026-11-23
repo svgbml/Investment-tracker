@@ -149,7 +149,18 @@ Object.assign(EN, {
   'Datum': 'Date', 'Notitie': 'Note', 'Aandeel': 'Stock', 'Na deze order': 'After this order', 'Als je dit echt zou doen': 'If you really did this', 'Sector daarna': 'Sector afterwards', 'Risicoklasse portefeuille': 'Portfolio risk class',
   'Bedrag ter bevestiging': 'Amount to confirm', 'Grote order.': 'Large order.', 'Extra controle.': 'Extra check.',
   'Indeling': 'Grouping', 'Tegels': 'Tiles', 'Lijst': 'List', 'Eén lijst': 'One list', 'Munt': 'Currency', 'Pie': 'Pie', 'Deel': 'Share',
-  'Koersalarm': 'Price alert', 'Aankopen per keer': 'Purchases one by one', 'Kostprijsmethode': 'Cost basis method', 'FIFO': 'FIFO',
+  'Koersalarm': 'Price alert', 'Live koers': 'Live price',
+  'Dit aandeel noteert niet in dollar op een Amerikaanse beurs. De snelle modus kan dan geen losse trades volgen en vraagt elke 2 seconden de koers van Trading 212 via je Worker: ongeveer 1.800 verzoeken per uur, van de 100.000 per dag die het gratis plan van Cloudflare toestaat. Zet hem weer uit als je klaar bent.': 'This stock is not listed in dollars on a US exchange. Fast mode then cannot follow single trades and asks your Worker for the Trading 212 price every 2 seconds: about 1,800 requests an hour, out of the 100,000 a day the free Cloudflare plan allows. Turn it off again when you are done.',
+  'Let op: de snelle modus vraagt nu elke 2 seconden de koers van Trading 212 via je Worker, ongeveer 1.800 verzoeken per uur (het gratis plan van Cloudflare staat 100.000 per dag toe). Zet hem weer uit als je klaar bent.': 'Note: fast mode now asks your Worker for the Trading 212 price every 2 seconds, about 1,800 requests an hour (the free Cloudflare plan allows 100,000 a day). Turn it off again when you are done.', 'Officieel en geruchten': 'Official and rumours', 'Officieel': 'Official', 'Gerucht': 'Rumour', 'Geruchten': 'Rumours', 'Belangrijk': 'Important', 'officieel, geruchten en ander nieuws': 'official, rumours and other news', 'alleen officiële berichten': 'official statements only', 'uit': 'off', 'Breaking nieuws over je aandelen': 'Breaking news about your stocks', 'Volgorde wijzigen': 'Change order', 'Volgorde van je volglijst': 'Order of your watchlist', 'Bovenaan': 'To top', 'Koers per aandeel': 'Price per share', 'Jouw positie': 'Your position', 'Winst of verlies sinds aankoop': 'Profit or loss since purchase', 'Live': 'Live', 'Snelle modus': 'Fast mode', 'Snelle modus uit': 'Fast mode off', 'Live uit': 'Live off', 'Live: geen verbinding': 'Live: no connection',
+  'Koersen elke 5 seconden van Trading 212. Klik om uit te zetten.': 'Prices every 5 seconds from Trading 212. Click to turn off.', 'Klik om de koersen elke 5 seconden te volgen.': 'Click to follow prices every 5 seconds.',
+  'Verbinden…': 'Connecting…', 'Verbinden met Finnhub…': 'Connecting to Finnhub…', 'Wacht op de eerste koers…': 'Waiting for the first price…', 'Nog geen trades in deze periode.': 'No trades in this period yet.',
+  'Verbinding met Finnhub verbroken': 'Connection to Finnhub lost',
+  'Verbonden; wacht op trades. Buiten de handelsuren van de Amerikaanse beurs komen er geen.': 'Connected; waiting for trades. None arrive outside US market hours.',
+  'Nu de koers van Trading 212 elke 2 seconden; zet de snelle modus uit en aan om Finnhub opnieuw te proberen.': 'Now using the Trading 212 price every 2 seconds; turn fast mode off and on to try Finnhub again.',
+  'Trading 212 meldt dit aandeel niet (meer) in je portefeuille.': 'Trading 212 no longer lists this stock in your portfolio.',
+  'Geen Finnhub-sleutel ingesteld: koers van Trading 212 elke 2 seconden.': 'No Finnhub key set: Trading 212 price every 2 seconds.',
+  'Finnhub heeft dit aandeel niet gratis (het noteert niet in dollar op een Amerikaanse beurs): koers van Trading 212 elke 2 seconden.': 'Finnhub does not cover this stock for free (it is not listed in dollars on a US exchange): Trading 212 price every 2 seconds.',
+  'De snelle modus volgt elke trade van dit aandeel via Finnhub (Amerikaanse aandelen, met een Finnhub-sleutel); anders elke 2 seconden de koers van Trading 212. Elke kaars is 30 seconden of 1 minuut: groen als de koers in die tijd steeg, rood als hij daalde. Op de achtergrond vergelijkt de tracker elke minuut beide bronnen; alleen als ze meer dan 0,5% verschillen, zie je een waarschuwing. Er wordt niets opgeslagen.': 'Fast mode follows every trade of this stock via Finnhub (US stocks, with a Finnhub key); otherwise the Trading 212 price every 2 seconds. Each candle is 30 seconds or 1 minute: green when the price rose in that time, red when it fell. In the background the tracker compares both sources every minute; you only see a warning when they differ by more than 0.5%. Nothing is stored.', 'Aankopen per keer': 'Purchases one by one', 'Kostprijsmethode': 'Cost basis method', 'FIFO': 'FIFO',
   'Aantal nu': 'Quantity now', 'Kostprijs per stuk': 'Cost per share', 'Ingelegd in wat je nog hebt': 'Invested in what you still hold',
   'Ongerealiseerd resultaat': 'Unrealised result', 'Verschil met de andere methode': 'Difference with the other method',
   'Mijn koersdoel': 'My price target', 'Alarm bij dit koersdoel': 'Alert at this target', 'Mijn koersdoel en dagboek': 'My price target and journal',
@@ -496,6 +507,7 @@ async function renderPush(msg) {
       '<label class="check small"><input type="checkbox" data-rule="earnings"' + (R.earnings !== false ? ' checked' : '') + '> Kwartaalcijfers van morgen</label>' +
       '<label class="check small"><input type="checkbox" data-rule="insider"' + (R.insider !== false ? ' checked' : '') + '> Bestuurders en grote beleggers die kopen of verkopen</label>' +
       '<label class="check small"><input type="checkbox" data-rule="ratings"' + (R.ratings !== false ? ' checked' : '') + '> Analisten die van mening veranderen</label>' +
+      '<label class="small">Breaking nieuws over je aandelen<select data-rule="news">' + [['all', 'officieel, geruchten en ander nieuws'], ['official', 'alleen officiële berichten'], ['off', 'uit']].map(([k, l]) => '<option value="' + k + '"' + ((R.news || 'all') === k ? ' selected' : '') + '>' + esc(l) + '</option>').join('') + '</select></label>' +
     '</div>' +
     '<div class="dlg-actions" style="justify-content:flex-start;margin-top:8px">' +
       (sub ? '<button type="button" class="btn ghost" data-push="off">Uitzetten op dit apparaat</button><button type="button" class="btn ghost" data-push="test">Testmelding</button>'
@@ -526,7 +538,7 @@ document.addEventListener('click', async (e) => {
       await renderPush(r.sent ? 'Testmelding verstuurd naar ' + r.sent + (r.sent === 1 ? ' apparaat.' : ' apparaten.') : 'Er ging geen melding uit; zet meldingen opnieuw aan.');
     } else if (act === 'rules') {
       const v = (k) => /** @type {HTMLInputElement} */ (document.querySelector('#push-body [data-rule="' + k + '"]'));
-      await saveSettings({ alerts: { move: Number(v('move').value) || 0, drift: Number(v('drift').value) || 0, earnings: v('earnings').checked, insider: v('insider').checked, ratings: v('ratings').checked } });
+      await saveSettings({ alerts: { move: Number(v('move').value) || 0, drift: Number(v('drift').value) || 0, earnings: v('earnings').checked, insider: v('insider').checked, ratings: v('ratings').checked, news: v('news').value } });
       await renderPush('Regels opgeslagen.');
     }
   } catch (err) { await renderPush(foutTekst('Meldingen aanzetten is niet gelukt', err, 'Sta meldingen toe in de site-instellingen van je browser en probeer het opnieuw.')); }
@@ -848,7 +860,7 @@ document.addEventListener('click', (e) => {
   if (act === 'watch-pick' || act === 'watch-force') {
     const list = watchSyms().slice();
     if (list.includes(sym)) return;
-    if (list.length >= 30) { if (st) { st.textContent = 'Maximaal 30 aandelen.'; st.className = 'small watch-status loss'; } return; }
+    if (list.length >= WATCH_MAX) { if (st) { st.textContent = 'Maximaal ' + WATCH_MAX + ' aandelen.'; st.className = 'small watch-status loss'; } return; }
     if (f) { f.querySelector('input').value = ''; const r = f.querySelector('.ws-results'); r.innerHTML = ''; r.hidden = true; }
     setWatchlist((cur) => (cur.includes(sym) ? cur : cur.concat([sym])), st, sym + ' staat op je volglijst.').catch(() => {});
   } else if (act === 'watch-remove') {
@@ -856,7 +868,7 @@ document.addEventListener('click', (e) => {
   } else if (act === 'watch-clean') {
     const bad = new Set(unknownSyms());
     setWatchlist((cur) => cur.filter((x) => !bad.has(x)), st, bad.size + (bad.size === 1 ? ' ongeldig symbool' : ' ongeldige symbolen') + ' verwijderd.').catch(() => {});
-  } else if (act === 'watch-more') { xs.suggN = xs.suggN === 20 ? 10 : 20; renderWatch(); }
+  } else if (act === 'watch-more') { xs.suggN = xs.suggN === 30 ? 10 : 30; renderWatch(); }
   else if (act === 'watch-next') { xs.suggOff = (xs.suggOff || 0) + (xs.suggN || 10); renderWatch(); }
 });
 

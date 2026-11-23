@@ -20,7 +20,7 @@ De makkelijkste weg is de knop *Deploy to Cloudflare* in de [hoofd-README](../RE
 4. **Toegangscode:** open de Worker, ga naar *Settings → Variables and Secrets* en voeg `WEB_TOKEN` toe als type *Secret* (niet onder *Build*). Dat is het enige geheim dat bij Cloudflare moet staan.
 5. **Website:** open de website, vul bij *Instellingen* het adres van de Worker (eindigt op `/api/data`) en je `WEB_TOKEN` in, en vul daarna onder *Koppelingen en functies* je Trading 212-sleutel in.
 
-Sleutels die je via de website invult, bewaart de Worker in de tabel `kv` van je eigen database en stuurt hij nooit terug. Liever bij Cloudflare? Zet ze daar als *Secret* met dezelfde naam (`T212_KEY`, `T212_SECRET`, `FMP_KEY`, `FINNHUB_KEY`, `SEC_CONTACT`); die gaan altijd voor. Let op: een nieuw geheim bij Cloudflare wordt bij een Worker die vanuit GitHub wordt gebouwd pas actief bij de volgende build.
+Sleutels die je via de website invult, bewaart de Worker in de tabel `kv` van je eigen database en stuurt hij nooit terug, behalve de Finnhub-sleutel aan je ingelogde site als je de snelle modus van een Amerikaans aandeel aanzet (`/api/quotes?fast=`). Liever bij Cloudflare? Zet ze daar als *Secret* met dezelfde naam (`T212_KEY`, `T212_SECRET`, `FMP_KEY`, `FINNHUB_KEY`, `SEC_CONTACT`); die gaan altijd voor. Let op: een nieuw geheim bij Cloudflare wordt bij een Worker die vanuit GitHub wordt gebouwd pas actief bij de volgende build.
 
 ## Handige adressen
 
@@ -38,13 +38,14 @@ Alle adressen vragen je toegangscode, als `?token=…` of als header `Authorizat
 | Status: laatste meting, mislukte metingen op rij, gezondheid van de bronnen | `GET /api/status` |
 | Reservekopie (zonder sleutels of toegangscodes), per tabel in pagina's van 2000 rijen; zonder `table` het overzicht | `GET /api/backup?table=weeks&offset=0` |
 | Reservekopie terugzetten, per pagina; `done: true` bij de laatste pagina bouwt de gegevens opnieuw op | `POST /api/restore` met `{"table": "weeks", "rows": [[…]], "done": false}` |
-| Bedrijf zoeken op naam of symbool (SEC-lijst, ETF's, Finnhub) | `GET /api/search?q=apple` |
+| Bedrijf zoeken op naam of symbool (SEC-lijst, ETF's, Finnhub), tot 30 resultaten | `GET /api/search?q=apple` |
 | Ouder nieuws uit het archief (tot een jaar terug, per aandeel of alles, nieuwste eerst) | `GET /api/news?before=<ms>&tk=AAPL&limit=40` |
 | Order plaatsen (alleen als *Kopen en verkopen* aanstaat): markt of limiet, met eigen id tegen dubbel versturen; de Worker controleert je grens per order en per dag en of je genoeg stuks hebt om te verkopen. Bij verkopen vraagt de Worker eerst je positie van dit moment op bij Trading 212: met `fraction` (0–1) verkoop je dat deel van wat je nu echt hebt, met `valueEur` (alleen marktorders) zoveel stuks als dat bedrag nu waard is, nooit meer dan je hebt | `POST /api/trade/order` met `{"side": "BUY" \| "SELL", "type": "market" \| "limit", "ticker": "AAPL_US_EQ", "quantity": 0.5, "fraction": 1, "valueEur": 130, "limitPrice": 210, "validity": "DAY" \| "GTC", "estEur": 100, "clientId": "…"}` |
 | Openstaande orders, de laatste orders via de app en je gebruik van vandaag | `GET /api/trade/orders` |
 | Openstaande order annuleren | `POST /api/trade/cancel` met `{"id": 123}` |
 | Instrument van Trading 212 zoeken (voor aandelen die je nog niet hebt) | `GET /api/trade/instruments?q=nvda` |
 | Nu controleren: je positie (aantal, waarde in euro, koers) en je vrije saldo van dit moment bij Trading 212, zonder op te slaan; zonder `tk` alleen het saldo | `GET /api/live?tk=AAPL` |
+| Live koersen: alle posities van dit moment bij Trading 212 (koers, aantal, waarde in euro), niets opgeslagen, 2 seconden in het geheugen; bij een limiet de vorige stand met `stale: true`. Met `fast` ook het Amerikaanse symbool en de Finnhub-sleutel voor de snelle modus (alleen dollaraandelen op een Amerikaanse beurs) | `GET /api/quotes`, `GET /api/quotes?fast=AAPL` |
 | Fout op de website melden (de site doet dit zelf; hoogstens 30 bewaard, zonder bedragen) | `POST /api/log` met `{"msg": "…", "src": "js/16-analyse.js", "line": 12, "ver": "v41"}` |
 | Nu een meting doen (test) | `POST /api/run` |
 | Nu een weeksnapshot maken | `POST /api/snapshot` |
