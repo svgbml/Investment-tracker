@@ -9,15 +9,26 @@ function makeDemoData() {
   const gauss = () => { let s = 0; for (let i = 0; i < 12; i++) s += rnd(); return s - 6; };
   const pad = (n) => String(n).padStart(2, '0');
   const iso = (d) => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':00';
-  // ticker, naam, waarde nu, beweeglijkheid per dag, rendement sinds aankoop, koers in euro
-  const book = [
-    ['VUAG', 'Vanguard S&P 500 UCITS ETF (Acc)', 412, 0.008, 0.031, 104.2], ['SXRV', 'iShares Nasdaq 100 UCITS ETF (Acc)', 268, 0.011, 0.054, 1180],
-    ['ASML', 'ASML Holding', 96, 0.018, 0.040, 636], ['MSFT', 'Microsoft', 88, 0.012, -0.022, 438], ['GOOGL', 'Alphabet (Class A)', 75, 0.015, 0.068, 251],
-    ['TSM', 'Taiwan Semiconductor', 72, 0.019, 0.029, 262], ['SPCX', 'Voorbeeld Ruimtevaart', 71, 0.03, -0.116, 48], ['AAPL', 'Apple', 68, 0.012, -0.014, 233],
-    ['META', 'Meta Platforms', 61, 0.017, -0.063, 612], ['LLY', 'Eli Lilly', 59, 0.016, -0.098, 701], ['PLTR', 'Palantir', 50, 0.03, 0.127, 152],
-    ['KO', 'Coca-Cola', 41, 0.007, 0.006, 63], ['TTWO', 'Take-Two Interactive', 39, 0.015, -0.035, 212], ['AMZN', 'Amazon', 34, 0.016, -0.041, 205],
-    ['INTC', 'Intel', 110, 0.02, -0.05, 22],
+  // De 25 grootste Amerikaanse bedrijven uit de S&P 500, naar gewicht in de index, samen 9600 euro ingelegd.
+  // ticker, naam, gewicht in de S&P 500 (%), beweeglijkheid per dag, rendement sinds aankoop, koers in euro
+  const INVEST = 9600;
+  /** @type {[string, string, number, number, number, number][]} */
+  const sp25 = [
+    ['NVDA', 'NVIDIA', 7.9, 0.022, 0.142, 159], ['MSFT', 'Microsoft', 6.6, 0.012, -0.022, 438], ['AAPL', 'Apple', 6.4, 0.012, -0.014, 233],
+    ['GOOGL', 'Alphabet (Class A)', 4.3, 0.015, 0.068, 251], ['AMZN', 'Amazon', 4.1, 0.016, -0.041, 205], ['META', 'Meta Platforms', 2.6, 0.017, -0.063, 612],
+    ['AVGO', 'Broadcom', 2.5, 0.021, 0.096, 302], ['TSLA', 'Tesla', 2.0, 0.03, -0.087, 371], ['BRKB', 'Berkshire Hathaway (Class B)', 1.6, 0.008, 0.024, 427],
+    ['JPM', 'JPMorgan Chase', 1.5, 0.011, 0.051, 263], ['LLY', 'Eli Lilly', 1.3, 0.016, -0.098, 701], ['V', 'Visa (Class A)', 1.0, 0.009, 0.018, 293],
+    ['XOM', 'Exxon Mobil', 0.9, 0.012, -0.031, 99], ['ORCL', 'Oracle', 0.9, 0.022, 0.113, 198], ['WMT', 'Walmart', 0.9, 0.009, 0.047, 88],
+    ['MA', 'Mastercard (Class A)', 0.8, 0.009, 0.022, 483], ['NFLX', 'Netflix', 0.8, 0.018, 0.064, 95], ['JNJ', 'Johnson & Johnson', 0.7, 0.008, 0.012, 168],
+    ['PLTR', 'Palantir', 0.7, 0.03, 0.127, 152], ['COST', 'Costco', 0.7, 0.01, -0.016, 793], ['AMD', 'Advanced Micro Devices', 0.6, 0.026, 0.083, 207],
+    ['ABBV', 'AbbVie', 0.6, 0.011, 0.029, 194], ['HD', 'Home Depot', 0.6, 0.011, -0.027, 319], ['BAC', 'Bank of America', 0.6, 0.012, 0.035, 45],
+    ['PG', 'Procter & Gamble', 0.6, 0.007, 0.006, 129],
   ];
+  const spW = sum(sp25.map((b) => b[2]));
+  // waarde nu = inleg × (1 + rendement), zodat de kostprijs van alle posities samen INVEST is
+  /** @type {[string, string, number, number, number, number][]} */
+  const book = sp25.map(([tk, nm, w, vol, ret, price]) => [tk, nm, Math.round(INVEST * w / spW * (1 + ret) * 100) / 100, vol, ret, price]);
+  book.push(['INTC', 'Intel', 110, 0.02, -0.05, 22]);   // vandaag verkocht, telt niet mee in de 25
   const SLOTS = 88;
   const now = new Date(); now.setSeconds(0, 0); now.setMinutes(Math.floor(now.getMinutes() / 10) * 10);
   const last = new Date(now); last.setHours(0, 0, 0, 0);
@@ -61,10 +72,10 @@ function makeDemoData() {
       const day = dates[di];
       // AAPL: bijgekocht eergisteren rond 13:00, zodat de detailgrafiek laat zien dat de aankoop niet als sprong in de lijn staat
       const aaplPre = (s) => tk === 'AAPL' && (di < nD - 2 || (di === nD - 2 && s < 30));
-      // VUAG: vandaag rond 10:00 bijgekocht, nog zonder order in de geschiedenis (die komt later binnen);
+      // NVDA: vandaag rond 10:00 bijgekocht, nog zonder order in de geschiedenis (die komt later binnen);
       // het aantal stuks per meting laat zien dat de sprong een aankoop is en geen koersstijging
-      const vuagPre = (s) => tk === 'VUAG' && di === nD - 1 && lastSlots > 14 && s < 12;
-      const fac = (s) => (tk === 'KO' && (di < buyDay || (di === buyDay && s < 30)) ? 0.5 : aaplPre(s) ? 0.85 : vuagPre(s) ? 0.6 : 1);
+      const nvdaPre = (s) => tk === 'NVDA' && di === nD - 1 && lastSlots > 14 && s < 12;
+      const fac = (s) => (tk === 'PG' && (di < buyDay || (di === buyDay && s < 30)) ? 0.5 : aaplPre(s) ? 0.85 : nvdaPre(s) ? 0.6 : 1);
       // INTC: vandaag om ± 10:40 helemaal verkocht; daarna komt hij niet meer in de metingen voor
       const sold = tk === 'INTC' && di === nD - 1 && lastSlots > 18;
       const vals = pts.map((x, s) => r2(x * scale * fac(s))).filter((_, s) => !sold || s < 16);
@@ -141,6 +152,9 @@ function makeDemoData() {
   });
   const unrealSum = sum(positions.map((p) => p.unrealized));
   weeks.forEach((w, i) => { w.unrealized = r2(unrealSum * (0.6 + 0.4 * (i + 1) / weeks.length)); delete w.boughtKO; });
+  // Inleg zo verschuiven dat er nu INVEST in aandelen zit plus het vrije saldo; de weekverschillen blijven gelijk
+  const depShift = weeks.length ? r2(INVEST + cash - weeks[weeks.length - 1].netDeposits) : 0;
+  weeks.forEach((w) => { w.netDeposits = r2(w.netDeposits + depShift); w.totalResult = r2(w.accountValue - w.netDeposits); w.totalResultPct = w.totalResult / w.netDeposits; });
 
   // Agenda: datums ten opzichte van vandaag
   const dIn = (n) => { const d = new Date(now); d.setDate(d.getDate() + n); return iso(d).slice(0, 10); };
@@ -148,26 +162,33 @@ function makeDemoData() {
     updated: iso(now), fmp: true, errors: [],
     // ticker, dagen geleden, bruto per aandeel (dollar), aantal; netto = na 15% bronbelasting, omgerekend naar euro
     received: [
-      ['KO', -375, 0.485, 0.9], ['KO', -320, 0.485, 0.9], ['KO', -229, 0.485, 0.9], ['KO', -138, 0.51, 0.9], ['KO', -47, 0.51, 1.8],
-      ['MSFT', -341, 0.75, 0.2], ['MSFT', -250, 0.75, 0.2], ['MSFT', -160, 0.83, 0.2], ['MSFT', -68, 0.83, 0.2],
-      ['AAPL', -372, 0.24, 0.29], ['AAPL', -190, 0.25, 0.29], ['AAPL', -99, 0.25, 0.29], ['AAPL', -8, 0.26, 0.29],
-      ['TSM', -370, 0.6, 0.3], ['TSM', -120, 0.7, 0.3], ['TSM', -30, 0.83, 0.3],
+      ['PG', -375, 1.01, 0.44], ['PG', -320, 1.01, 0.44], ['PG', -229, 1.06, 0.44], ['PG', -138, 1.06, 0.44], ['PG', -47, 1.06, 0.87],
+      ['MSFT', -341, 0.75, 2.8], ['MSFT', -250, 0.75, 2.8], ['MSFT', -160, 0.83, 2.8], ['MSFT', -68, 0.83, 2.8],
+      ['AAPL', -372, 0.24, 5.2], ['AAPL', -190, 0.25, 5.2], ['AAPL', -99, 0.25, 5.2], ['AAPL', -8, 0.26, 5.2],
+      ['JNJ', -370, 1.24, 0.78], ['JNJ', -120, 1.3, 0.78], ['JNJ', -30, 1.3, 0.78],
     ].map(([ticker, n, perShare, qty]) => ({ ticker, date: dIn(n), amount: Math.round(perShare * qty * 0.85 / 1.09 * 100) / 100, perShare, qty })),
-    earnings: [['AAPL', 6, 2.35], ['MSFT', 9, 3.1], ['META', 12, 6.7], ['GOOGL', 15, 2.6], ['AMZN', 19, 1.9], ['ASML', 23, 5.6], ['TSM', 27, 2.7], ['PLTR', 34, 0.21], ['KO', 41, 0.6]]
+    earnings: [['AAPL', 6, 2.35], ['MSFT', 9, 3.1], ['META', 12, 6.7], ['GOOGL', 15, 2.6], ['AMZN', 19, 1.9], ['NVDA', 23, 1.31], ['AVGO', 27, 1.95], ['PLTR', 34, 0.21], ['PG', 41, 1.9]]
       .map(([ticker, n, epsEst]) => ({ ticker, symbol: ticker, date: dIn(n), epsEst, revEst: null })),
     lastEarnings: [{ ticker: 'AAPL', date: dIn(-84), eps: 1.85, epsEst: 1.77 }, { ticker: 'MSFT', date: dIn(-81), eps: 3.46, epsEst: 3.66 }],
-    dividends: [{ ticker: 'KO', exDate: dIn(10), payDate: dIn(29), perShare: 0.51, estEur: 0.92, announced: true },
-      { ticker: 'ASML', exDate: dIn(4), payDate: dIn(16), perShare: 1.6, estEur: 0.24, announced: true }],
+    dividends: [{ ticker: 'PG', exDate: dIn(10), payDate: dIn(29), perShare: 1.06, estEur: 0.68, announced: true },
+      { ticker: 'JPM', exDate: dIn(4), payDate: dIn(16), perShare: 1.5, estEur: 1.18, announced: true }],
   };
 
   // Markt: sectoren, branches en vergelijkbare bedrijven
   const META_INFO = {
-    ASML: ['Technology', 'Semiconductor Equipment & Materials', ['AMAT', 'LRCX', 'KLAC', 'TSM']], MSFT: ['Technology', 'Software - Infrastructure', ['ORCL', 'GOOGL', 'CRM', 'PLTR']],
-    GOOGL: ['Communication Services', 'Internet Content & Information', ['META', 'MSFT', 'AMZN', 'NFLX']], TSM: ['Technology', 'Semiconductors', ['NVDA', 'AVGO', 'AMD', 'INTC']],
-    SPCX: ['Industrials', 'Aerospace & Defense', ['LMT', 'RTX', 'NOC', 'GD', 'BA']], AAPL: ['Technology', 'Consumer Electronics', ['MSFT', 'SONY', 'DELL', 'HPQ']],
-    META: ['Communication Services', 'Internet Content & Information', ['GOOGL', 'SNAP', 'PINS', 'RDDT']], LLY: ['Healthcare', 'Drug Manufacturers - General', ['JNJ', 'ABBV', 'MRK', 'NVO', 'AZN']],
-    PLTR: ['Technology', 'Software - Infrastructure', ['SNOW', 'CRWD', 'MSFT', 'ORCL']], KO: ['Consumer Defensive', 'Beverages - Non-Alcoholic', ['PEP', 'KDP', 'MNST']],
-    TTWO: ['Communication Services', 'Electronic Gaming & Multimedia', ['EA', 'RBLX', 'NTES']], AMZN: ['Consumer Cyclical', 'Internet Retail', ['WMT', 'BABA', 'EBAY', 'SHOP']],
+    NVDA: ['Technology', 'Semiconductors', ['AMD', 'AVGO', 'INTC', 'TSM']], MSFT: ['Technology', 'Software - Infrastructure', ['ORCL', 'GOOGL', 'CRM', 'PLTR']],
+    AAPL: ['Technology', 'Consumer Electronics', ['MSFT', 'SONY', 'DELL', 'HPQ']], GOOGL: ['Communication Services', 'Internet Content & Information', ['META', 'MSFT', 'AMZN', 'NFLX']],
+    AMZN: ['Consumer Cyclical', 'Internet Retail', ['WMT', 'BABA', 'EBAY', 'SHOP']], META: ['Communication Services', 'Internet Content & Information', ['GOOGL', 'SNAP', 'PINS', 'RDDT']],
+    AVGO: ['Technology', 'Semiconductors', ['NVDA', 'QCOM', 'MRVL', 'TXN']], TSLA: ['Consumer Cyclical', 'Auto - Manufacturers', ['GM', 'F', 'RIVN', 'TM']],
+    BRKB: ['Financial Services', 'Insurance - Diversified', ['MKL', 'CB', 'AIG', 'L']], JPM: ['Financial Services', 'Banks - Diversified', ['BAC', 'WFC', 'C', 'GS']],
+    LLY: ['Healthcare', 'Drug Manufacturers - General', ['JNJ', 'ABBV', 'MRK', 'NVO', 'AZN']], V: ['Financial Services', 'Credit Services', ['MA', 'AXP', 'PYPL']],
+    XOM: ['Energy', 'Oil & Gas Integrated', ['CVX', 'SHEL', 'TTE', 'COP']], ORCL: ['Technology', 'Software - Infrastructure', ['MSFT', 'SAP', 'CRM', 'IBM']],
+    WMT: ['Consumer Defensive', 'Discount Stores', ['COST', 'TGT', 'DG', 'AMZN']], MA: ['Financial Services', 'Credit Services', ['V', 'AXP', 'PYPL']],
+    NFLX: ['Communication Services', 'Entertainment', ['DIS', 'WBD', 'SPOT', 'ROKU']], JNJ: ['Healthcare', 'Drug Manufacturers - General', ['PFE', 'MRK', 'ABBV', 'LLY']],
+    PLTR: ['Technology', 'Software - Infrastructure', ['SNOW', 'CRWD', 'MSFT', 'ORCL']], COST: ['Consumer Defensive', 'Discount Stores', ['WMT', 'TGT', 'BJ']],
+    AMD: ['Technology', 'Semiconductors', ['NVDA', 'INTC', 'QCOM', 'ARM']], ABBV: ['Healthcare', 'Drug Manufacturers - General', ['JNJ', 'MRK', 'PFE', 'BMY']],
+    HD: ['Consumer Cyclical', 'Home Improvement Retail', ['LOW', 'FND', 'TSCO']], BAC: ['Financial Services', 'Banks - Diversified', ['JPM', 'WFC', 'C', 'USB']],
+    PG: ['Consumer Defensive', 'Household & Personal Products', ['KO', 'PEP', 'CL', 'KMB']],
   };
   const mDays = [];
   const md = new Date(now); md.setDate(md.getDate() - 1);
@@ -177,6 +198,8 @@ function makeDemoData() {
   const profiles = {}, prices = {}, peersMk = {}, symbols = {};
   const sectorOfSym = {};
   Object.entries(META_INFO).forEach(([tk, [sec, ind, prs]]) => { symbols[tk] = tk; peersMk[tk] = prs; sectorOfSym[tk] = [sec, ind]; prs.forEach((x) => { if (!sectorOfSym[x]) sectorOfSym[x] = [sec, ind]; }); });
+  // Volglijst: niet in bezit, wel een profiel
+  Object.assign(sectorOfSym, { ASML: ['Technology', 'Semiconductor Equipment & Materials'], LMT: ['Industrials', 'Aerospace & Defense'] });
   Object.entries(sectorOfSym).forEach(([sym, [sec, ind]], i) => {
     const price = 40 + rnd() * 600, lo = price * (0.55 + rnd() * 0.3), hi = price * (1.02 + rnd() * 0.4);
     profiles[sym] = { symbol: sym, name: (book.find((b) => b[0] === sym) || [0, sym + ' Corporation'])[1], price: +price.toFixed(2), currency: 'USD',
@@ -196,15 +219,17 @@ function makeDemoData() {
   new Set(Object.values(sectorOfSym).map((x) => x[1])).forEach((ind) => { const drift = gauss() * 0.2; industriesMk[ind] = { NASDAQ: mDays.map((d) => [d, +(drift + gauss() * 1.1).toFixed(3)]), NYSE: mDays.map((d) => [d, +(drift + gauss() * 1).toFixed(3)]) }; });
   // Waardering: koers-winstverhouding en dividendrendement, nu en per jaar (voorbeelden)
   const valuation = {};
-  const DIV_DEMO = { KO: 0.029, MSFT: 0.007, AAPL: 0.0045, TSM: 0.013, LLY: 0.007, GOOGL: 0.004, META: 0.003, ASML: 0.009 };
+  const DIV_DEMO = { PG: 0.025, JNJ: 0.031, ABBV: 0.032, XOM: 0.035, HD: 0.025, BAC: 0.022, JPM: 0.02, AVGO: 0.012, WMT: 0.01, ORCL: 0.009, V: 0.008,
+    MSFT: 0.007, LLY: 0.007, MA: 0.005, COST: 0.005, AAPL: 0.0045, GOOGL: 0.004, META: 0.003, NVDA: 0.0003, ASML: 0.009 };
   Object.keys(profiles).forEach((sym) => {
     const base = 14 + rnd() * 40, dy = DIV_DEMO[sym] || 0;
     const yrs = [2021, 2022, 2023, 2024, 2025];
-    valuation[sym] = { updated: dIn(sym === 'KO' ? -14 : -3), pe: sym === 'SPCX' ? null : +(base * (0.85 + rnd() * 0.4)).toFixed(1), dy: dy || null,
-      hist: yrs.map((y) => [String(y), sym === 'SPCX' ? null : +(base * (0.7 + rnd() * 0.6)).toFixed(1), dy ? +(dy * (0.8 + rnd() * 0.4)).toFixed(4) : null]) };
+    // PLTR maakte tot 2022 verlies: dan geen koers-winstverhouding
+    valuation[sym] = { updated: dIn(sym === 'PG' ? -14 : -3), pe: +(base * (0.85 + rnd() * 0.4)).toFixed(1), dy: dy || null,
+      hist: yrs.map((y) => [String(y), sym === 'PLTR' && y < 2023 ? null : +(base * (0.7 + rnd() * 0.6)).toFixed(1), dy ? +(dy * (0.8 + rnd() * 0.4)).toFixed(4) : null]) };
   });
   const sectorPe = { date: mDays[mDays.length - 1], sectors: { Technology: 38.5, 'Communication Services': 24.1, Healthcare: 27.3, Industrials: 26.8, 'Consumer Cyclical': 29.9, 'Consumer Defensive': 22.4, 'Financial Services': 17.2, Energy: 13.1 } };
-  const market = { symbols, peers: peersMk, profiles, prices, sectors: sectorsMk, industries: industriesMk, updated: mDays[mDays.length - 1], watch: ['NVDA', 'LMT'], valuation, sectorPe };
+  const market = { symbols, peers: peersMk, profiles, prices, sectors: sectorsMk, industries: industriesMk, updated: mDays[mDays.length - 1], watch: ['ASML', 'LMT'], valuation, sectorPe };
 
   // Transacties, valuta en fondssamenstelling
   const orders = [], posExtra = {};
@@ -222,15 +247,15 @@ function makeDemoData() {
     const nBuys = 1 + (i % 3);
     for (let k = 0; k < nBuys; k++) {
       const d = new Date(dates[Math.max(0, nD - 60 + k * 17 + i)]); d.setHours(15, 30 + i, 0, 0);
-      // Idee 55: de eerste aankoop van KO ligt ruim een half jaar terug, zodat de vraag "klopt je reden nog?" te zien is
-      if (pp.ticker === 'KO' && k === 0) d.setDate(d.getDate() - 190);
+      // Idee 55: de eerste aankoop van PG ligt ruim een half jaar terug, zodat de vraag "klopt je reden nog?" te zien is
+      if (pp.ticker === 'PG' && k === 0) d.setDate(d.getDate() - 190);
       const q = pp.quantity / nBuys, net = +(pp.cost / nBuys).toFixed(2);
       orders.push([iso(d), pp.ticker, pp.name, 'BUY', +q.toFixed(6), +(posExtra[pp.ticker].avg).toFixed(2), cur, fxr, net, 0, cur === 'USD' ? +(net * 0.0015).toFixed(2) : 0, 0, 'TRADE']);
     }
   });
   const dSell = new Date(dates[nD - 20]); dSell.setHours(16, 5, 0, 0);
-  orders.push([iso(new Date(dates[nD - 58])), 'NVDA', 'NVIDIA', 'BUY', 0.4, 172.5, 'USD', 1.09, 63.3, 0, 0.09, 0, 'TRADE']);
-  orders.push([iso(dSell), 'NVDA', 'NVIDIA', 'SELL', 0.4, 191.2, 'USD', 1.12, 68.29, 4.99, 0.1, 0, 'TRADE']);
+  orders.push([iso(new Date(dates[nD - 58])), 'CRM', 'Salesforce', 'BUY', 0.4, 252.5, 'USD', 1.09, 92.66, 0, 0.14, 0, 'TRADE']);
+  orders.push([iso(dSell), 'CRM', 'Salesforce', 'SELL', 0.4, 279.6, 'USD', 1.12, 99.86, 7.2, 0.15, 0, 'TRADE']);
   const dSell2 = new Date(dates[nD - 9]); dSell2.setHours(17, 40, 0, 0);
   orders.push([iso(dSell2), 'PLTR', 'Palantir', 'SELL', 0.05, 158.2, 'USD', 1.15, 6.88, 0.71, 0.01, 0, 'TRADE']);
   if (aaplBuy && posExtra.AAPL) orders.push([iso(aaplBuy.t), 'AAPL', 'Apple', 'BUY', +(aaplBuy.net * 1.16 / posExtra.AAPL.price).toFixed(6), posExtra.AAPL.price, 'USD', 1.16, aaplBuy.net, 0, +(aaplBuy.net * 0.0015).toFixed(2), 0, 'TRADE']);
@@ -266,7 +291,7 @@ function makeDemoData() {
       headline: 'Voorbeeld: ' + name + ' ' + topic[i % 4] + ' (geen echt nieuws)', source: src, url: '#bundel-' + tk + '-' + k,
       summary: 'Voorbeeldtekst van ' + src + ' over hetzelfde bericht.' }));
     research[tk] = {
-      updated: tk === 'KO' ? dIn(-3) : iso(now),
+      updated: tk === 'PG' ? dIn(-3) : iso(now),
       news: [1, 2, 4, 7].map((n, k) => ({ t: day(n), headline: 'Voorbeeld: ' + name + ' ' + topic[(k + i) % 4] + ' (geen echt nieuws)', source: 'Voorbeeldbron', url: '#' })).concat(sameEvent),
       rec: [0, 1, 2, 3].map((k) => ({ period: dIn(-30 * k).slice(0, 8) + '01', sb: 6 + ((i + k) % 5), b: 12 + ((i * 3 + k) % 7), h: 6 + (i % 6), s: (i + k) % 3, ss: (i % 4 === 0) ? 1 : 0 })),
       eps: [0, 1, 2, 3].map((k) => { const est = +(1 + rnd() * 3).toFixed(2); const pct = +((rnd() - 0.35) * 14).toFixed(1); return { period: dIn(-91 * k - 4 - (i % 25)), actual: +(est * (1 + pct / 100)).toFixed(2), estimate: est, pct }; }),
@@ -276,16 +301,16 @@ function makeDemoData() {
     const yrs = [2020, 2021, 2022, 2023, 2024, 2025];
     let r = base;
     const rows = yrs.map((y) => { r *= 1 + (rnd() * 0.25 - 0.02); return [y, Math.round(r)]; });
-    fin[tk] = { updated: tk === 'KO' ? dIn(-40) : dIn(-2), series: {
+    fin[tk] = { updated: tk === 'PG' ? dIn(-40) : dIn(-2), series: {
       rev: { unit: tk === 'TSM' ? 'TWD' : 'USD', rows: rows.map(([y, v]) => [y, tk === 'TSM' ? v * 30 : v]) },
-      net: { unit: tk === 'TSM' ? 'TWD' : 'USD', rows: rows.map(([y, v], k) => [y, Math.round((tk === 'TSM' ? v * 30 : v) * (margin + (rnd() - 0.5) * 0.06) * (tk === 'SPCX' && k < 3 ? -0.4 : 1))]) },
+      net: { unit: tk === 'TSM' ? 'TWD' : 'USD', rows: rows.map(([y, v], k) => [y, Math.round((tk === 'TSM' ? v * 30 : v) * (margin + (rnd() - 0.5) * 0.06) * (tk === 'PLTR' && k < 3 ? -0.4 : 1))]) },
       op: { unit: 'USD', rows: rows.map(([y, v]) => [y, Math.round(v * (margin + 0.05))]) },
       eps: { unit: 'USD/shares', rows: rows.map(([y], k) => [y, +(1 + k * 0.6 + rnd()).toFixed(2)]) },
     } };
   });
+  // Koersdoel en nieuwsstemming, ook voor de volglijst (ASML, LMT)
+  ['ASML', 'LMT'].forEach((tk, i) => { research[tk] = Object.assign({}, research.AAPL, { news: research.AAPL.news.map((n) => Object.assign({}, n, { headline: n.headline.replace('Apple', tk) })) }); fin[tk] = fin.MSFT; });
   fin.ASML = { updated: dIn(-2), none: 'Voorbeeld: geen SEC-gegevens voor dit bedrijf.' };
-  // Koersdoel en nieuwsstemming, ook voor de volglijst (NVDA, LMT)
-  ['NVDA', 'LMT'].forEach((tk, i) => { research[tk] = Object.assign({}, research.AAPL, { news: research.AAPL.news.map((n) => Object.assign({}, n, { headline: n.headline.replace('Apple', tk) })) }); fin[tk] = fin.MSFT; });
   Object.keys(research).forEach((tk) => {
     // Zelfde koers als de positie zelf, zodat koersdoel en koers bij elkaar passen
     const pr = (posExtra[tk] && posExtra[tk].price) || (profiles[tk] && profiles[tk].price) || (100 + rnd() * 300);
@@ -346,8 +371,8 @@ function makeDemoData() {
   ['Reuters', 'Bloomberg', 'CNBC', 'FD', 'AP'].forEach((src, k) => marketNews.items.push({ t: now.getTime() - (1 + k) * 2 * HOUR,
     headline: 'Voorbeeld: centrale bank houdt rente gelijk (geen echt nieuws)', summary: 'Voorbeeldtekst van ' + src + ' over hetzelfde bericht.', source: src, url: '#bundel-markt-' + k, related: '' }));
   marketNews.items.sort((a, b) => b.t - a.t);
-  events.earnings.push({ ticker: 'NVDA', symbol: 'NVDA', date: dIn(9), epsEst: 1.31 }, { ticker: 'LMT', symbol: 'LMT', date: dIn(17), epsEst: 6.8 });
-  events.lastEarnings.push({ ticker: 'TSM', date: dIn(-6), eps: 2.91, epsEst: 2.72 }, { ticker: 'PLTR', date: dIn(-13), eps: 0.19, epsEst: 0.21 });
+  events.earnings.push({ ticker: 'ASML', symbol: 'ASML', date: dIn(9), epsEst: 5.6 }, { ticker: 'LMT', symbol: 'LMT', date: dIn(17), epsEst: 6.8 });
+  events.lastEarnings.push({ ticker: 'NVDA', date: dIn(-6), eps: 1.3, epsEst: 1.25 }, { ticker: 'PLTR', date: dIn(-13), eps: 0.19, epsEst: 0.21 });
   // Indexen (koersindex in dollars), 400 dagen
   const idxSer = (start, drift, vol) => { const out = []; let v = start; for (let k = 400; k >= 0; k--) { const d = new Date(now); d.setDate(d.getDate() - k); if (!(d.getDay() % 6)) continue; v *= 1 + drift + gauss() * vol; out.push([iso(d).slice(0, 10), +v.toFixed(2)]); } return out; };
   const fxRates = { USD: [], GBP: [] };
@@ -365,7 +390,7 @@ function makeDemoData() {
   // Marktoverzicht, maatstaven, deponeringen, 13F, economische agenda, pies, cijferdata en rente (voorbeelden)
   Object.assign(extraDemo.idx.series, { VIXCLS: idxSer(17, 0, 0).map(([d], k) => [d, +(16 + 4 * Math.sin(k / 9) + rnd() * 2).toFixed(2)]), DGS10: idxSer(4.3, 0, 0.006), ECBDFR: idxSer(2, 0, 0).map(([d]) => [d, 2]) });
   [['URTH', 160, 0.0003], ['VT', 125, 0.0003], ['VGK', 72, 0.0002], ['EWN', 52, 0.0002]].forEach(([sym, v0, dr]) => { market.prices[sym] = idxSer(v0, dr, 0.009); });
-  const demoSyms = Object.keys(META_INFO).filter((tk) => !/^(VUAG|SXRV|SPCX)$/.test(tk));
+  const demoSyms = Object.keys(META_INFO);
   const forms = [['10-Q', '', -9], ['8-K', '2.02', -10], ['8-K', '5.02', -34], ['DEF 14A', '', -60], ['10-K', '', -110]];
   const filingsPer = {};
   demoSyms.slice(0, 5).forEach((tk, i) => { filingsPer[tk] = { checked: dIn(0), list: forms.map(([f, it, d], k) => ({ date: dIn(d - i * 3 - k), form: f, desc: f, items: it, url: 'https://www.sec.gov/' })) }; });
@@ -375,12 +400,12 @@ function makeDemoData() {
   extraDemo.ext2 = {
     filings: { updated: iso(now), per: filingsPer },
     f13: { updated: dIn(-2), funds: [
-      { cik: 1067983, label: 'Berkshire Hathaway (Warren Buffett)', period: (new Date().getFullYear()) + '-09-30', filed: dIn(-3), total: 2.6e11, n: 41, top: f13top([['APPLE INC', 0.22, -0.13], ['AMERICAN EXPRESS CO', 0.16, 0], ['BANK AMER CORP', 0.11, -0.07], ['COCA COLA CO', 0.1, 0], ['CHEVRON CORP NEW', 0.07, 0.04], ['OCCIDENTAL PETE CORP', 0.05, 0], ['MOODYS CORP', 0.04, 0], ['KRAFT HEINZ CO', 0.03, 0], ['CHUBB LIMITED', 0.03, 0.12], ['ALPHABET INC', 0.02, null]]), names: ['APPLE INC', 'COCA COLA CO', 'ALPHABET INC', 'AMERICAN EXPRESS CO'] },
+      { cik: 1067983, label: 'Berkshire Hathaway (Warren Buffett)', period: (new Date().getFullYear()) + '-09-30', filed: dIn(-3), total: 2.6e11, n: 41, top: f13top([['APPLE INC', 0.22, -0.13], ['AMERICAN EXPRESS CO', 0.16, 0], ['BANK AMER CORP', 0.11, -0.07], ['COCA COLA CO', 0.1, 0], ['CHEVRON CORP NEW', 0.07, 0.04], ['OCCIDENTAL PETE CORP', 0.05, 0], ['MOODYS CORP', 0.04, 0], ['KRAFT HEINZ CO', 0.03, 0], ['CHUBB LIMITED', 0.03, 0.12], ['ALPHABET INC', 0.02, null]]), names: ['APPLE INC', 'COCA COLA CO', 'ALPHABET INC', 'AMERICAN EXPRESS CO', 'BANK OF AMERICA CORP'] },
       { cik: 1336528, label: 'Pershing Square (Bill Ackman)', period: (new Date().getFullYear()) + '-09-30', filed: dIn(-4), total: 1.4e10, n: 11, top: f13top([['UBER TECHNOLOGIES INC', 0.2, 0.05], ['BROOKFIELD CORP', 0.17, 0], ['ALPHABET INC', 0.15, -0.02], ['RESTAURANT BRANDS INTL INC', 0.13, 0], ['HILTON WORLDWIDE HLDGS INC', 0.11, -0.1], ['AMAZON COM INC', 0.08, null]]), names: ['ALPHABET INC', 'AMAZON COM INC', 'UBER TECHNOLOGIES INC'] }] },
     econ: { updated: iso(now), source: 'Voorbeeld', items: [[6, 'Consumer Price Index'], [9, 'Employment Situation'], [16, 'Gross Domestic Product'], [22, 'FOMC Press Release'], [30, 'Personal Income and Outlays']].map(([d, n]) => ({ date: dIn(d), name: n })) },
     pies: { updated: iso(now), list: [
-      { id: 1, name: 'Dividend', invested: 420, value: 451.3, result: 31.3, resultPct: 0.0745, cash: 0.42, divGained: 9.8, progress: 0.45, goal: 1000, instruments: [{ tk: 'KO', target: 0.4, share: 0.41 }, { tk: 'MSFT', target: 0.3, share: 0.31 }, { tk: 'ASML', target: 0.3, share: 0.28 }] },
-      { id: 2, name: 'Chips', invested: 250, value: 238.9, result: -11.1, resultPct: -0.0444, cash: 0, divGained: 0.6, progress: null, goal: null, instruments: [{ tk: 'TSM', target: 0.5, share: 0.47 }, { tk: 'NVDA', target: 0.5, share: 0.53 }] }] },
+      { id: 1, name: 'Dividend', invested: 330, value: 352.4, result: 22.4, resultPct: 0.0679, cash: 0.42, divGained: 9.8, progress: 0.35, goal: 1000, instruments: [{ tk: 'PG', target: 0.33, share: 0.32 }, { tk: 'JNJ', target: 0.34, share: 0.36 }, { tk: 'ABBV', target: 0.33, share: 0.32 }] },
+      { id: 2, name: 'Chips', invested: 1700, value: 1873.1, result: 173.1, resultPct: 0.1018, cash: 0, divGained: 0.6, progress: null, goal: null, instruments: [{ tk: 'NVDA', target: 0.6, share: 0.61 }, { tk: 'AVGO', target: 0.3, share: 0.31 }, { tk: 'AMD', target: 0.1, share: 0.08 }] }] },
     earnHist: Object.fromEntries(demoSyms.slice(0, 6).map((tk, i) => [tk, [dIn(-12 - i * 2), dIn(-102 - i * 2), dIn(-193 - i * 2), dIn(-284 - i * 2)]])),
     interest: Array.from({ length: 10 }, (_, k) => ({ date: dIn(-30 * k - 2), amount: +(0.08 + rnd() * 0.12).toFixed(2) })).reverse(),
   };
@@ -388,8 +413,8 @@ function makeDemoData() {
   // Aankoopdagboek en andere rekeningen (voorbeelden)
   const demoNotes = {};
   const firstBuy = (tk) => orders.find((o) => o[1] === tk && o[3] === 'BUY');
-  [['ASML', 'Marktleider in chipmachines; wil meer Europa in mijn portefeuille.'], ['KO', 'Rustig dividendaandeel als tegenwicht voor techniek.'],
-    ['PLTR', 'Gok op groei in software voor overheden; klein gehouden.'], ['NVDA', 'Korte termijn na de cijfers, verkocht met winst.'], ['MSFT', 'Cloud en kantoorsoftware, voor de lange termijn.']]
+  [['NVDA', 'Grootste bedrijf in de S&P 500; gewogen naar marktwaarde, net als de index.'], ['PG', 'Rustig dividendaandeel als tegenwicht voor techniek.'],
+    ['PLTR', 'Gok op groei in software voor overheden; klein gehouden.'], ['CRM', 'Korte termijn na de cijfers, verkocht met winst.'], ['MSFT', 'Cloud en kantoorsoftware, voor de lange termijn.']]
     .forEach(([tk, txt]) => { const o = firstBuy(tk); if (o) demoNotes[tk + '|' + new Date(o[0]).getTime()] = txt; });
   const demoAccounts = [{ id: 'demo1', name: 'Pensioenrekening', broker: 'Voorbeeldbroker', cash: 35.2, updated: dIn(-6),
     holdings: [{ name: 'iShares Core MSCI World', tk: 'IWDA', isin: 'IE00B4L5Y983', qty: 9, value: 912.4, cost: 801 },
@@ -408,13 +433,13 @@ function makeDemoData() {
       { id: 'dbk2', name: 'Betaalrekening', kind: 'betaal', amount: 680, rate: 0, updated: dIn(-2) },
       { id: 'dbk3', name: 'Contant (voorbeeld)', kind: 'contant', amount: 120, rate: null, updated: dIn(-95) },
     ],
-    goalPos: { VUAG: 'huis', SXRV: 'huis', ASML: 'huis', KO: 'buffer', MSFT: 'buffer' },
+    goalPos: { NVDA: 'huis', MSFT: 'huis', AAPL: 'huis', PG: 'buffer', JNJ: 'buffer' },
     rebDone: {},
     realProj: false,
   };
   // Hoe vaak een bedrijfspagina is geopend (normaal per apparaat bijgehouden; hier een voorbeeld)
   const demoViews = {};
-  demoViews[String(yNow0)] = { ASML: 23, NVDA: 17, MSFT: 12, PLTR: 9, KO: 5, TSM: 4 };
+  demoViews[String(yNow0)] = { ASML: 23, NVDA: 17, MSFT: 12, PLTR: 9, PG: 5, AVGO: 4 };
   // Ideeën 56, 74 en 75: oefenboek, antwoorden op de vragenlijst en notities in het beslisdagboek
   const nvdaPr = (profiles.NVDA && profiles.NVDA.price) || 180;   // koersen uit de demo zelf, anders klopt het oefenresultaat niet
   const asmlPr = (posExtra.ASML && posExtra.ASML.price) || 636;
@@ -426,15 +451,15 @@ function makeDemoData() {
   const oefSaldo = oefTrades.reduce((v, x) => v + (x.side === 'SELL' ? x.eur : -x.eur), 1000);
   const demoTrade = {
     paper: { on: false, start: 1000, cash: +oefSaldo.toFixed(2), trades: oefTrades },
-    sellCheck: { KO: { d: dIn(-9), a: { reden: 'ja', koop: 'ja', groot: 'ja', plan: 'weet', kosten: 'nee' } } },
+    sellCheck: { PG: { d: dIn(-9), a: { reden: 'ja', koop: 'ja', groot: 'ja', plan: 'weet', kosten: 'nee' } } },
     decisions: [
       { id: 'dec1', d: dIn(-6), key: 'PLTR', text: 'Een deel verkocht: de positie werd groter dan ik wilde en de waardering is hoog.' },
-      { id: 'dec2', d: dIn(-52), key: 'ASML', text: 'Bijgekocht na de daling; de reden van de eerste aankoop staat nog.' },
+      { id: 'dec2', d: dIn(-52), key: 'MSFT', text: 'Bijgekocht na de daling; de reden van de eerste aankoop staat nog.' },
       { id: 'dec3', d: dIn(-400), key: '', text: 'Besloten elke maand hetzelfde bedrag in te leggen en niet meer op het nieuws te reageren.' },
     ],
   };
   const yNow = new Date().getFullYear();
-  const peilDemo = [{ date: yNow + '-01-01', total: 1180.55, investments: 1131.2, cash: 49.35, positions: [] }, { date: (yNow - 1) + '-01-01', total: 742.1, investments: 700.4, cash: 41.7, positions: [] }];
+  const peilDemo = [{ date: yNow + '-01-01', total: 8710.4, investments: 8661.05, cash: 49.35, positions: [] }, { date: (yNow - 1) + '-01-01', total: 6120.8, investments: 6079.1, cash: 41.7, positions: [] }];
   // Privacy en veiligheid: voorbeelden voor het meldingslogboek, het logboek, de apparaten en de vergelijking
   const demoPriv = {
     alerts: {
@@ -442,7 +467,7 @@ function makeDemoData() {
       queue: [{ at: dIn(0), title: 'Voorbeeld: PLTR +6,1% vandaag' }],
       log: [
         { at: dIn(0), title: 'Voorbeeld: PLTR +6,1% vandaag', body: 'Palantir stijgt +6,1% sinds het slot van de vorige handelsdag.', mode: 'stille uren', devices: 0 },
-        { at: dIn(-1), title: 'Voorbeeld: 3 meldingen van je tracker', body: '\u2022 ASML +5,4% vandaag \u2022 MSFT: morgen kwartaalcijfers \u2022 Je verdeling wijkt af van je doel', mode: 'bundel', devices: 2, items: 3 },
+        { at: dIn(-1), title: 'Voorbeeld: 3 meldingen van je tracker', body: '\u2022 AVGO +5,4% vandaag \u2022 MSFT: morgen kwartaalcijfers \u2022 Je verdeling wijkt af van je doel', mode: 'bundel', devices: 2, items: 3 },
         { at: dIn(-2), title: 'Voorbeeld: NVDA: morgen kwartaalcijfers', body: 'Verwachte winst per aandeel 1,31.', mode: 'direct', devices: 2 },
         { at: dIn(-5), title: 'Voorbeeld: MSFT boven 440', body: 'Je koersalarm ging af.', mode: 'direct', devices: 1 },
       ],
@@ -450,7 +475,7 @@ function makeDemoData() {
     audit: { log: [
       { at: dIn(0), kind: 'inloggen', msg: 'ingelogd met de Trading 212-sleutel' },
       { at: dIn(0), kind: 'apparaat', msg: 'eigen code gemaakt voor iPhone/iPad' },
-      { at: dIn(-1), kind: 'order', msg: 'order geplaatst: BUY ASML' },
+      { at: dIn(-1), kind: 'order', msg: 'order geplaatst: BUY AAPL' },
       { at: dIn(-3), kind: 'link', msg: 'deel-link gemaakt' },
       { at: dIn(-3), kind: 'link', msg: 'deel-link verloopt op ' + dIn(27).slice(0, 10) },
       { at: dIn(-9), kind: 'sleutel', msg: 'ingevuld of vervangen: FINNHUB_KEY' },
