@@ -42,10 +42,10 @@ function openSettings(showImport) {
   if (typeof renderPrivacy === 'function') renderPrivacy();
   $('dlg-settings').showModal();
   setOpenState(true);
+  // Eén doorlopende pagina (ontwerp I-C): bovenaan zoeken en de onderdelen, daaronder alles onder elkaar
   if (!getToken() && !demo) setGo('account');
   else if (showImport === true) setGo('import');
-  else if (matchMedia('(max-width: 760px)').matches) setList();
-  else setGo(setCur || 'links');
+  else setList();
 }
 
 // Instellingen open: het tandwiel staat aan (een kwartslag gedraaid) en het pilletje in het menu vervaagt.
@@ -56,20 +56,61 @@ function setOpenState(on) {
 }
 $('dlg-settings').addEventListener('close', () => setOpenState(false));
 
-// ---------- Instellingen als pagina: een lijst met onderdelen, één onderdeel tegelijk ----------
+// ---------- Instellingen als één pagina (ontwerp I-C) ----------
+// Bovenaan de stand van je tracker, zoeken, "Vaak gebruikt" en de onderdelen als raster; daaronder staan alle
+// onderdelen onder elkaar. setGo(k) schuift naar een onderdeel (zoeken, meldingen en andere pagina's gebruiken dit),
+// setList() gaat terug naar boven.
 let setCur = null;
+function setShowAll() {
+  $$('#form-settings .set-sec').forEach((el) => { /** @type {HTMLElement} */ (el).hidden = false; });
+  $('form-settings').dataset.view = 'all';
+}
 function setGo(k) {
   setCur = k;
-  $$('#form-settings .set-sec').forEach((el) => { const s = /** @type {HTMLElement} */ (el); s.hidden = s.dataset.set !== k; });
+  setShowAll();
   $$('#form-settings [data-set-go]').forEach((b) => b.setAttribute('aria-current', String(/** @type {HTMLElement} */ (b).dataset.setGo === k)));
-  $('form-settings').dataset.view = 'sec';
+  setSums();
+  const sec = document.querySelector('#form-settings .set-sec[data-set="' + k + '"]');
+  if (sec) requestAnimationFrame(() => sec.scrollIntoView({ block: 'start', behavior: reduceMotion() ? 'auto' : 'smooth' }));
+}
+function setList() {
+  setShowAll();
+  $$('#form-settings [data-set-go]').forEach((b) => b.setAttribute('aria-current', 'false'));
   $('dlg-settings').scrollTop = 0;
   setSums();
 }
-function setList() {
-  $('form-settings').dataset.view = 'list';
-  $$('#form-settings [data-set-go]').forEach((b) => b.setAttribute('aria-current', 'false'));
-  setSums();
+// Naar een bepaald onderdeel binnen een sectie ("Vaak gebruikt"): erheen schuiven en het even laten oplichten
+function setFind(k, sel) {
+  setGo(k);
+  const el = document.querySelector('#form-settings .set-sec[data-set="' + k + '"] ' + sel);
+  if (!el) return;
+  setTimeout(() => {
+    el.scrollIntoView({ block: 'center', behavior: reduceMotion() ? 'auto' : 'smooth' });
+    el.classList.add('set-found'); setTimeout(() => el.classList.remove('set-found'), 1600);
+  }, 60);
+}
+// De stand van je tracker in één strook: laatste meting, toegang, bronnen, meldingen, reservekopie en versie
+const LS_BACKUP_AT = 'tracker.backupAt';
+function setStatus() {
+  const host = $('set-status');
+  if (!host) return;
+  const cell = (ok, k, v) => '<div class="nk-k set-st"><span class="set-st-k"><i class="nk-ic ' + (ok === true ? 'pos' : ok === false ? 'neg' : 'neu') + '" aria-hidden="true"></i><b>' + esc(k) + '</b></span><span class="sub' + (ok === false ? ' loss' : '') + '">' + esc(v) + '</span></div>';
+  const last = M && M.lastT;
+  const age = last ? Date.now() - last : null;
+  const L = linkState;
+  const on = L ? LINKS.filter((x) => { const ks = (x.keys || []).filter((q) => !q[2]).map((q) => L.keys[String(q[0])]); return x.flag ? L.flags[String(x.flag)] !== false && (!x.keys || x.optKeys || ks.every(Boolean)) : ks.every(Boolean); }).length : null;
+  const perm = typeof Notification === 'function' ? Notification.permission : 'unsupported';
+  let bAt = null;
+  try { bAt = Number(localStorage.getItem(LS_BACKUP_AT)) || null; } catch (e) { /* geen opslag */ }
+  const bDays = bAt ? Math.floor((Date.now() - bAt) / DAY) : null;
+  host.innerHTML = [
+    cell(last ? age < 4 * DAY : false, 'Laatste meting', last ? fDT.format(last) : 'nog geen meting'),
+    cell(!!(getToken() || demo), 'Toegang', demo ? 'voorbeeldgegevens' : getToken() ? 'gekoppeld, code in deze browser' : 'nog niet gekoppeld'),
+    cell(demo ? true : on == null ? null : on >= 1, 'Bronnen', demo ? 'alles aan met voorbeeldgegevens' : on == null ? 'wordt geladen' : on + ' van ' + LINKS.length + ' aan'),
+    cell(perm === 'granted' ? true : perm === 'denied' ? false : null, 'Meldingen', perm === 'granted' ? 'aan op dit apparaat' : perm === 'denied' ? 'geblokkeerd in de browser' : perm === 'unsupported' ? 'niet op dit apparaat' : 'uit op dit apparaat'),
+    cell(bAt ? bDays <= 30 : null, 'Reservekopie', bAt ? (bDays === 0 ? 'vandaag gemaakt' : bDays === 1 ? 'gisteren gemaakt' : bDays + ' dagen geleden') : 'nog niet op dit apparaat'),
+    cell(true, 'Versie', VERSION),
+  ].join('');
 }
 function setSums() {
   const put = (k, t) => { const el = document.querySelector('[data-set-sum="' + k + '"]'); if (el) el.textContent = t; };
@@ -85,12 +126,30 @@ function setSums() {
   put('backup', 'meetstatus en reservekopie');
   put('update', ($('app-version') && $('app-version').textContent) || '');
   put('import', 'optioneel, eenmalig');
+  // Dezelfde korte stand onder de titel van elk onderdeel
+  $$('#form-settings [data-set-sum]').forEach((el) => {
+    const k = /** @type {HTMLElement} */ (el).dataset.setSum, sec = document.querySelector('#form-settings .set-sec[data-set="' + k + '"]');
+    if (!sec) return;
+    // Titel en korte stand samen in één kopblok (links naast de inhoud, zie ontwerp.css)
+    let hd = sec.querySelector(':scope > .set-hd');
+    if (!hd) {
+      hd = document.createElement('div'); hd.className = 'set-hd';
+      const h = sec.querySelector(':scope > .set-h');
+      sec.prepend(hd);
+      if (h) hd.appendChild(h);
+      const p = document.createElement('p'); p.className = 'set-hsub muted small'; hd.appendChild(p);
+    }
+    hd.querySelector('.set-hsub').textContent = el.textContent;
+  });
+  setStatus();
 }
 document.addEventListener('click', (e) => {
   const t = /** @type {Element} */ (e.target);
   if (!t || !t.closest) return;
   const go = /** @type {HTMLElement|null} */ (t.closest('[data-set-go]'));
   if (go) { setGo(go.dataset.setGo); return; }
+  const fd = /** @type {HTMLElement|null} */ (t.closest('[data-set-find]'));
+  if (fd) { const [k, sel] = String(fd.dataset.setFind).split('|'); setFind(k, sel); return; }
   if (t.closest('[data-set-back]')) { setList(); return; }
   if (t.closest('[data-set-close]')) /** @type {HTMLDialogElement} */ ($('dlg-settings')).close();
 });

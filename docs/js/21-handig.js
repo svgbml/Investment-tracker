@@ -8,6 +8,10 @@
 // (gemaakt met node tools/changelog.mjs); hieronder staat alleen wat de gebruiker merkt.
 // Bij een nieuwe versie: zet de regels van die versie bovenaan, met VERSION uit js/01-basis.js als sleutel.
 const WHATS_NEW = {
+  v79: [
+    'Nieuw uiterlijk: Instellingen is één pagina. Bovenaan de stand van je tracker (laatste meting, toegang, bronnen, meldingen, reservekopie, versie), een groot zoekveld en knoppen voor wat je vaak gebruikt.',
+    'Daaronder alle onderdelen als raster; een klik schuift naar het onderdeel. Alle onderdelen staan onder elkaar met de titel links. Zoeken vindt nu ook thema, amoled en accentkleur.',
+  ],
   v78: [
     'Analyse: ook de hoofdstukken Doorkijk, Markt, Kopen en verkopen en Transacties openen nu met de kern in één zin, vier cijfers en een grafiek: de verdeling over sectoren, de S&P 500 van het laatste halfjaar en staafjes per maand.',
   ],

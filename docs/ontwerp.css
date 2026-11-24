@@ -36,7 +36,7 @@
 }
 body { background: var(--page); }
 .detail.open { background: var(--page); }
-/* Instellingen houdt tot de eigen ontwerpstap zijn vlakken op een licht grijze ondergrond */
+/* Zoekveld in Instellingen (verder uitgewerkt in de sectie "Instellingen" onderaan) */
 .set-search input { min-height: 44px; padding: 0 16px; border: 1px solid var(--rule); border-radius: 999px; background: var(--surface); color: var(--ink); }
 
 /* Geen zichtbare schuifbalken; schuiven werkt gewoon */
@@ -155,6 +155,7 @@ body.set-open .m-tab-ind { opacity: 0; }
 @media (max-width: 1100px) { #dlg-settings .set-top { padding-left: 20px; padding-right: 20px; } }
 @media (max-width: 760px) { #dlg-settings .set-top { min-height: 56px; padding: calc(8px + env(safe-area-inset-top)) 16px 8px; } }
 
+.set-ic { color: #FFFFFF; }
 /* Thema- en accentkeuze in Instellingen → Weergave */
 .accent-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .acc-sw { width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%; background: var(--sw); cursor: pointer;
@@ -831,4 +832,69 @@ body.fast-open #detail { overflow: hidden; }
   .an-stack i { display: flex; align-items: center; min-width: 3px; padding: 0 8px; overflow: hidden; background: color-mix(in srgb, var(--accent) var(--mix, 100%), var(--page)); color: var(--on-accent); font: 600 12px/1 inherit; font-style: normal; white-space: nowrap; }
   .an-stack i.rest { background: var(--rule); }
   .an-bars { margin-top: 18px; }
+}
+
+/* =====================================================================================================
+ * Instellingen (ontwerp I-C "zoeken", v79): één doorlopende pagina (js/02-instellingen.js: setGo, setList,
+ * setFind, setStatus). Bovenaan de stand van je tracker in een strook (.set-status, opmaak van .nk-kpis), een groot
+ * zoekveld, "Vaak gebruikt" (.set-often) en de onderdelen als raster (.set-nav). Daaronder alle onderdelen met de
+ * titel links en de inhoud rechts, zonder kaarten. Telefoon: alles onder elkaar. Alleen op het scherm.
+ * ===================================================================================================== */
+@media screen {
+  #dlg-settings, #dlg-settings::backdrop { background: var(--page); }
+  #dlg-settings .set-top h2 { font-size: 17px; }
+  .set-intro, .set-status, .set-often, .set-foot, #dlg-settings .set-search, #dlg-settings .set-layout { width: 100%; max-width: 1240px; margin-left: auto; margin-right: auto; padding-left: 40px; padding-right: 40px; box-sizing: border-box; }
+  .set-intro { padding-top: 28px; }
+  .set-big { margin: 0; font-size: 44px; font-weight: 700; letter-spacing: -.03em; line-height: 1.1; }
+  .set-intro .muted { margin: 4px 0 0; font-size: 16px; }
+  .set-status.nk-kpis { margin-top: 20px; padding-left: 40px; padding-right: 40px; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+  .set-status .nk-k { flex: 1 1 170px; padding: 14px 18px 14px 0; }
+  .set-st-k { display: flex; align-items: center; gap: 8px; }
+  .set-st-k b { font-size: 15px; letter-spacing: 0; }
+  .set-st .sub { padding-left: 26px; }
+  #dlg-settings .set-search { padding-top: 22px; }
+  #dlg-settings .set-search input { max-width: none; min-height: 52px; padding: 0 18px 0 46px; border: 1px solid var(--rule); border-radius: 14px; background: var(--bg) no-repeat 16px 50% / 18px; font-size: 16px; color: var(--ink);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235B6472' stroke-width='2.2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='M20 20l-4-4'/%3E%3C/svg%3E"); }
+  #dlg-settings .set-hits { max-width: none; }
+  .set-often { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-top: 16px; }
+  .set-often-k { margin-right: 6px; font-size: 12px; font-weight: 700; letter-spacing: .6px; text-transform: uppercase; color: var(--ink-2); }
+  .set-often button { min-height: 36px; padding: 0 14px; border: 1px solid var(--rule); border-radius: 999px; background: var(--page); color: var(--ink); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .set-often button:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* Onderdelen als raster: pictogram in de accentkleur, naam en korte stand */
+  #dlg-settings .set-layout { display: block; padding-top: 24px; padding-bottom: 24px; }
+  #dlg-settings .set-nav { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(250px, 100%), 1fr)); gap: 0 32px; max-width: none; padding-bottom: 28px; border-bottom: 1px solid var(--rule); }
+  #dlg-settings .set-group { display: contents; }
+  #dlg-settings .set-nav button { align-items: flex-start; gap: 12px; min-height: 0; padding: 16px 0 14px; border-top: 1px solid var(--rule); border-radius: 0; background: none; text-align: left; }
+  #dlg-settings .set-nav button:hover b { color: var(--accent); }
+  #dlg-settings .set-nav button[aria-current="true"] { background: none; color: inherit; }
+  #dlg-settings .set-nav .set-ic { width: 22px; height: 22px; border-radius: 0; background: none !important; color: var(--accent); }
+  #dlg-settings .set-nav .set-ic svg { width: 20px; height: 20px; }
+  #dlg-settings .set-nav .t b { font-size: 16px; transition: color .2s; }
+  #dlg-settings .set-nav .t span { font-size: 13px; white-space: normal; }
+  #dlg-settings .set-nav .chev { display: none; }
+
+  /* Alle onderdelen onder elkaar: titel links (blijft staan), inhoud rechts */
+  #dlg-settings .set-main { max-width: none; }
+  #dlg-settings .set-sec { display: grid; grid-template-columns: 220px minmax(0, 1fr); column-gap: 48px; align-items: start; padding: 32px 0 36px; border-top: 1px solid var(--rule); border-radius: 0; background: none; scroll-margin-top: 72px; }
+  #dlg-settings .set-main > .set-sec:first-child { border-top: 0; }
+  #dlg-settings .set-sec > * { grid-column: 2; min-width: 0; }
+  #dlg-settings .set-sec > .set-hd { grid-column: 1; grid-row: 1 / span 60; position: sticky; top: 84px; }
+  #dlg-settings .set-sec .set-h { margin: 0; font-size: 20px; }
+  #dlg-settings .set-sec .set-hsub { margin: 6px 0 0; }
+  .set-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding-top: 20px; padding-bottom: calc(40px + env(safe-area-inset-bottom)); border-top: 1px solid var(--rule); }
+  .set-foot p { margin: 0; }
+  @media (max-width: 999px) {
+    #dlg-settings .set-sec { display: block; padding: 26px 0 28px; }
+    #dlg-settings .set-sec > .set-hd { position: static; margin-bottom: 14px; }
+  }
+  @media (max-width: 760px) {
+    .set-intro, .set-status, .set-often, .set-foot, #dlg-settings .set-search, #dlg-settings .set-layout, .set-status.nk-kpis { padding-left: 16px; padding-right: 16px; }
+    .set-big { font-size: 32px; }
+    .set-status .nk-k { flex: 1 1 40%; margin-right: 12px; padding: 12px 0; border-right: 0; border-bottom: 1px solid var(--rule-soft); }
+    #dlg-settings .set-nav { grid-template-columns: minmax(0, 1fr); }
+    #dlg-settings .set-nav button { min-height: 0; }
+    #form-settings[data-view] .set-main { display: block; }
+    #form-settings[data-view] .set-nav { display: grid; }
+  }
 }
