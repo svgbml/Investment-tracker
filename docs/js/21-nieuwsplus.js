@@ -55,7 +55,7 @@ function newsClusterHtml(c, itemHtml) {
   if (c.items.length < 2) return itemHtml(c.lead);
   return '<div class="news-g">' + itemHtml(c.lead) +
     '<details class="news-src"><summary>' + esc(clusterLabel(c)) + ' over hetzelfde bericht</summary><div class="news-sub">' +
-    c.items.slice(1).map((n) => '<a href="' + esc(n.url) + '" target="_blank" rel="noopener"><span class="s">' + esc(n.source || 'bron') + '</span><span class="t">' + esc(n.headline) + '</span></a>').join('') +
+    c.items.slice(1).map((n) => '<a href="' + esc(safeUrl(n.url)) + '" target="_blank" rel="noopener"><span class="s">' + esc(n.source || 'bron') + '</span><span class="t">' + esc(n.headline) + '</span></a>').join('') +
     '</div></details></div>';
 }
 
@@ -348,7 +348,7 @@ function officialTile() {
   const all = flashItems();
   const list = all.filter((n) => f === 'all' || n.kind === f).slice(0, 25);
   const fresh = (n) => n.breaking && Date.now() - n.t < DAY;
-  const item = (n) => tpl`<a class="news-i" href="${n.url}" target="_blank" rel="noopener"><span class="news-m">
+  const item = (n) => tpl`<a class="news-i" href="${safeUrl(n.url)}" target="_blank" rel="noopener"><span class="news-m">
       <span class="${'tag' + (M.byTk.has(n.tk) ? ' gain' : '')}">${n.tk}</span>
       ${n.kind === 'official' ? tpl`<span class="tag flash-off">${T('Officieel')}</span>` : n.kind === 'rumour' ? tpl`<span class="tag flash-rum">${T('Gerucht')}</span>` : null}
       ${fresh(n) ? tpl`<span class="tag loss">Breaking</span>` : n.breaking ? tpl`<span class="tag">${T('Belangrijk')}</span>` : null}

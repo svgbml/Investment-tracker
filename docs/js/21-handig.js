@@ -8,6 +8,9 @@
 // (gemaakt met node tools/changelog.mjs); hieronder staat alleen wat de gebruiker merkt.
 // Bij een nieuwe versie: zet de regels van die versie bovenaan, met VERSION uit js/01-basis.js als sleutel.
 const WHATS_NEW = {
+  v85: [
+    'Veiliger: links in nieuws en deponeringen openen alleen nog als gewone webadressen, Code vergeten en het wissen van een vergrendeld apparaat halen ook de bewaarde gegevens weg, een deel-link met verborgen bedragen laat geen echte aantallen meer zien, en inloggen met je Trading 212-sleutel geeft alleen een eigen code voor dit apparaat.',
+  ],
   v84: [
     'De voorbeeldweergave kan nu ook storingen laten zien: met ?demo&storing vallen willekeurig bronnen weg, met ?demo&storing=finnhub,fmp kies je zelf welke en met ?demo&storing=alle vallen ze allemaal weg. De status toont dan de fouten en een paar limieten op rood.',
   ],

@@ -54,7 +54,7 @@ Alle adressen vragen je toegangscode, als `?token=…` of als header `Authorizat
 | Agenda nu bijwerken (dividenden, kwartaalcijfers) | `POST /api/events` |
 | Orders (aan- en verkopen) nu ophalen | `POST /api/orders` |
 | Samenstelling van de indexfondsen nu ophalen / zelf toevoegen | `POST /api/etf` / `POST /api/etf-upload` met `{"key": "SP500" of "NDX", "csv": "…"}` |
-| Inloggen op een nieuw apparaat met de Trading 212-sleutel en -secret die al in de Worker staan; geeft de toegangscode én een eigen code voor dat apparaat terug (zonder toegangscode, max. 10 mislukte pogingen per uur) | `POST /api/login` |
+| Inloggen op een nieuw apparaat met de Trading 212-sleutel en -secret die al in de Worker staan; geeft alleen een eigen code voor dat apparaat terug, nooit de toegangscode zelf (ook in het veld `token` voor oudere versies van de site) (zonder toegangscode, max. 10 mislukte pogingen per uur) | `POST /api/login` |
 | Instellingen van de site (streefverdeling, inleg, doelen `goals`, volglijst, koersalarmen `priceAlerts`, herinnering inleg `depositReminder`, notities bij aankopen `notes`, andere rekeningen `accounts`, meldingsregels `alerts` met stille uren `quietFrom`/`quietTo` en dagbundel `digest`/`digestHour`) | `GET` / `POST /api/settings` |
 | Status van koppelingen en functies, met `health`: welke bron tijdelijk uit staat en welke reserve het werk doet | `GET /api/features` (alleen waar een sleutel staat, nooit de sleutel zelf) |
 | Meldingen: openbare sleutel en regels, apparaat aan- of afmelden, testmelding | `GET /api/push/key`, `POST /api/push/subscribe` met `{"sub": …}`, `POST /api/push/unsubscribe`, `POST /api/push/test` |

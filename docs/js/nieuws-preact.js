@@ -24,7 +24,7 @@ function Seg({ value, options, onPick, label }) {
 
 function NewsItem({ n }) {
   const t = newsTone(n);
-  return html`<a class="news-i" href=${n.url} target="_blank" rel="noopener">
+  return html`<a class="news-i" href=${safeUrl(n.url)} target="_blank" rel="noopener">
     <span class="news-m">
       ${n.tk ? html`<span class=${'tag' + (n.kind === 'watch' ? '' : ' gain')}>${n.tk}</span>` : html`<span class="tag">Markt</span>`}${' '}
       <span class=${'ntone ' + t} title=${toneTitle(n)}>${TONE_LABEL[t]}</span>
@@ -56,7 +56,7 @@ function NewsCluster({ c }) {
     <${NewsItem} n=${c.lead} />
     <details class="news-src"><summary>${clusterLabel(c)} over hetzelfde bericht</summary>
       <div class="news-sub">
-        ${c.items.slice(1).map((n) => html`<a key=${n.url + '|' + n.headline} href=${n.url} target="_blank" rel="noopener"><span class="s">${n.source || 'bron'}</span><span class="t">${n.headline}</span></a>`)}
+        ${c.items.slice(1).map((n) => html`<a key=${n.url + '|' + n.headline} href=${safeUrl(n.url)} target="_blank" rel="noopener"><span class="s">${n.source || 'bron'}</span><span class="t">${n.headline}</span></a>`)}
       </div>
     </details>
   </div>`;

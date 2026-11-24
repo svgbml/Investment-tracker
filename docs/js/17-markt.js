@@ -156,7 +156,7 @@ function filingRows(sym) {
 }
 function filingLine(f) {
   const items = String(f.items || '').split(',').map((x) => ITEM_NL[x.trim()]).filter(Boolean);
-  return '<a class="tx" href="' + esc(f.url) + '" target="_blank" rel="noopener"><span class="tag">' + esc(f.form) + '</span><span class="tx-m"><b>' + esc(f.sym) + ' – ' + esc(FORM_NL[f.form] || f.form) + (items.length ? ': ' + esc(items.join(', ')) : '') + '</b><span class="sub">' + esc(fD.format(f.t) + ' ' + new Date(f.t).getFullYear()) + '</span></span><span class="tx-v small">SEC ›</span></a>';
+  return '<a class="tx" href="' + esc(safeUrl(f.url)) + '" target="_blank" rel="noopener"><span class="tag">' + esc(f.form) + '</span><span class="tx-m"><b>' + esc(f.sym) + ' – ' + esc(FORM_NL[f.form] || f.form) + (items.length ? ': ' + esc(items.join(', ')) : '') + '</b><span class="sub">' + esc(fD.format(f.t) + ' ' + new Date(f.t).getFullYear()) + '</span></span><span class="tx-v small">SEC ›</span></a>';
 }
 function filingsTile() {
   const L = filingRows(null);

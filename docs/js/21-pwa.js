@@ -336,6 +336,8 @@ function lockWipe() {
   if (!confirm('De tracker van dit apparaat wissen? Je toegangscode en de vergrendeling worden verwijderd; je kunt daarna opnieuw inloggen met je Trading 212-sleutel.')) return;
   try { localStorage.removeItem(LS_LOCK); localStorage.removeItem(LS_TOKEN); } catch (e) { /* niet erg */ }
   idbDel('last');
+  if (typeof snapForget === 'function') snapForget();
+  try { if (self.caches) caches.delete('tracker-api-v1'); } catch (e) { /* geen cache */ }   // bewaarde antwoorden van de Worker (sw.js)
   setTimeout(() => location.reload(), 150);
 }
 async function lockEnable(say) {

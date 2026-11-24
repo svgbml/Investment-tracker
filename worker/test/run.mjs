@@ -118,7 +118,8 @@ await test('inloggen met de Trading 212-sleutel, met limiet per verbinding', asy
   const login = (key, ip) => W.fetch(new Request('https://worker.test/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': ip }, body: JSON.stringify({ key, secret: env.T212_SECRET }) }), env);
   let r = await login(env.T212_KEY, '1.1.1.1');
   assert.equal(r.status, 200);
-  assert.equal((await jsonOf(r)).token, TOKEN);
+  const tok = (await jsonOf(r)).token;
+  assert.ok(tok && tok !== TOKEN, 'een eigen code, nooit de toegangscode zelf');
   for (let i = 0; i < 10; i++) await login('fout-1234567890', '2.2.2.2');
   assert.equal((await login(env.T212_KEY, '2.2.2.2')).status, 429, 'dit adres is geblokkeerd');
   assert.equal((await login(env.T212_KEY, '3.3.3.3')).status, 200, 'een ander adres niet');
@@ -1685,6 +1686,10 @@ await test('gedeelde weergave laat niets persoonlijks zien', async () => {
   assert.ok(!('audit' in d) && !('log' in d) && !('status' in d) && !('sessions' in d), 'geen logboeken');
   // Bedragen zijn geschaald: het vrije saldo van 80 euro is niet te zien
   assert.ok(!d.cashNow || Math.round(d.cashNow.cash) !== 80, 'vrij saldo geschaald: ' + JSON.stringify(d.cashNow));
+  // Ook het aantal stuks (Apple: 2), anders volgt de echte waarde uit aantal × koers
+  assert.ok(d.posExtra.AAPL && d.posExtra.AAPL.qty !== 2, 'aantal in posExtra geschaald: ' + JSON.stringify(d.posExtra.AAPL));
+  const aaplRows = d.intraday.rows.filter((x) => x[1] === 'AAPL' && x[3] != null);
+  assert.ok(aaplRows.length && aaplRows.every((x) => x[3] !== 2), 'aantal in de metingen geschaald');
   // Wat de gedeelde weergave wel nodig heeft, zit er nog in
   ['weeks', 'positions', 'today', 'orders', 'intraday', 'days'].forEach((k) => assert.ok(d[k], k + ' hoort er wel in te zitten'));
   await req('/api/share', { method: 'POST', body: { action: 'off' } });
@@ -1729,8 +1734,10 @@ await test('inloggen geeft dit apparaat zijn eigen code', async () => {
   setKv('sessions', '[]');
   routes = t212Routes();
   const r = await jsonOf(await req('/api/login', { method: 'POST', body: { key: env.T212_KEY, secret: env.T212_SECRET, label: 'Mac' } }));
-  assert.equal(r.token, TOKEN, 'oude versies van de site blijven werken');
-  assert.ok(r.session && r.session !== TOKEN, 'en er komt een eigen code voor dit apparaat bij');
+  assert.ok(r.session && r.session !== TOKEN, 'een eigen code voor dit apparaat');
+  assert.equal(r.token, r.session, 'oude versies van de site krijgen dezelfde code, niet de toegangscode');
+  assert.ok(!JSON.stringify(r).includes(TOKEN), 'de toegangscode staat nergens in het antwoord');
+  assert.equal((await req('/api/data?part=core', { headers: { Authorization: 'Bearer ' + r.token } })).status, 200, 'ook een oude site kan ermee verder');
   assert.equal(r.device.label, 'Mac');
   assert.equal((await req('/api/status', { headers: { Authorization: 'Bearer ' + r.session } })).status, 200);
   setKv('sessions', '[]');
@@ -2382,6 +2389,17 @@ await test('gegevens van /api/data volgen het contract in types.d.ts (idee 61)',
   }
   const fouten = out.split(/\r?\n/).filter((l) => /error TS\d+/.test(l)).map((l) => l.replace(/^.*contract\.ts/, 'contract.ts').slice(0, 300));
   assert.equal(r.status, 0, 'de uitvoer wijkt af van het contract in docs/js/types.d.ts:\n         ' + (fouten.slice(0, 8).join('\n         ') || out.slice(0, 500)));
+});
+
+await test('nieuws: alleen https-links worden bewaard, geen javascript: of data:', async () => {
+  const fl = { items: [] };
+  const at = Date.now();
+  const fresh = WM._test.flashMerge(fl, 'AAPL', [
+    { headline: 'Press release: Goed bericht', url: 'https://voorbeeld.nl/1', datetime: Math.floor(at / 1000), source: 'Test' },
+    { headline: 'Press release: Kwaad bericht', url: 'javascript:alert(1)', datetime: Math.floor(at / 1000), source: 'Test' },
+    { headline: 'Press release: Ook kwaad', url: 'data:text/html,x', datetime: Math.floor(at / 1000), source: 'Test' },
+  ], at);
+  assert.deepEqual(fresh.map((x) => x.url), ['https://voorbeeld.nl/1']);
 });
 
 console.log((failed ? failed + ' fout, ' : '') + passed + ' geslaagd');

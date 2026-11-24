@@ -177,7 +177,7 @@ function newsItems() {
 // Het label vertelt in de tooltip welke woorden de toon bepaalden.
 const toneTag = (n) => { const t = newsTone(n); return '<span class="ntone ' + t + '" title="' + esc(toneTitle(n)) + '">' + (t === 'pos' ? '\u25b2 Positief' : t === 'neg' ? '\u25bc Negatief' : '\u25cf Neutraal') + '</span>'; };
 const newsTkTag = (n) => (n.tk ? '<span class="tag' + (n.kind === 'watch' ? '' : ' gain') + '">' + esc(n.tk) + '</span> ' : '<span class="tag">Markt</span> ');
-const newsItemHtml = (n) => '<a class="news-i" href="' + esc(n.url) + '" target="_blank" rel="noopener"><span class="news-m">' + newsTkTag(n) + toneTag(n) + esc(fDT.format(n.t) + (n.source ? ', ' + n.source : '')) + '</span>' +
+const newsItemHtml = (n) => '<a class="news-i" href="' + esc(safeUrl(n.url)) + '" target="_blank" rel="noopener"><span class="news-m">' + newsTkTag(n) + toneTag(n) + esc(fDT.format(n.t) + (n.source ? ', ' + n.source : '')) + '</span>' +
   '<span class="news-t">' + esc(n.headline) + '</span>' + (n.summary ? '<span class="news-s">' + esc(n.summary) + '</span>' : '') + '</a>';
 function newsListTile() {
   const f = xs.newsF;

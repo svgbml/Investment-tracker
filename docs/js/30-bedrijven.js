@@ -105,7 +105,7 @@ function bcNewsHtml(tk, n) {
   if (!list.length) return '';
   return String(tpl`<ul class="bc-news">${list.map((x) => {
     const t = typeof newsTone === 'function' ? newsTone(x) : '';
-    return tpl`<li><i class="bc-dot ${t}" aria-hidden="true">${t === 'pos' ? '+' : t === 'neg' ? '−' : '·'}</i><a href="${x.url || '#'}" target="_blank" rel="noopener"><b>${x.headline}</b><small>${(x.source || 'bron') + ' · ' + fD.format(x.t)}</small></a></li>`;
+    return tpl`<li><i class="bc-dot ${t}" aria-hidden="true">${t === 'pos' ? '+' : t === 'neg' ? '−' : '·'}</i><a href="${safeUrl(x.url)}" target="_blank" rel="noopener"><b>${x.headline}</b><small>${(x.source || 'bron') + ' · ' + fD.format(x.t)}</small></a></li>`;
   })}</ul>`);
 }
 // Analisten als één balk: kopen, houden, verkopen

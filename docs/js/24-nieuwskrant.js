@@ -102,7 +102,7 @@ function nkLead(items, flash) {
     : tk && watchSyms().includes(tk) ? tk + ' staat op je volglijst; je hebt het aandeel niet.' : '';
   return String(tpl`<article class="nk-lead">
     <p class="nk-meta">${L.fresh ? tpl`<span class="nk-brk">Breaking</span>` : null}${nkToneIcon(newsTone(n))}${[tk || 'Markt', (n.source === 'SEC' ? fD : fDT).format(n.t), n.source, L.src > 1 ? L.src + ' bronnen' : null, kind].filter(Boolean).join(' · ')}</p>
-    <h2 class="nk-h"><a href="${n.url}" target="_blank" rel="noopener">${n.headline}</a></h2>
+    <h2 class="nk-h"><a href="${safeUrl(n.url)}" target="_blank" rel="noopener">${n.headline}</a></h2>
     ${n.summary ? tpl`<p class="nk-sum">${n.summary}</p>` : null}
     ${chart || forYou ? tpl`<div class="nk-box">
       ${chart ? tpl`<p class="nk-box-h"><span><b>${tk}</b> · koers, 14 dagen, met de berichten</span>${isNum(chg) ? tpl`<b class="${tone(chg)}">${spct(chg) + ' ' + M.dayWord}</b>` : null}</p>${raw(chart)}` : null}
@@ -130,7 +130,7 @@ function nkMissed(flash) {
 function nkCols(items, flash) {
   const row = (x) => {
     const inner = tpl`${nkToneIcon(x.tone)}<span><b>${x.title}</b><span class="sub">${x.meta}</span></span>`;
-    return x.url ? tpl`<a class="nk-row" href="${x.url}" target="_blank" rel="noopener">${inner}</a>`
+    return x.url ? tpl`<a class="nk-row" href="${safeUrl(x.url)}" target="_blank" rel="noopener">${inner}</a>`
       : tpl`<button type="button" class="nk-row" data-ticker="${x.ticker}">${inner}</button>`;
   };
   const fromNews = (n) => ({ tone: newsTone(n), title: n.headline, meta: (n.tk || 'Markt') + ' · ' + (n.source === 'SEC' ? fD : fDT).format(n.t), url: n.url });

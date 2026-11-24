@@ -176,6 +176,7 @@ $('form-settings').addEventListener('submit', (e) => {
     localStorage.removeItem(LS_LAST);
     idbDel('last');
     if (typeof snapForget === 'function') snapForget();
+    try { if (self.caches) caches.delete('tracker-api-v1'); } catch (e) { /* geen cache */ }   // bewaarde antwoorden van de Worker (sw.js)
     data = null;
     showWelcome();
   }

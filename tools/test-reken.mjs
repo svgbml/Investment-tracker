@@ -305,6 +305,11 @@ const results = await page.evaluate(() => {
   T('esc: haakjes en aanhalingstekens', esc('<b>"a"&\'b\'</b>'), '&lt;b&gt;&quot;a&quot;&amp;&#39;b&#39;&lt;/b&gt;');
   T('esc: null wordt leeg', esc(null), '');
   T('escHtml doet hetzelfde als esc', escHtml('<a>&'), esc('<a>&'));
+  T('safeUrl: https blijft staan', safeUrl('https://voorbeeld.nl/a?b=1'), 'https://voorbeeld.nl/a?b=1');
+  T('safeUrl: javascript-link wordt #', safeUrl('javascript:alert(1)'), '#');
+  T('safeUrl: ook met hoofdletters en spaties', safeUrl(' JaVaScRiPt:alert(1)'), '#');
+  T('safeUrl: data-link wordt #', safeUrl('data:text/html,x'), '#');
+  T('safeUrl: leeg wordt #', safeUrl(null), '#');
   T('tpl: ingevoegde waarde wordt ontsnapt', String(tpl`<p>${'<script>'}</p>`), '<p>&lt;script&gt;</p>');
   T('tpl: raw blijft staan', String(tpl`<p>${raw('<b>x</b>')}</p>`), '<p><b>x</b></p>');
   T('tpl: null en false worden leeg', String(tpl`a${null}b${false}c`), 'abc');

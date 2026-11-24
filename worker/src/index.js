@@ -850,9 +850,13 @@ async function loginWithT212(request, envIn, cors) {
   await auditLog(envIn, 'inloggen', 'ingelogd met de Trading 212-sleutel');
   // Dit apparaat krijgt zijn eigen code, zodat de toegangscode zelf niet in de browser hoeft (idee 157).
   // Oudere versies van de site gebruiken 'token'; die blijft werken.
+  // Oudere versies van de site lezen 'token'; ook daar staat de code van dit apparaat, nooit de toegangscode zelf.
+  // Anders kon iemand met alleen een apparaatcode via een eigen Trading 212-sleutel (Koppelingen) de vaste
+  // toegangscode ophalen, die Alles intrekken niet ongeldig maakt.
   let device = null;
   try { device = await newSession(envIn, (body && body.label) || 'Nieuw apparaat', (body && body.days) || 0); } catch (e) { console.error('apparaatcode', e); }
-  return json({ ok: true, token: envIn.WEB_TOKEN, session: device ? device.token : null, device: device ? device.session : null, features: await featureStatus(env, envIn) }, 200, cors);
+  if (!device) return json({ ok: false, error: 'De sleutel klopt, maar dit apparaat kon geen eigen code krijgen. Probeer het opnieuw.' }, 500, cors);
+  return json({ ok: true, token: device.token, session: device.token, device: device.session, features: await featureStatus(env, envIn) }, 200, cors);
 }
 
 function safeEqual(a, b) {
@@ -2437,7 +2441,7 @@ async function avTask(env, tk) {
         if (b.premium || !Array.isArray(b.feed)) continue;
         const when = (s) => { const m = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})/.exec(s || ''); return m ? Date.UTC(+m[1], m[2] - 1, +m[3], +m[4], +m[5]) : null; };
         const items = b.feed.map((a) => ({ a, t: when(a.time_published), ts: (a.ticker_sentiment || []).find((x) => x.ticker === sym) }))
-          .filter((x) => x.t && x.a.title && x.a.url && (!x.ts || Number(x.ts.relevance_score) >= 0.2));
+          .filter((x) => x.t && x.a.title && /^https:\/\//.test(String(x.a.url || '')) && (!x.ts || Number(x.ts.relevance_score) >= 0.2));
         set('news', items.filter((x) => x.t >= Date.now() - 10 * 864e5).slice(0, 6)
           .map((x) => ({ t: x.t, headline: String(x.a.title).slice(0, 220), source: x.a.source || '', url: x.a.url })));
         const week = items.filter((x) => x.ts && x.t >= Date.now() - 7 * 864e5);
@@ -3108,7 +3112,7 @@ async function finnhubTask(env, tk) {
     // Finnhub levert dit onderdeel weer zelf: de aanvulling van Alpha Vantage vervalt
     if (out.src && out.src[k]) { out.src = Object.assign({}, out.src); delete out.src[k]; }
     if (k === 'news') {
-      out.news = (Array.isArray(b) ? b : []).filter((n) => n.headline && n.url).sort((a, c) => c.datetime - a.datetime).slice(0, 6)
+      out.news = (Array.isArray(b) ? b : []).filter((n) => n.headline && /^https:\/\//.test(String(n.url || ''))).sort((a, c) => c.datetime - a.datetime).slice(0, 6)
         .map((n) => ({ t: n.datetime * 1000, headline: String(n.headline).slice(0, 220), source: n.source || '', url: n.url }));
       // Alles bewaren in het archief, niet alleen de nieuwste zes
       try { await storeNews(env, tk, b, 100); } catch (e) { console.error('nieuwsarchief', e); }
@@ -4361,12 +4365,13 @@ function scaleMoney(d) {
   const sc = (v) => (typeof v === 'number' && isFinite(v) ? Math.round(v * f * 100) / 100 : v);
   const obj = (o, keys) => { if (o) keys.forEach((k) => { if (k in o) o[k] = sc(o[k]); }); };
   const rows = (t, idx) => { if (t && Array.isArray(t.rows)) t.rows.forEach((r) => idx.forEach((i) => { r[i] = sc(r[i]); })); };
-  rows(d.intraday, [2]); rows(d.hours, [2, 3, 4, 5, 6]); rows(d.days, [2, 3, 4, 5, 6, 7]); rows(d.orders, [4, 8, 9, 10, 11]);
+  // Ook het aantal stuks: met het echte aantal en de koers is de echte waarde terug te rekenen
+  rows(d.intraday, [2, 3]); rows(d.hours, [2, 3, 4, 5, 6]); rows(d.days, [2, 3, 4, 5, 6, 7]); rows(d.orders, [4, 8, 9, 10, 11]);
   (d.today || []).forEach((t) => obj(t, ['current', 'low', 'high', 'avg', 'open', 'change', 'allTimeHigh', 'allTimeLow', 'avgRange']));
   (d.positions || []).forEach((p) => obj(p, ['value', 'unrealized', 'cost', 'quantity']));
   (d.weeks || []).forEach((w) => obj(w, ['accountValue', 'netDeposits', 'cash', 'costBasis', 'investmentsValue', 'unrealized', 'totalResult', 'weekChange', 'newDeposits', 'weekResult']));
   (d.peil || []).forEach((p) => { obj(p, ['total', 'investments', 'cash']); p.positions = []; });
-  Object.values(d.posExtra || {}).forEach((x) => obj(x, ['fx', 'cost']));
+  Object.values(d.posExtra || {}).forEach((x) => obj(x, ['fx', 'cost', 'qty']));
   obj(d.cashNow, ['cash']);
   (((d.ext2 || {}).pies || {}).list || []).forEach((x) => obj(x, ['invested', 'value', 'result', 'cash', 'divGained', 'goal']));
   ((d.ext2 || {}).interest || []).forEach((x) => obj(x, ['amount']));
@@ -4810,7 +4815,7 @@ function flashMerge(fl, tk, list, at) {
   const since = at - FLASH_DAYS * 864e5;
   const fresh = [];
   (Array.isArray(list) ? list : []).forEach((n) => {
-    if (!n || !n.headline || !n.url || have.has(n.url)) return;
+    if (!n || !n.headline || !/^https:\/\//.test(String(n.url || '')) || have.has(n.url)) return;
     const t = Number(n.datetime) * 1000;
     if (!(t >= since) || t > at + 3600e3) return;
     const kind = newsKind(n), breaking = newsBreaking(n);

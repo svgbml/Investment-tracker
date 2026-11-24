@@ -22,7 +22,7 @@ const DAY = 864e5;
 // Taal: Nederlands (standaard), Engels, Duits of Frans; getallen en datums volgen de gekozen taal
 const LANG = (() => { try { const l = localStorage.getItem('tracker.lang'); return ['en', 'de', 'fr'].includes(l) ? l : 'nl'; } catch (e) { return 'nl'; } })();
 const LOCALE = { en: 'en-GB', de: 'de-DE', fr: 'fr-FR' }[LANG] || 'nl-NL';
-const VERSION = 'v84';
+const VERSION = 'v85';
 const nf = (o) => new Intl.NumberFormat(LOCALE, o);
 // Getallen: per apparaat te kiezen bij Instellingen > Weergave (zie js/15-ui.js).
 // numFmtKort: bedragen vanaf duizend afgekort (€ 12,3K) in plaats van volledig (€ 12.345,60).
@@ -63,6 +63,9 @@ const spct = (v) => sgn(v, P2);
 const spct1 = (v) => sgn(v, P1);
 const tone = (v) => (!isNum(v) || v === 0 ? '' : v > 0 ? 'gain' : 'loss');
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+// Link uit externe gegevens (nieuws, deponeringen, een gedeelde weergave): alleen http(s), anders nergens heen.
+// esc() alleen houdt een javascript:-link niet tegen.
+const safeUrl = (u) => (/^https?:\/\//i.test(String(u || '')) ? String(u) : '#');
 const sum = (a) => a.reduce((s, x) => s + x, 0);
 const mean = (a) => (a.length ? sum(a) / a.length : null);
 const stdev = (a) => { if (a.length < 2) return null; const m = mean(a); return Math.sqrt(sum(a.map((x) => (x - m) ** 2)) / (a.length - 1)); };

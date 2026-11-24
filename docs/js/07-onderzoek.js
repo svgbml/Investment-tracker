@@ -39,7 +39,7 @@ function companyResearch(c) {
   else {
     const news = R.news || [];
     tiles.push('<section class="tile pad"><h3>Nieuws' + ageTagOf(R, AGE_LIMIT.news) + '</h3>' + (news.length ? '<div class="news">' + news.map((n) =>
-      '<a class="news-i" href="' + esc(n.url) + '" target="_blank" rel="noopener"><span class="news-m">' + toneTag(n) + esc(fD.format(n.t) + (n.source ? ', ' + n.source : '')) + '</span><span class="news-t">' + esc(n.headline) + '</span></a>').join('') + '</div>'
+      '<a class="news-i" href="' + esc(safeUrl(n.url)) + '" target="_blank" rel="noopener"><span class="news-m">' + toneTag(n) + esc(fD.format(n.t) + (n.source ? ', ' + n.source : '')) + '</span><span class="news-t">' + esc(n.headline) + '</span></a>').join('') + '</div>'
       : '<p class="muted">Geen nieuws in de afgelopen tien dagen' + (c.cur && c.cur !== 'USD' ? ' (de nieuwsbronnen hebben vooral Noord-Amerikaanse bedrijven)' : '') + '.</p>') +
       '<p class="sub" style="margin-top:8px">Koppen en links van ' + srcNameOf(R, 'news') + '; het artikel opent bij de bron.</p></section>');
   }
