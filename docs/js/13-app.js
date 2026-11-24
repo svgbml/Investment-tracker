@@ -152,6 +152,7 @@ Object.assign(EN, {
   'Bedrag ter bevestiging': 'Amount to confirm', 'Grote order.': 'Large order.', 'Extra controle.': 'Extra check.',
   'Indeling': 'Grouping', 'Tegels': 'Tiles', 'Lijst': 'List', 'Eén lijst': 'One list', 'Munt': 'Currency', 'Pie': 'Pie', 'Deel': 'Share',
   'Koersalarm': 'Price alert', 'Live koers': 'Live price',
+  'Als jaarrapport: elk hoofdstuk opent met de kern en een grafiek': 'As an annual report: every chapter opens with the key points and a chart', 'Tijdgewogen rendement': 'Time-weighted return', 'Tijdgewogen': 'Time-weighted', 'onderdelen': 'sections', 'onderdeel': 'section',
   'Met detail': 'With detail', 'Bedrijf volgen': 'Follow a company', 'Bedrijfspagina openen': 'Open company page', 'Tegenover de markt': 'Versus the market', 'Tegenover markt': 'Versus market', 'Berichten en cijfers': 'News and figures', 'Volgende cijfers': 'Next results', 'Laatste cijfers': 'Latest results', 'Kaarsen': 'Candles', 'Laatste trades': 'Latest trades', 'Laatste nieuws': 'Latest news', 'trades per kaars': 'trades per candle', 'per kaars': 'per candle', 'live per trade': 'live per trade', 'voorbeeld, per trade': 'example, per trade', 'Trading 212, elke 2 seconden': 'Trading 212, every 2 seconds', 'trades': 'trades', 'periode': 'period', 'Nog geen trades.': 'No trades yet.', 'Koers en markt': 'Price and market', 'Profiel': 'Profile', 'Notities en alarmen': 'Notes and alerts', 'Koers per aandeel · in euro': 'Price per share · in euros', 'In jouw portefeuille': 'In your portfolio',
   'Aanpassen': 'Change',
   'Welke grafiek': 'Which chart',

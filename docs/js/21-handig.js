@@ -8,6 +8,10 @@
 // (gemaakt met node tools/changelog.mjs); hieronder staat alleen wat de gebruiker merkt.
 // Bij een nieuwe versie: zet de regels van die versie bovenaan, met VERSION uit js/01-basis.js als sleutel.
 const WHATS_NEW = {
+  v77: [
+    'Nieuw uiterlijk, stap 5: Analyse als jaarrapport. Bovenaan je kerncijfers in één strook en een balk met de vijf hoofdstukken die blijft staan terwijl je scrolt, met een streep die laat zien hoe ver je bent.',
+    'Elk hoofdstuk opent met een groot nummer; Rendement begint met de kern in één zin, vier cijfers en een grafiek van jou tegenover je maatstaf. De onderdelen hebben links hun titel. Op de telefoon dragen de tabbladen hun nummer.',
+  ],
   v76: [
     'Nieuw uiterlijk, stap 4: Nieuws als ochtendkrant. Bovenaan de stemming, een strook met kerncijfers en het belangrijkste bericht met de koers van dat aandeel en de berichten als stipjes erop.',
     'Ernaast wat je hebt gemist, daaronder officieel nieuws, geruchten, marktnieuws en kwartaalcijfers in vier kolommen. Alle berichten, de stemmingskaart, analisten en insiders staan in secties met de titel links.',

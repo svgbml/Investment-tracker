@@ -123,7 +123,15 @@ let analyseAll = false;
 function renderAnalyse() {
   const host = mode === 'm' ? $('m-analyse-body') : $('analyse-body');
   if (!host || !M) return;
-  const sec = (id, title, sub, tiles) => '<div class="dash-sec" data-sec="' + id + '"><div class="section-head"><h2>' + esc(title) + '</h2>' + (sub ? '<p class="muted small">' + esc(sub) + '</p>' : '') + '</div><div class="plan-grid">' + tiles.filter(Boolean).join('') + '</div></div>';
+  // Elk onderdeel is een hoofdstuk van het rapport (js/31-analyse-rapport.js): kop voor de tabbladen en "Pagina
+  // aanpassen" (verborgen op het scherm), een opening met nummer en titel, en daaronder de tegels.
+  let K = null;
+  const sec = (id, title, sub, tiles, i, full) => {
+    const t = tiles.filter(Boolean);
+    return '<div class="dash-sec an-ch" data-sec="' + id + '" id="' + id + '"><div class="section-head"><h2>' + esc(title) + '</h2>' + (sub ? '<p class="muted small">' + esc(sub) + '</p>' : '') + '</div>' +
+      (typeof anOpener === 'function' ? anOpener(i, title, sub, full ? t.length : null, K) : '') +
+      '<div class="plan-grid">' + t.join('') + '</div></div>';
+  };
   const AX = () => (typeof analyseExtraTiles === 'function' ? analyseExtraTiles() : []);
   /** @type {[string, string, string, () => string[]][]} */
   const SECS = [
@@ -134,8 +142,9 @@ function renderAnalyse() {
     ['an-tx', 'Transacties en begrippen', 'Alles wat er op je rekening gebeurde, en uitleg van de termen', () => [openOrdersTile(), ledgerTile(), glossaryTile()]],
   ];
   const lazy = mode === 'm' && !analyseAll;
+  if (typeof anHead === 'function') K = anHead(SECS);
   host.innerHTML = (typeof reportHead === 'function' ? reportHead() : '') +
-    SECS.map(([id, title, sub, tiles]) => sec(id, title, sub, lazy ? [] : tiles())).join('') +
+    SECS.map(([id, title, sub, tiles], i) => sec(id, title, sub, lazy ? [] : tiles(), i, !lazy)).join('') +
     '<div class="dash-foot"><button type="button" class="btn ghost" data-dash-edit="analyse">Pagina aanpassen</button>' +
     '<button type="button" class="btn ghost" data-report-print title="Afdrukken of opslaan als pdf; in het rapport staan alle secties, ook de verborgen">Rapport (pdf)</button></div>';
   dashApply(host, 'analyse');
@@ -147,6 +156,7 @@ function renderAnalyse() {
     if (grid) grid.innerHTML = pick[3]().filter(Boolean).join('');
   }
   drawBench(host); drawDrawdown(host); drawPeriodCmp(host); mountLedger(host);
+  if (typeof drawAnLead === 'function') { drawAnLead(host); anNavTrack(); }
   if (typeof mountAnalyseExtra === 'function') mountAnalyseExtra(host);
   secTabs('analyse');
 }
@@ -170,7 +180,7 @@ function secTabs(key) {
   if (!groups.some((g) => g.title === cur)) cur = groups[0].title;
   secPick[key] = cur;
   bar.hidden = false;
-  bar.innerHTML = groups.map((g) => '<button type="button" data-sectab="' + esc(g.title) + '" aria-pressed="' + (g.title === cur) + '">' + esc(SEC_SHORT[g.title] || g.title) + '</button>').join('');
+  bar.innerHTML = groups.map((g, i) => '<button type="button" data-sectab="' + esc(g.title) + '" aria-pressed="' + (g.title === cur) + '">' + (key === 'analyse' ? '<span class="no">' + String(i + 1).padStart(2, '0') + '</span> ' : '') + esc(SEC_SHORT[g.title] || g.title) + '</button>').join('');
   groups.forEach((g) => g.els.forEach((el) => { el.hidden = g.title !== cur; }));
   const on = /** @type {HTMLElement|null} */ (bar.querySelector('[aria-pressed="true"]'));
   if (on) bar.scrollLeft = Math.max(0, on.offsetLeft - 16);
