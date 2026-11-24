@@ -649,6 +649,7 @@ function segButtons(host, opts, current, onPick) {
 function drawHero(p, animate) {
   const r = heroRangeNow();
   const pts = heroSeries(r);
+  viewHashSync();   // periode in de link (idee 37)
   // Periodekeuze (bewaard per apparaat) en de keuze voor een vergelijkingslijn: zie js/21-overzicht.js
   segButtons($(p + 'hero-ranges'), heroRangeList(), r, (k) => { ui.heroRange = k; saveHeroRange(k); if (typeof heroCmpFitRange === 'function') heroCmpFitRange(k); drawHero(p, true); });
   heroCmpButtons(p);

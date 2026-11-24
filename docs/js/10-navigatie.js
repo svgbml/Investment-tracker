@@ -246,12 +246,15 @@ function showPage(p, animate, force) {
 }
 
 function parseHash() {
-  const h = decodeURIComponent(location.hash.replace(/^#/, ''));
+  // Na een vraagteken staat de weergave (idee 37): #bedrijven?groep=sector&sort=waarde, #overzicht?periode=1m
+  const raw0 = location.hash.replace(/^#/, ''), qi = raw0.indexOf('?');
+  const h = decodeURIComponent(qi < 0 ? raw0 : raw0.slice(0, qi));
+  const q = qi < 0 ? null : new URLSearchParams(raw0.slice(qi + 1));
   if (h.indexOf('bedrijf/') === 0) return { tk: h.slice(8) };
   const pk = Object.keys(PSEUDO).find((k) => PSEUDO[k] === h);
   if (pk) return { tk: pk };
   if (h.indexOf('volg/') === 0) return { tk: '~' + h.slice(5).toUpperCase() };
-  return { page: h === 'bedrijven' ? 'list' : h === 'statistieken' || h === 'analyse' ? 'stats' : h === 'plannen' ? 'plan' : h === 'nieuws' ? 'news' : 'home' };
+  return { q, page: h === 'bedrijven' ? 'list' : h === 'statistieken' || h === 'analyse' ? 'stats' : h === 'plannen' ? 'plan' : h === 'nieuws' ? 'news' : 'home' };
 }
 
 function route(first) {
@@ -264,8 +267,60 @@ function route(first) {
     return;
   }
   if (ui.detail) { pushedDetail = false; finishDetail(); }
+  // Weergave uit de link eerst, anders de bewaarde keuze (idee 37)
+  const viewChanged = applyHashView(r.page, r.q);
+  hvReady = true;
   // Stond de bewaarde tekening er al (snelle start)? Dan komt de eerste pagina niet nog eens binnenwandelen
   if (r.page !== ui.page || first) showPage(r.page, !(first && typeof snapTookOver === 'function' && snapTookOver()));
+  if (viewChanged && M) refresh(r.page);
+  viewHashSync();
+}
+
+// ---------- Weergave in de link (idee 37) ----------
+// Groep, sortering, filter en zoekterm van Bedrijven en de periode van de grote grafiek staan in de link, zodat je een
+// weergave kunt bewaren of delen. Bij openen telt de link; zonder link de bewaarde keuze. Bij elke wijziging past de
+// site de link aan zonder extra stap in de geschiedenis (replaceState geeft ook geen hashchange).
+const HV_GROEP = { combi: 'detail', tiles: 'tegels', none: 'lijst', sector: 'sector', country: 'land', cur: 'munt', pie: 'pie' };
+const HV_SORT = { move: 'verandering', value: 'waarde', result: 'resultaat', name: 'naam' };
+const HV_FILTER = { up: 'gestegen', down: 'gedaald' };
+const HV_PERIODE = { today: 'vandaag', '1w': '1w', '1m': '30d', ytd: 'ditjaar', '1y': '1j', all: 'alles' };
+const hvKey = (map, v) => Object.keys(map).find((k) => map[k] === v);
+// Pas na de eerste route de link bijwerken: anders schrijft de eerste tekening de bewaarde keuze over de link heen
+let hvReady = false;
+function applyHashView(page, q) {
+  if (!q) return false;
+  let changed = false;
+  if (page === 'list') {
+    const g = hvKey(HV_GROEP, q.get('groep'));
+    if (g && typeof posState === 'object') { if (mode === 'm') posState.m = g === 'tiles' ? 'none' : g === 'combi' ? 'sector' : g; else posState.d = g; changed = true; }
+    const so = hvKey(HV_SORT, q.get('sort'));
+    if (so) { ui.listSort = so; ui.listDir = q.get('richting') === 'op' ? 'asc' : 'desc'; changed = true; }
+    if (q.has('filter')) { ui.listFilter = hvKey(HV_FILTER, q.get('filter')) || 'all'; changed = true; }
+    if (q.has('zoek')) {
+      ui.listQuery = String(q.get('zoek')).slice(0, 60);
+      ['list-search', 'm-search'].forEach((id) => { const el = /** @type {HTMLInputElement|null} */ ($(id)); if (el) el.value = ui.listQuery; });
+      changed = true;
+    }
+  } else if (page === 'home') {
+    const pr = hvKey(HV_PERIODE, q.get('periode'));
+    if (pr && typeof heroRangeList === 'function' && heroRangeList().some(([k]) => k === pr)) { ui.heroRange = pr; changed = true; }
+  }
+  return changed;
+}
+function viewHashSync() {
+  if (!hvReady || ui.detail || sharedView || (ui.page !== 'list' && ui.page !== 'home')) return;
+  const raw0 = location.hash.replace(/^#/, ''), base = decodeURIComponent(raw0.split('?')[0]), want = pageHash(ui.page);
+  if (base && base !== want) return;   // een ander adres (bedrijf, detailpagina): niet aanraken
+  const q = new URLSearchParams();
+  if (ui.page === 'list') {
+    if (typeof posGroupBy === 'function' && HV_GROEP[posGroupBy()]) q.set('groep', HV_GROEP[posGroupBy()]);
+    q.set('sort', HV_SORT[ui.listSort] || 'verandering');
+    if (ui.listDir === 'asc') q.set('richting', 'op');
+    if (HV_FILTER[ui.listFilter]) q.set('filter', HV_FILTER[ui.listFilter]);
+    if (ui.listQuery.trim()) q.set('zoek', ui.listQuery.trim());
+  } else q.set('periode', HV_PERIODE[typeof heroRangeNow === 'function' ? heroRangeNow() : ui.heroRange] || '1w');
+  const h = '#' + want + '?' + q.toString();
+  if (location.hash !== h) { try { history.replaceState(history.state, '', h); } catch (e) { /* niet erg */ } }
 }
 
 window.addEventListener('hashchange', () => route(false));

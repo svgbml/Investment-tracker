@@ -8,6 +8,9 @@
 // (gemaakt met node tools/changelog.mjs); hieronder staat alleen wat de gebruiker merkt.
 // Bij een nieuwe versie: zet de regels van die versie bovenaan, met VERSION uit js/01-basis.js als sleutel.
 const WHATS_NEW = {
+  v91: [
+    'Weergave in de link: de indeling, sortering, filter en zoekterm van Bedrijven en de periode van de grote grafiek staan nu in het adres (bijvoorbeeld #bedrijven?groep=sector&sort=waarde). Bewaar of deel zo een weergave; wie de link opent, ziet dezelfde indeling.',
+  ],
   v90: [
     'Meerdere tegelijk: met Kiezen op je volglijst zet je vinkjes en geef je de gekozen aandelen in één keer een label, een koersalarm (een percentage onder of boven de koers van nu) of haal je ze van de volglijst, met Ongedaan maken.',
   ],

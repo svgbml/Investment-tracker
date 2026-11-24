@@ -130,6 +130,7 @@ function posSegButtons() {
 // De weergave 'list' opnieuw vastleggen: 'Met detail' (lijst per sector met een vak ernaast, js/30-bedrijven.js),
 // 'Tegels' (de oude tegels) of rijen met groepen. Kop en kerncijfers: bcHead.
 defineView('list', () => {
+  viewHashSync();
   if (mode === 'm') { renderMList(); bcHead(); return; }
   renderList();
   posSegButtons();
