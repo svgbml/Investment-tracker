@@ -326,14 +326,16 @@ function renderWatchDetail(sym) {
       : '<p class="hero-change ' + tone(ch) + '">' + esc(isNum(ch) ? spct(ch) + ' op de laatste handelsdag' : 'Nog geen koers; die wordt de volgende ochtend opgehaald.') + '</p>');
   const chart = '<div class="chart ' + (mode === 'm' ? 'm-chart' : 'hero-chart') + '" data-chart="watch" data-sym="' + esc(sym) + '" role="img" aria-label="' + esc('Koers van ' + c.name) + '"></div><div class="xlabels" data-x="watch"></div>';
   const remove = '<button type="button" class="btn ghost danger" data-unwatch="' + esc(sym) + '">Van volglijst halen</button>';
+  // Snelle modus (js/23-live.js): live grafiek van gettex en, met een Finnhub-sleutel, elke trade
+  const fast = typeof fastTile === 'function' ? fastTile(c) : '';
   if (mode === 'm') {
     return '<div class="md"><div class="m-dtop"><button type="button" class="m-back" data-act="back">' + esc(crumbBack()) + '</button><span class="t">' + esc(sym) + '</span><span></span></div>' + crumbNav(sym + ' · volglijst') +
       '<div class="m-hero"><div class="m-swipe">' + head + '</div>' + chart + '</div>' +
-      '<div class="m-body"><div class="m-stack">' + agenda + priceAlertTile(sym, p && p.price, (p && p.currency) || 'USD') + myTargetTile(sym) + watchMetaTile(sym, p) + watchTradeTile(sym, p) + research.join('') + market.tiles.join('') + market.table + '<div style="padding:8px 0">' + remove + '</div></div></div></div>';
+      '<div class="m-body"><div class="m-stack">' + fast + agenda + priceAlertTile(sym, p && p.price, (p && p.currency) || 'USD') + myTargetTile(sym) + watchMetaTile(sym, p) + watchTradeTile(sym, p) + research.join('') + market.tiles.join('') + market.table + '<div style="padding:8px 0">' + remove + '</div></div></div></div>';
   }
   return '<div class="band">' + crumbNav(sym + ' · volglijst') + '<div class="d-top"><button type="button" class="btn dark" data-act="back">← Terug</button>' + remove + '</div>' +
     '<div class="hero-head"><div>' + head + '</div></div>' + chart + '</div>' +
-    '<div class="wrap"><div class="grid wide">' + agenda + priceAlertTile(sym, p && p.price, (p && p.currency) || 'USD') + myTargetTile(sym) + watchMetaTile(sym, p) + watchTradeTile(sym, p) + market.tiles.join('') + '</div>' +
+    '<div class="wrap">' + (fast ? '<div class="grid wide" style="margin-bottom:16px">' + fast + '</div>' : '') + '<div class="grid wide">' + agenda + priceAlertTile(sym, p && p.price, (p && p.currency) || 'USD') + myTargetTile(sym) + watchMetaTile(sym, p) + watchTradeTile(sym, p) + market.tiles.join('') + '</div>' +
     '<div class="section-head"><h2>Nieuws, analisten en cijfers</h2></div><div class="grid wide">' + research.join('') + '</div>' +
     (market.table ? '<div style="margin-top:16px">' + market.table + '</div>' : '') + '</div>';
 }

@@ -8,6 +8,9 @@
 // (gemaakt met node tools/changelog.mjs); hieronder staat alleen wat de gebruiker merkt.
 // Bij een nieuwe versie: zet de regels van die versie bovenaan, met VERSION uit js/01-basis.js als sleutel.
 const WHATS_NEW = {
+  v82: [
+    'De snelle modus staat nu ook op de pagina van een aandeel op je volglijst: de live grafiek van gettex, en met een Finnhub-sleutel bij een Amerikaans aandeel ook elke trade als eigen kaarsen. De koers van Trading 212 elke 2 seconden is er niet, omdat Trading 212 alleen koersen van je eigen posities geeft.',
+  ],
   v81: [
     'De live grafiek van gettex in de snelle modus begint nu op 5 minuten per kaars. Bij 1 minuut waren kaarsen van rustige aandelen en ETF\'s vaak alleen een streepje, omdat er in die minuut maar één trade was. In de grafiek kun je zelf een andere tijd kiezen.',
   ],

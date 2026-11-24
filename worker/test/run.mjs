@@ -689,6 +689,19 @@ await test('live koersen: alle posities nu, kort in het geheugen, Finnhub alleen
   r = await jsonOf(await req('/api/quotes?fast=AAPL'));
   assert.deepEqual(r.fast, { sym: 'AAPL', key: null, held: true }, 'zonder Finnhub-sleutel geen sleutel: ' + JSON.stringify(r.fast));
   assert.equal((await req('/api/quotes?fast=%3Cx%3E')).status, 400);
+  // Volglijst: geen positie, wel een Amerikaans symbool voor Finnhub; een Europese notering ("ASML.AS") niet
+  const savedSettings = kv('settings');
+  setKv('settings', Object.assign(JSON.parse(savedSettings || '{}'), { watchlist: ['LMT', 'ASML.AS'] }));
+  r = await jsonOf(await req('/api/quotes?fast=LMT', { env: fenv }));
+  assert.deepEqual(r.fast, { sym: 'LMT', key: 'fh-test-key', held: false, watch: true }, JSON.stringify(r.fast));
+  r = await jsonOf(await req('/api/quotes?fast=ASML.AS', { env: fenv }));
+  assert.deepEqual(r.fast, { sym: null, key: null, held: false, watch: true }, JSON.stringify(r.fast));
+  r = await jsonOf(await req('/api/quotes?fast=LMT'));
+  assert.deepEqual(r.fast, { sym: 'LMT', key: null, held: false, watch: true }, 'zonder Finnhub-sleutel geen sleutel: ' + JSON.stringify(r.fast));
+  r = await jsonOf(await req('/api/quotes?fast=MSFT', { env: fenv }));
+  assert.deepEqual(r.fast, { sym: null, key: null, held: false }, 'niet op de volglijst: geen sleutel ' + JSON.stringify(r.fast));
+  if (savedSettings == null) DB.db.prepare("DELETE FROM kv WHERE key = 'settings'").run(); else setKv('settings', savedSettings);
+  WM._test.kvMemoClear();
   // Limiet bij Trading 212: de vorige stand, gemarkeerd als oud
   WM._test.QUOTES.t = 0;
   routes = [[/t212\.test\/api\/v0\/equity\/positions/, () => reply({ code: 'TooManyRequests' }, 429)]];

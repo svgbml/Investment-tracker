@@ -5426,6 +5426,15 @@ async function liveQuotes(env, fast, us) {
     const p = out.positions.find((x) => x.tk === fast);
     const sym = p && p.cur === 'USD' && /_US_EQ$/.test(p.t212 || '') ? await usTicker(env, p.tk) : null;
     out.fast = { sym, key: sym && env.FINNHUB_KEY ? env.FINNHUB_KEY : null, held: !!p };
+    // Niet in je portefeuille maar wel op je volglijst: Trading 212 geeft daar geen koers van. Een symbool zonder
+    // beursachtervoegsel (geen ".AS", ".DE" …) staat op een Amerikaanse beurs; dat kan de site via Finnhub per trade volgen.
+    if (!p) {
+      const watch = ((await getSettings(env)).watchlist || []).includes(String(fast).toUpperCase());
+      if (watch) {
+        const ws = /^[A-Z]{1,6}(-[A-Z])?$/.test(String(fast)) ? String(fast) : null;
+        out.fast = { sym: ws, key: ws && env.FINNHUB_KEY ? env.FINNHUB_KEY : null, held: false, watch: true };
+      }
+    }
   }
   if (us && env.FINNHUB_KEY) {
     const syms = {};

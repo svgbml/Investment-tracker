@@ -20,7 +20,7 @@ De makkelijkste weg is de knop *Deploy to Cloudflare* in de [hoofd-README](../RE
 4. **Toegangscode:** open de Worker, ga naar *Settings → Variables and Secrets* en voeg `WEB_TOKEN` toe als type *Secret* (niet onder *Build*). Dat is het enige geheim dat bij Cloudflare moet staan.
 5. **Website:** open de website, vul bij *Instellingen* het adres van de Worker (eindigt op `/api/data`) en je `WEB_TOKEN` in, en vul daarna onder *Koppelingen en functies* je Trading 212-sleutel in.
 
-Sleutels die je via de website invult, bewaart de Worker in de tabel `kv` van je eigen database en stuurt hij nooit terug, behalve de Finnhub-sleutel aan je ingelogde site als je de snelle modus van een Amerikaans aandeel aanzet (`/api/quotes?fast=`) of live koersen aan hebt (`/api/quotes?us=1`). Liever bij Cloudflare? Zet ze daar als *Secret* met dezelfde naam (`T212_KEY`, `T212_SECRET`, `FMP_KEY`, `FINNHUB_KEY`, `SEC_CONTACT`); die gaan altijd voor. Let op: een nieuw geheim bij Cloudflare wordt bij een Worker die vanuit GitHub wordt gebouwd pas actief bij de volgende build.
+Sleutels die je via de website invult, bewaart de Worker in de tabel `kv` van je eigen database en stuurt hij nooit terug, behalve de Finnhub-sleutel aan je ingelogde site als je de snelle modus van een Amerikaans aandeel aanzet (`/api/quotes?fast=`, ook voor een Amerikaans aandeel op je volglijst) of live koersen aan hebt (`/api/quotes?us=1`). Liever bij Cloudflare? Zet ze daar als *Secret* met dezelfde naam (`T212_KEY`, `T212_SECRET`, `FMP_KEY`, `FINNHUB_KEY`, `SEC_CONTACT`); die gaan altijd voor. Let op: een nieuw geheim bij Cloudflare wordt bij een Worker die vanuit GitHub wordt gebouwd pas actief bij de volgende build.
 
 ## Handige adressen
 

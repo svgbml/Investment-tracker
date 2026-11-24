@@ -281,7 +281,7 @@ const fastQ = {
   tk: /** @type {string|null} */ (null), sym: null, src: '',
   bars: /** @type {{t:number,o:number,h:number,l:number,c:number,n:number}[]} */ ([]), last: null, lastT: 0,
   trades: /** @type {{t:number,p:number,v:number|null}[]} */ ([]),
-  syncs: [], size: 30e3, win: 15 * 60e3, fx: null, qty: null, cur: null, view: 'tv',
+  syncs: [], size: 30e3, win: 15 * 60e3, fx: null, qty: null, cur: null, view: 'tv', watch: false,
   note: '', lastSync: 0, raf: 0, sim: 0, paused: false,
 };
 
@@ -292,6 +292,15 @@ function fastUsListed(tk) {
   if (!x) return null;
   return x.t212 ? /_US_EQ$/.test(x.t212) && x.cur === 'USD' : x.cur === 'USD';
 }
+// Volglijst: een aandeel dat je niet hebt. Trading 212 geeft alleen koersen van je eigen posities, dus de snelle modus
+// volgt dan de gettex-grafiek (TradingView) en, met een Finnhub-sleutel, elke trade van een Amerikaans aandeel.
+const fastIsWatch = (tk) => !!M && !M.byTk.has(tk) && watchSyms().includes(tk);
+// Een volglijstsymbool zonder beursachtervoegsel (geen ".AS", ".DE" …) en in dollar: een Amerikaanse notering
+function fastWatchUs(tk) {
+  const p = M && M.mk && M.mk.ok ? M.mk.prof(tk) : null;
+  return !/\./.test(tk) && (!p || !p.currency || p.currency === 'USD');
+}
+const FAST_WATCH_NOTE = 'Trading 212 geeft alleen koersen van je eigen posities. Voor dit volglijstaandeel toont de snelle modus de gettex-grafiek';
 const FAST_WARN_PRE = 'Dit aandeel noteert niet in dollar op een Amerikaanse beurs. De snelle modus kan dan geen losse trades volgen en vraagt elke 2 seconden de koers van Trading 212 via je Worker: ongeveer 1.800 verzoeken per uur, van de 100.000 per dag die het gratis plan van Cloudflare toestaat. Zet hem weer uit als je klaar bent.';
 // ---------- gettex: live grafiek van TradingView ----------
 // De gratis grafieken van TradingView tonen koersen van gettex (beurs München, 's ochtends tot 's avonds, in euro) live;
@@ -345,7 +354,8 @@ function fastTile(c) {
   if (!liveAllowed()) return '';
   fastPaint();   // koptekst en grafiek vullen na het tekenen
   const seg = (attr, list, label) => tpl`<div class="seg light" role="group" aria-label="${label}">${list.map(([ms, l]) => tpl`<button type="button" ${raw(attr)}="${ms}" aria-pressed="false">${l}</button>`)}</div>`;
-  const trade = typeof tradingOn === 'function' && tradingOn() && !sharedView && c.qty;
+  const watch = !!c.watch;
+  const trade = typeof tradingOn === 'function' && tradingOn() && !sharedView && c.qty && !watch;
   const news = typeof bcNewsHtml === 'function' ? bcNewsHtml(c.tk, 3) : '';
   // Op het volle scherm: balk bovenaan, kaarsen links, je positie, de laatste trades en nieuws rechts.
   // Zonder snelle modus is dit een gewone tegel met de live koers en een knop.
@@ -361,7 +371,7 @@ function fastTile(c) {
     <div class="fast-head"><h3>${T('Live koers')}</h3><button type="button" class="btn ghost" data-fast-btn aria-pressed="false">${T('Snelle modus')}</button></div>
     <div class="fast-main">
       <div class="fast-top"><div><p class="fast-lbl">${T('Koers per aandeel')}</p><p class="fast-price">${money(c.priceNative, c.cur)}</p><p class="small fast-day"></p></div>
-        <div class="fast-pos"><p class="fast-lbl">${T('Jouw positie')}</p><p class="fast-val">${eur(c.value)}</p><p class="small fast-pl"></p></div>
+        ${watch ? tpl`<div class="fast-pos"><p class="fast-lbl">${T('Volglijst')}</p><p class="small muted">${T('Je hebt dit aandeel niet')}</p></div>` : tpl`<div class="fast-pos"><p class="fast-lbl">${T('Jouw positie')}</p><p class="fast-val">${eur(c.value)}</p><p class="small fast-pl"></p></div>`}
         <dl class="fast-facts"></dl></div>
       <p class="small fast-warn" hidden></p>
       <div class="fast-views" hidden><div class="seg light" role="group" aria-label="${T('Welke grafiek')}"><button type="button" data-fast-view="tv" aria-pressed="true">${T('gettex (live)')}</button><button type="button" data-fast-view="own" aria-pressed="false">${T('Controle')}</button></div>
@@ -374,10 +384,11 @@ function fastTile(c) {
       <div class="fast-foot"><span class="fast-size"></span><span>${T('trades per kaars')}</span><span class="fast-at"></span></div>
       <p class="sub fast-sub"></p>
       <p class="small loss fast-sync" role="status"></p>
-      <p class="sub fast-help">${T('Met een gettex-symbool toont de snelle modus eerst de live grafiek van gettex (beurs München, in euro) via TradingView. Die koers kan iets afwijken van die van Trading 212, en in de avond zijn er bij rustige aandelen weinig trades. Laadt de grafiek niet (geen internet, TradingView geblokkeerd), kies dan Controle.')} ${T('De snelle modus volgt elke trade van dit aandeel via Finnhub (Amerikaanse aandelen, met een Finnhub-sleutel); anders elke 2 seconden de koers van Trading 212. Elke kaars is 30 seconden tot 15 minuten: groen als de koers in die tijd steeg, rood als hij daalde. Op de achtergrond vergelijkt de tracker elke minuut beide bronnen; alleen als ze meer dan 0,5% verschillen, zie je een waarschuwing. Er wordt niets opgeslagen.')}</p>
+      ${watch ? tpl`<p class="sub fast-help">${T('Bij een aandeel op je volglijst toont de snelle modus de live grafiek van gettex (beurs München, in euro) via TradingView, en met een Finnhub-sleutel bij een Amerikaans aandeel ook elke trade als eigen kaarsen. De koers van Trading 212 is er niet: die geeft alleen koersen van je eigen posities. Er wordt niets opgeslagen.')}</p>` : ''}
+      <p class="sub fast-help"${raw(watch ? ' hidden' : '')}>${T('Met een gettex-symbool toont de snelle modus eerst de live grafiek van gettex (beurs München, in euro) via TradingView. Die koers kan iets afwijken van die van Trading 212, en in de avond zijn er bij rustige aandelen weinig trades. Laadt de grafiek niet (geen internet, TradingView geblokkeerd), kies dan Controle.')} ${T('De snelle modus volgt elke trade van dit aandeel via Finnhub (Amerikaanse aandelen, met een Finnhub-sleutel); anders elke 2 seconden de koers van Trading 212. Elke kaars is 30 seconden tot 15 minuten: groen als de koers in die tijd steeg, rood als hij daalde. Op de achtergrond vergelijkt de tracker elke minuut beide bronnen; alleen als ze meer dan 0,5% verschillen, zie je een waarschuwing. Er wordt niets opgeslagen.')}</p>
     </div>
     <aside class="fast-side">
-      <div class="fs-pos"><p class="fast-lbl">${T('Jouw positie')}${c.qty ? ' · ' + N4.format(c.qty) + (c.qty === 1 ? ' aandeel' : ' aandelen') : ''}</p><p class="fs-val">${eur(c.value)}</p><dl class="fs-kv"></dl></div>
+      ${watch ? '' : tpl`<div class="fs-pos"><p class="fast-lbl">${T('Jouw positie')}${c.qty ? ' · ' + N4.format(c.qty) + (c.qty === 1 ? ' aandeel' : ' aandelen') : ''}</p><p class="fs-val">${eur(c.value)}</p><dl class="fs-kv"></dl></div>`}
       <div class="fs-trades"><h4>${T('Laatste trades')}</h4><ol class="fs-list"></ol></div>
       ${news ? tpl`<div class="fs-news"><h4>${T('Laatste nieuws')}</h4>${raw(news)}</div>` : ''}
     </aside>
@@ -388,17 +399,20 @@ async function fastStart(tk, keep) {
   const kept = keep ? { bars: fastQ.bars, syncs: fastQ.syncs, last: fastQ.last, lastT: fastQ.lastT, trades: fastQ.trades } : { bars: [], syncs: [], last: null, lastT: 0, trades: [] };
   fastStop();
   const c = M && M.companies.find((x) => x.tk === tk);
+  const watch = !c && fastIsWatch(tk);
   // opnieuw aan: Finnhub mag het opnieuw proberen. In het voorbeeld eerst de eigen kaarsen: de grafiek van gettex
   // toont echte koersen, die niet bij de verzonnen voorbeeldportefeuille passen.
   if (!keep) { fastQ.view = demo ? 'own' : 'tv'; sock.dead = false; }
   Object.assign(fastQ, kept, { tk, sym: null, src: '', note: T('Verbinden…'), lastSync: 0, paused: false,
-    qty: c ? c.qty : null, cur: c ? c.cur : null, fx: null });
+    qty: c ? c.qty : null, cur: c ? c.cur : watch ? watchPseudo(tk).cur : null, fx: null, watch });
   fastPaint();
   if (demo) {
-    // Zoals in het echt: buiten de VS geen losse trades, maar de (voorbeeld)koers van Trading 212 elke 2 seconden
-    const us = fastUsListed(tk) !== false;
-    Object.assign(fastQ, { src: us ? 'demo' : 't212', sym: tk, note: '' });
-    if (!keep) fastDemoHistory(c);
+    // Zoals in het echt: buiten de VS geen losse trades, maar de (voorbeeld)koers van Trading 212 elke 2 seconden.
+    // Een volglijstaandeel buiten de VS heeft in het echt alleen de gettex-grafiek.
+    const us = watch ? fastWatchUs(tk) : fastUsListed(tk) !== false;
+    Object.assign(fastQ, { src: us ? 'demo' : watch ? 'none' : 't212', sym: tk, note: !us && watch ? T(FAST_WATCH_NOTE) + '.' : '' });
+    if (!us && watch) { fastQ.view = 'tv'; liveSchedule(liveDelay()); fastPaint(); return; }
+    if (!keep) fastDemoHistory(c || (watch ? watchPseudo(tk) : null));
     if (us) fastQ.sim = setInterval(fastDemoTick, 200);
     liveSchedule(0);
     return;
@@ -410,7 +424,11 @@ async function fastStart(tk, keep) {
     liveQ.snap = r;
     const f = r.fast || {};
     if (f.sym && f.key) { fastQ.sym = f.sym; fastOpen(f.key); }
-    else {
+    else if (watch) {
+      fastQ.src = 'none';
+      fastQ.view = 'tv';
+      fastQ.note = T(FAST_WATCH_NOTE) + (f.sym ? T('; met een Finnhub-sleutel ook elke trade.') : '.');
+    } else {
       fastQ.src = 't212';
       fastQ.note = !f.held ? T('Trading 212 meldt dit aandeel niet (meer) in je portefeuille.')
         : f.sym ? T('Geen Finnhub-sleutel ingesteld: koers van Trading 212 elke 2 seconden.')
@@ -419,7 +437,7 @@ async function fastStart(tk, keep) {
     fastFromSnap(r, true);
   } catch (e) {
     if (fastQ.tk !== tk) return;
-    fastQ.src = 't212';
+    fastQ.src = watch ? 'none' : 't212';
     fastQ.note = 'De snelle modus kon niet starten: ' + String(e && e.message || e).slice(0, 160);
   }
   liveSchedule(liveDelay());
@@ -436,6 +454,14 @@ function fastOpen(key) {
 }
 // Finnhub weigert of valt weg (bijvoorbeeld een tweede apparaat met dezelfde sleutel): door met Trading 212, niet opnieuw proberen
 function fastFallback(why) {
+  if (fastQ.watch) {
+    fastQ.src = 'none';
+    fastQ.view = 'tv';
+    fastQ.note = why + '. ' + T(FAST_WATCH_NOTE) + '.';
+    sockSync();
+    fastPaint();
+    return;
+  }
   fastQ.src = 't212';
   fastQ.note = why + '. ' + T('Nu de koers van Trading 212 elke 2 seconden; zet de snelle modus uit en aan om Finnhub opnieuw te proberen.');
   sockSync();
@@ -535,20 +561,23 @@ function fastDraw() {
     const ctl = /** @type {HTMLElement} */ (box.querySelector('.fast-ctl'));
     const cv = /** @type {HTMLCanvasElement} */ (box.querySelector('.fast-chart'));
     // gettex-grafiek (TradingView) of de eigen kaarsen als controle: Finnhub (Amerikaanse beurs) of Trading 212
-    const gx = on ? fastGettex(tk) : null, tv = !!gx && fastQ.view === 'tv';
+    const noFeed = on && fastQ.src === 'none';
+    const gx = on ? fastGettex(tk) : null, tv = !!gx && (fastQ.view === 'tv' || noFeed);
     const views = /** @type {HTMLElement} */ (box.querySelector('.fast-views'));
     views.hidden = !gx;
+    const ownBtn = /** @type {HTMLElement|null} */ (views.querySelector('[data-fast-view="own"]'));
+    if (ownBtn) ownBtn.hidden = noFeed;
     if (gx) {
       views.querySelectorAll('[data-fast-view]').forEach((b) => b.setAttribute('aria-pressed', String((/** @type {HTMLElement} */ (b).dataset.fastView === 'tv') === tv)));
       setTxt(views.querySelector('[data-fast-view="own"]'), fastQ.src === 'finnhub' || fastQ.src === 'demo' ? T('Controle: Nasdaq/NYSE') : T('Controle: Trading 212'));
-      const how = { own: T('jouw keuze'), isin: T('zelfde ISIN als je positie'), list: T('uit de lijst van grote bedrijven') }[gx.how];
+      const how = { own: T('jouw keuze'), isin: T('zelfde ISIN als je positie'), list: T('uit de lijst van grote bedrijven') }[gx.how] || '';
       const gl = box.querySelector('.fast-gx');
       if (!gl.querySelector('button')) gl.innerHTML = String(tpl`<span></span> <button type="button" class="linklike small" data-gx-edit>${T('Aanpassen')}</button>`);
       setTxt(gl.firstElementChild, 'gettex: ' + gx.sym + ' (' + how + ')');
     }
     fastTvFrame(box, tv ? gx.sym : null);
     /** @type {HTMLElement} */ (box.querySelector('.fast-tv')).hidden = !tv;
-    ctl.hidden = cv.hidden = !on || tv;
+    ctl.hidden = cv.hidden = !on || tv || noFeed;
     if (!on) /** @type {HTMLElement} */ (box.querySelector('.fast-gx-form')).hidden = true;
     const h = fastHead(tk, on);
     if (h) {
@@ -558,14 +587,17 @@ function fastDraw() {
       day.className = 'small fast-day ' + tone(h.day);
       setTxt(box.querySelector('.fast-val'), eur(h.value));
       const pl = box.querySelector('.fast-pl');
-      setTxt(pl, isNum(h.pl) ? seur(h.pl) + (isNum(h.plPct) ? ' (' + spct(h.plPct) + ')' : '') : '');
-      pl.title = T('Winst of verlies sinds aankoop');
-      pl.className = 'small fast-pl ' + tone(h.pl);
+      // Een volglijstaandeel heeft geen positie en dus geen regel met winst of verlies
+      if (pl) {
+        setTxt(pl, isNum(h.pl) ? seur(h.pl) + (isNum(h.plPct) ? ' (' + spct(h.plPct) + ')' : '') : '');
+        pl.title = T('Winst of verlies sinds aankoop');
+        pl.className = 'small fast-pl ' + tone(h.pl);
+      }
     }
     const sub = box.querySelector('.fast-sub'), sync = box.querySelector('.fast-sync');
     // Waarschuwing over de verzoeken: vooraf bij een aandeel van buiten de VS, en zolang Trading 212 elke 2 seconden gevraagd wordt
     const warn = /** @type {HTMLElement} */ (box.querySelector('.fast-warn'));
-    const wt = on ? (fastQ.src === 't212' ? T(FAST_WARN_ON) : '') : fastUsListed(tk) === false ? T(FAST_WARN_PRE) : '';
+    const wt = fastIsWatch(tk) ? '' : on ? (fastQ.src === 't212' ? T(FAST_WARN_ON) : '') : fastUsListed(tk) === false ? T(FAST_WARN_PRE) : '';
     setTxt(warn, wt);
     warn.hidden = !wt;
     if (!on) { setTxt(sub, ''); setTxt(sync, ''); return; }
@@ -578,7 +610,8 @@ function fastDraw() {
     // De controle loopt op de achtergrond; alleen bij een afwijking een waarschuwing
     const sy = fastQ.syncs[fastQ.syncs.length - 1];
     const off = fastQ.src !== 't212' && sy && Math.abs(sy.b / sy.a - 1) > FAST_SYNC_WARN;
-    if (tv) setTxt(sub, (fastQ.src === 'finnhub' ? 'Controle op de achtergrond: Finnhub en Trading 212' : fastQ.src === 'demo' ? 'Controle op de achtergrond: voorbeeldkoers' : 'Controle op de achtergrond: Trading 212 elke 2 seconden') + (fastQ.note ? '. ' + fastQ.note : ''));
+    if (tv) setTxt(sub, (fastQ.watch ? (fastQ.src === 'finnhub' ? 'Op de achtergrond ook elke trade via Finnhub' : fastQ.src === 'demo' ? 'Op de achtergrond ook de voorbeeldkoers' : '') : fastQ.src === 'finnhub' ? 'Controle op de achtergrond: Finnhub en Trading 212' : fastQ.src === 'demo' ? 'Controle op de achtergrond: voorbeeldkoers' : 'Controle op de achtergrond: Trading 212 elke 2 seconden') + (fastQ.note ? (fastQ.watch && fastQ.src === 'none' ? '' : '. ') + fastQ.note : ''));
+    else if (noFeed) setTxt(sub, fastQ.note + ' ' + T('Voor dit aandeel is nog geen gettex-symbool bekend; vul er een in met Aanpassen.'));
     setTxt(sync, off ? 'Let op: ' + (fastQ.src === 'demo' ? 'de voorbeeldkoers' : 'de koers van Finnhub') + ' (' + money(sy.b, fastQ.cur) + ') wijkt ' + P1.format(Math.abs(sy.b / sy.a - 1)) +
       ' af van die van Trading 212 (' + money(sy.a, fastQ.cur) + ') bij de controle van ' + fLiveT.format(sy.t) + '. Een van beide kan vertraagd zijn; reken met de koers van Trading 212.' : '');
     if (!tv) fastChart(cv, cs);
@@ -605,7 +638,7 @@ function fastFull(box, on) {
 // Balk en zijkant van het volle scherm: bron, hoog en laag, je positie en de laatste trades
 const fHMS = new Intl.DateTimeFormat(LOCALE, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 function fastSide(box, cs, h, tv, gx) {
-  const src = tv ? 'gettex ' + (gx ? gx.sym : '') + ', via TradingView' : fastQ.src === 'finnhub' ? T('live per trade') : fastQ.src === 'demo' ? T('voorbeeld, per trade') : fastQ.src === 't212' ? T('Trading 212, elke 2 seconden') : T('Verbinden…');
+  const src = tv ? 'gettex ' + (gx ? gx.sym : '') + ', via TradingView' : fastQ.src === 'none' ? T('geen live koers') : fastQ.src === 'finnhub' ? T('live per trade') : fastQ.src === 'demo' ? T('voorbeeld, per trade') : fastQ.src === 't212' ? T('Trading 212, elke 2 seconden') : T('Verbinden…');
   setTxt(box.querySelector('.fb-src'), src);
   const live = /** @type {HTMLElement|null} */ (box.querySelector('.fb-live'));
   if (live) live.classList.toggle('on', fastQ.src === 'finnhub' || fastQ.src === 'demo');
@@ -651,6 +684,14 @@ addEventListener('resize', () => { if (fastQ.tk) fastPaint(); }, { passive: true
 // verlies sinds aankoop. In de snelle modus uit de laatste trade, anders uit de live stand of de laatste meting.
 function fastHead(tk, on) {
   const c = M && M.byTk.get(tk);
+  if (!c && fastIsWatch(tk)) {
+    const w = watchPseudo(tk), p = M.mk.ok ? M.mk.prof(tk) : null;
+    const live = on && isNum(fastQ.last);
+    const price = live ? fastQ.last : w.priceNative;
+    const ch = p && isNum(p.change) ? p.change / 100 : null;
+    const day = isNum(ch) && w.priceNative > 0 && isNum(price) ? (1 + ch) * price / w.priceNative - 1 : null;
+    return { price, cur: w.cur, day, value: null, pl: null, plPct: null };
+  }
   if (!c) return null;
   const s = liveQ.on && liveFresh() ? liveQ.snap.positions.find((x) => x.tk === tk) : null;
   const live = on && isNum(fastQ.last);
