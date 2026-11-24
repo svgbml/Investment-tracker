@@ -159,7 +159,7 @@ function sockOpen() {
       let fast = false;
       m.data.forEach((d) => {
         if (!d || !(d.p > 0) || !isNum(d.t)) return;
-        if (fastQ.src === 'finnhub' && d.s === fastQ.sym) { fastAdd(d.t, d.p); fast = true; }
+        if (fastQ.src === 'finnhub' && d.s === fastQ.sym) { fastAdd(d.t, d.p, d.v); fast = true; }
         const tk = liveQ.on ? sock.map.get(d.s) : null;
         if (tk) liveTrade(tk, d.p, d.t);
       });
@@ -268,15 +268,19 @@ function demoQuotes() {
 }
 
 // =====================================================================
-// ---------- Snelle modus: elke trade van één aandeel, als kaarsen van 30 seconden of 1 minuut ----------
-// Trades gaan meteen in blokjes van 30 seconden (open, hoog, laag, slot); losse trades worden niet bewaard,
-// dus ook een druk aandeel kost weinig geheugen. Kaarsen van 1 minuut zijn twee blokjes samen.
-const FAST_BUCKET = 30e3, FAST_KEEP = 60 * 60e3, FAST_SYNC_MS = 60e3, FAST_SYNC_WARN = 0.005;
-const FAST_SIZES = [[30e3, '30 s'], [60e3, '1 min']];
-const FAST_WINS = [[5 * 60e3, '5 min'], [15 * 60e3, '15 min'], [60 * 60e3, '1 uur']];
+// ---------- Snelle modus: elke trade van één aandeel, als kaarsen van 30 seconden tot 15 minuten ----------
+// Trades gaan meteen in blokjes van 30 seconden (open, hoog, laag, slot); alleen de laatste 30 trades worden los
+// bewaard (voor de lijst "Laatste trades"), dus ook een druk aandeel kost weinig geheugen. Grotere kaarsen zijn
+// blokjes samen. De snelle modus vult het hele scherm (ontwerp 2026): kaarsen, trades per kaars, je positie en nieuws.
+const FAST_BUCKET = 30e3, FAST_KEEP = 4 * 60 * 60e3, FAST_SYNC_MS = 60e3, FAST_SYNC_WARN = 0.005, FAST_TRADES = 30;
+/** @type {[number, string][]} */
+const FAST_SIZES = [[30e3, '30 s'], [60e3, '1 min'], [5 * 60e3, '5 min'], [15 * 60e3, '15 min']];
+/** @type {[number, string][]} */
+const FAST_WINS = [[5 * 60e3, '5 min'], [15 * 60e3, '15 min'], [60 * 60e3, '1 uur'], [4 * 60 * 60e3, '4 uur']];
 const fastQ = {
   tk: /** @type {string|null} */ (null), sym: null, src: '',
   bars: /** @type {{t:number,o:number,h:number,l:number,c:number,n:number}[]} */ ([]), last: null, lastT: 0,
+  trades: /** @type {{t:number,p:number,v:number|null}[]} */ ([]),
   syncs: [], size: 30e3, win: 15 * 60e3, fx: null, qty: null, cur: null, view: 'tv',
   note: '', lastSync: 0, raf: 0, sim: 0, paused: false,
 };
@@ -337,32 +341,54 @@ const FAST_WARN_ON = 'Let op: de snelle modus vraagt nu elke 2 seconden de koers
 
 function fastTile(c) {
   if (!liveAllowed()) return '';
-  const on = fastQ.tk === c.tk;
   fastPaint();   // koptekst en grafiek vullen na het tekenen
-  const seg = (attr, list, label) => tpl`<div class="seg" role="group" aria-label="${label}">${list.map(([ms, l]) => tpl`<button type="button" ${raw(attr)}="${ms}" aria-pressed="false">${l}</button>`)}</div>`;
-  return String(tpl`<section class="tile pad fast-tile" data-fast-tk="${c.tk}">
+  const seg = (attr, list, label) => tpl`<div class="seg light" role="group" aria-label="${label}">${list.map(([ms, l]) => tpl`<button type="button" ${raw(attr)}="${ms}" aria-pressed="false">${l}</button>`)}</div>`;
+  const trade = typeof tradingOn === 'function' && tradingOn() && !sharedView && c.qty;
+  const news = typeof bcNewsHtml === 'function' ? bcNewsHtml(c.tk, 3) : '';
+  // Op het volle scherm: balk bovenaan, kaarsen links, je positie, de laatste trades en nieuws rechts.
+  // Zonder snelle modus is dit een gewone tegel met de live koers en een knop.
+  return String(tpl`<section class="tile pad fast-tile" data-fast-tk="${c.tk}" aria-label="${T('Snelle modus') + ', ' + c.name}">
+    <div class="fast-bar">
+      <span class="fb-tag"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg>${T('Snelle modus')}</span>
+      <b class="fb-tk">${c.tk}</b><span class="fb-nm">${c.name}</span>
+      <span class="fb-live"><i aria-hidden="true"></i><span class="fb-src"></span></span>
+      <span class="fb-k"><span class="lbl">${T('Kaarsen')}</span>${seg('data-fast-size', FAST_SIZES, 'Grootte van een kaars')}</span>
+      <span class="fb-acts">${trade ? tpl`<button type="button" class="btn dark" data-trade="BUY" data-tk="${c.tk}">${T('Order plaatsen')}</button>` : ''}
+        <button type="button" class="btn ghost fb-close" data-fast-btn><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>${T('Sluiten')}</button></span>
+    </div>
     <div class="fast-head"><h3>${T('Live koers')}</h3><button type="button" class="btn ghost" data-fast-btn aria-pressed="false">${T('Snelle modus')}</button></div>
-    <div class="fast-top"><div><p class="fast-lbl">${T('Koers per aandeel')}</p><p class="fast-price">${money(c.priceNative, c.cur)}</p><p class="small fast-day"></p></div>
-      <div class="fast-pos"><p class="fast-lbl">${T('Jouw positie')}</p><p class="fast-val">${eur(c.value)}</p><p class="small fast-pl"></p></div></div>
-    <p class="small fast-warn" hidden></p>
-    <div class="fast-views" hidden><div class="seg" role="group" aria-label="${T('Welke grafiek')}"><button type="button" data-fast-view="tv" aria-pressed="true">${T('gettex (live)')}</button><button type="button" data-fast-view="own" aria-pressed="false">${T('Controle')}</button></div>
-      <p class="small muted fast-gx"></p></div>
-    <form class="fast-gx-form" hidden><label class="small">${T('gettex-symbool')} <input name="gx" maxlength="8" autocomplete="off" spellcheck="false" autocapitalize="characters"></label>
-      <button class="btn small primary">${T('Opslaan')}</button> <button type="button" class="btn small ghost" data-gx-reset>${T('Standaard')}</button></form>
-    <div class="fast-tv" hidden></div>
-    <p class="sub fast-sub"></p>
-    <div class="fast-ctl" hidden>${seg('data-fast-size', FAST_SIZES, 'Grootte van een kaars')}${seg('data-fast-win', FAST_WINS, 'Periode van de grafiek')}</div>
-    <canvas class="fast-chart" role="img" aria-label="${'Kaarsengrafiek van ' + c.name + ' tijdens de snelle modus'}" hidden></canvas>
-    <p class="small loss fast-sync" role="status"></p>
-    <p class="sub">${T('Met een gettex-symbool toont de snelle modus eerst de live grafiek van gettex (beurs München, in euro) via TradingView. Die koers kan iets afwijken van die van Trading 212, en in de avond zijn er bij rustige aandelen weinig trades. Laadt de grafiek niet (geen internet, TradingView geblokkeerd), kies dan Controle.')} ${T('De snelle modus volgt elke trade van dit aandeel via Finnhub (Amerikaanse aandelen, met een Finnhub-sleutel); anders elke 2 seconden de koers van Trading 212. Elke kaars is 30 seconden of 1 minuut: groen als de koers in die tijd steeg, rood als hij daalde. Op de achtergrond vergelijkt de tracker elke minuut beide bronnen; alleen als ze meer dan 0,5% verschillen, zie je een waarschuwing. Er wordt niets opgeslagen.')}</p>
+    <div class="fast-main">
+      <div class="fast-top"><div><p class="fast-lbl">${T('Koers per aandeel')}</p><p class="fast-price">${money(c.priceNative, c.cur)}</p><p class="small fast-day"></p></div>
+        <div class="fast-pos"><p class="fast-lbl">${T('Jouw positie')}</p><p class="fast-val">${eur(c.value)}</p><p class="small fast-pl"></p></div>
+        <dl class="fast-facts"></dl></div>
+      <p class="small fast-warn" hidden></p>
+      <div class="fast-views" hidden><div class="seg light" role="group" aria-label="${T('Welke grafiek')}"><button type="button" data-fast-view="tv" aria-pressed="true">${T('gettex (live)')}</button><button type="button" data-fast-view="own" aria-pressed="false">${T('Controle')}</button></div>
+        <p class="small muted fast-gx"></p></div>
+      <form class="fast-gx-form" hidden><label class="small">${T('gettex-symbool')} <input name="gx" maxlength="8" autocomplete="off" spellcheck="false" autocapitalize="characters"></label>
+        <button class="btn small primary">${T('Opslaan')}</button> <button type="button" class="btn small ghost" data-gx-reset>${T('Standaard')}</button></form>
+      <div class="fast-tv" hidden></div>
+      <div class="fast-ctl" hidden><span class="lbl">${T('Periode')}</span>${seg('data-fast-win', FAST_WINS, 'Periode van de grafiek')}</div>
+      <canvas class="fast-chart" role="img" aria-label="${'Kaarsengrafiek van ' + c.name + ' tijdens de snelle modus'}" hidden></canvas>
+      <div class="fast-foot"><span class="fast-size"></span><span>${T('trades per kaars')}</span><span class="fast-at"></span></div>
+      <p class="sub fast-sub"></p>
+      <p class="small loss fast-sync" role="status"></p>
+      <p class="sub fast-help">${T('Met een gettex-symbool toont de snelle modus eerst de live grafiek van gettex (beurs München, in euro) via TradingView. Die koers kan iets afwijken van die van Trading 212, en in de avond zijn er bij rustige aandelen weinig trades. Laadt de grafiek niet (geen internet, TradingView geblokkeerd), kies dan Controle.')} ${T('De snelle modus volgt elke trade van dit aandeel via Finnhub (Amerikaanse aandelen, met een Finnhub-sleutel); anders elke 2 seconden de koers van Trading 212. Elke kaars is 30 seconden tot 15 minuten: groen als de koers in die tijd steeg, rood als hij daalde. Op de achtergrond vergelijkt de tracker elke minuut beide bronnen; alleen als ze meer dan 0,5% verschillen, zie je een waarschuwing. Er wordt niets opgeslagen.')}</p>
+    </div>
+    <aside class="fast-side">
+      <div class="fs-pos"><p class="fast-lbl">${T('Jouw positie')}${c.qty ? ' · ' + N4.format(c.qty) + (c.qty === 1 ? ' aandeel' : ' aandelen') : ''}</p><p class="fs-val">${eur(c.value)}</p><dl class="fs-kv"></dl></div>
+      <div class="fs-trades"><h4>${T('Laatste trades')}</h4><ol class="fs-list"></ol></div>
+      ${news ? tpl`<div class="fs-news"><h4>${T('Laatste nieuws')}</h4>${raw(news)}</div>` : ''}
+    </aside>
   </section>`);
 }
 
 async function fastStart(tk, keep) {
-  const kept = keep ? { bars: fastQ.bars, syncs: fastQ.syncs, last: fastQ.last, lastT: fastQ.lastT } : { bars: [], syncs: [], last: null, lastT: 0 };
+  const kept = keep ? { bars: fastQ.bars, syncs: fastQ.syncs, last: fastQ.last, lastT: fastQ.lastT, trades: fastQ.trades } : { bars: [], syncs: [], last: null, lastT: 0, trades: [] };
   fastStop();
   const c = M && M.companies.find((x) => x.tk === tk);
-  if (!keep) { fastQ.view = 'tv'; sock.dead = false; }   // opnieuw aan: Finnhub mag het opnieuw proberen
+  // opnieuw aan: Finnhub mag het opnieuw proberen. In het voorbeeld eerst de eigen kaarsen: de grafiek van gettex
+  // toont echte koersen, die niet bij de verzonnen voorbeeldportefeuille passen.
+  if (!keep) { fastQ.view = demo ? 'own' : 'tv'; sock.dead = false; }
   Object.assign(fastQ, kept, { tk, sym: null, src: '', note: T('Verbinden…'), lastSync: 0, paused: false,
     qty: c ? c.qty : null, cur: c ? c.cur : null, fx: null });
   fastPaint();
@@ -435,8 +461,10 @@ function fastResume() {
 const fastBox = () => (fastQ.tk ? document.querySelector('[data-fast-tk="' + CSS.escape(fastQ.tk) + '"]') : null);
 
 // Een trade in het blokje van zijn halve minuut. Een late trade (door elkaar binnengekomen) telt in het laatste blokje.
-function fastAdd(t, p) {
+function fastAdd(t, p, v) {
   const a = fastQ.bars, b = Math.floor(t / FAST_BUCKET) * FAST_BUCKET, x = a[a.length - 1];
+  fastQ.trades.unshift({ t, p, v: isNum(v) ? v : null });
+  if (fastQ.trades.length > FAST_TRADES) fastQ.trades.length = FAST_TRADES;
   if (x && b <= x.t) { if (p > x.h) x.h = p; if (p < x.l) x.l = p; x.c = p; x.n++; }
   else {
     a.push({ t: b, o: p, h: p, l: p, c: p, n: 1 });
@@ -454,7 +482,7 @@ function fastDemoHistory(c) {
 function fastDemoTick() {
   let p = fastQ.last || 100;
   const n = Math.random() < 0.3 ? 0 : 1 + Math.floor(Math.random() * 4);
-  for (let i = 0; i < n; i++) { p *= 1 + (Math.random() - 0.5) * 0.00015; fastAdd(Date.now(), p); }
+  for (let i = 0; i < n; i++) { p *= 1 + (Math.random() - 0.5) * 0.00015; fastAdd(Date.now(), p, 1 + Math.floor(Math.random() * 400)); }
   if (n) fastPaint();
 }
 
@@ -493,9 +521,12 @@ function fastPaint() {
   fastQ.raf = requestAnimationFrame(() => { fastQ.raf = 0; fastDraw(); });
 }
 function fastDraw() {
+  let full = false;
   $$('[data-fast-tk]').forEach((box) => {
     const tk = /** @type {HTMLElement} */ (box).dataset.fastTk, on = tk === fastQ.tk;
-    const btn = box.querySelector('[data-fast-btn]');
+    full = full || on;
+    fastFull(/** @type {HTMLElement} */ (box), on);
+    const btn = box.querySelector('.fast-head [data-fast-btn]');
     setTxt(btn, on ? T('Snelle modus uit') : T('Snelle modus'));
     btn.setAttribute('aria-pressed', String(on));
     btn.className = 'btn ' + (on ? 'primary' : 'ghost');
@@ -536,7 +567,7 @@ function fastDraw() {
     setTxt(warn, wt);
     warn.hidden = !wt;
     if (!on) { setTxt(sub, ''); setTxt(sync, ''); return; }
-    ctl.querySelectorAll('[data-fast-size]').forEach((b) => b.setAttribute('aria-pressed', String(Number(/** @type {HTMLElement} */ (b).dataset.fastSize) === fastQ.size)));
+    box.querySelectorAll('[data-fast-size]').forEach((b) => b.setAttribute('aria-pressed', String(Number(/** @type {HTMLElement} */ (b).dataset.fastSize) === fastQ.size)));
     ctl.querySelectorAll('[data-fast-win]').forEach((b) => b.setAttribute('aria-pressed', String(Number(/** @type {HTMLElement} */ (b).dataset.fastWin) === fastQ.win)));
     const cs = fastCandles();
     const src = fastQ.src === 'finnhub' ? 'Finnhub, elke trade' : fastQ.src === 'demo' ? 'voorbeeld, elke trade' : 'Trading 212, elke 2 seconden';
@@ -549,8 +580,71 @@ function fastDraw() {
     setTxt(sync, off ? 'Let op: ' + (fastQ.src === 'demo' ? 'de voorbeeldkoers' : 'de koers van Finnhub') + ' (' + money(sy.b, fastQ.cur) + ') wijkt ' + P1.format(Math.abs(sy.b / sy.a - 1)) +
       ' af van die van Trading 212 (' + money(sy.a, fastQ.cur) + ') bij de controle van ' + fLiveT.format(sy.t) + '. Een van beide kan vertraagd zijn; reken met de koers van Trading 212.' : '');
     if (!tv) fastChart(cv, cs);
+    fastSide(/** @type {HTMLElement} */ (box), cs, h, tv, gx);
   });
+  document.body.classList.toggle('fast-open', full);
+  // De pagina van het aandeel is dicht (terug, ander bedrijf): de snelle modus stopt mee
+  if (fastQ.tk && !full && !fastQ.paused) fastStop();
 }
+// Het volle scherm aan of uit, met de focus erin en er weer uit (terug op de knop die de snelle modus opende)
+function fastFull(box, on) {
+  if (box.classList.contains('fast-full') === on) return;
+  box.classList.toggle('fast-full', on);
+  box.setAttribute('role', on ? 'dialog' : 'region');
+  if (on) box.setAttribute('aria-modal', 'true'); else box.removeAttribute('aria-modal');
+  if (on) {
+    const close = /** @type {HTMLElement|null} */ (box.querySelector('.fb-close'));
+    if (close) close.focus({ preventScroll: true });
+  } else {
+    const go = /** @type {HTMLElement|null} */ (document.querySelector('[data-fast-go="' + CSS.escape(box.dataset.fastTk || '') + '"]'));
+    if (go && document.activeElement && box.contains(document.activeElement)) go.focus({ preventScroll: true });
+  }
+}
+// Balk en zijkant van het volle scherm: bron, hoog en laag, je positie en de laatste trades
+const fHMS = new Intl.DateTimeFormat(LOCALE, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+function fastSide(box, cs, h, tv, gx) {
+  const src = tv ? 'gettex ' + (gx ? gx.sym : '') + ', via TradingView' : fastQ.src === 'finnhub' ? T('live per trade') : fastQ.src === 'demo' ? T('voorbeeld, per trade') : fastQ.src === 't212' ? T('Trading 212, elke 2 seconden') : T('Verbinden…');
+  setTxt(box.querySelector('.fb-src'), src);
+  const live = /** @type {HTMLElement|null} */ (box.querySelector('.fb-live'));
+  if (live) live.classList.toggle('on', fastQ.src === 'finnhub' || fastQ.src === 'demo');
+  const kv = (rows) => rows.map(([k, v, c]) => '<div><dt>' + esc(k) + '</dt><dd' + (c ? ' class="' + c + '"' : '') + '>' + esc(v) + '</dd></div>').join('');
+  const n = cs.reduce((a, x) => a + x.n, 0);
+  const lo = cs.length ? Math.min(...cs.map((x) => x.l)) : null, hi = cs.length ? Math.max(...cs.map((x) => x.h)) : null;
+  const facts = box.querySelector('.fast-facts');
+  const cur = (h && h.cur) || fastQ.cur;
+  const fk = kv([[T('hoog'), isNum(hi) ? money(hi, cur) : '–'], [T('laag'), isNum(lo) ? money(lo, cur) : '–'], [T('trades'), String(n)],
+    [T('periode'), (FAST_WINS.find((w) => w[0] === fastQ.win) || [0, ''])[1]]]);
+  if (facts && facts.innerHTML !== fk) facts.innerHTML = fk;
+  setTxt(box.querySelector('.fast-size'), (FAST_SIZES.find((x) => x[0] === fastQ.size) || [0, ''])[1] + ' ' + T('per kaars'));
+  setTxt(box.querySelector('.fast-at'), fastQ.lastT ? fHMS.format(fastQ.lastT) : '');
+  if (h) {
+    setTxt(box.querySelector('.fs-val'), eur(h.value));
+    const c = M && M.byTk.get(box.dataset.fastTk || '');
+    const dayEur = c && isNum(h.day) && isNum(h.value) ? h.value - h.value / (1 + h.day) : null;
+    const sk = kv([[M.dayWord, isNum(dayEur) ? seur(dayEur) : '–', tone(dayEur)],
+      [T('sinds aankoop') + (c && c.qty && isNum(c.cost) ? ', ' + T('gemiddeld') + ' ' + eur(c.cost / c.qty) : ''), isNum(h.pl) ? seur(h.pl) : '–', tone(h.pl)]]);
+    const el = box.querySelector('.fs-kv');
+    if (el && el.innerHTML !== sk) el.innerHTML = sk;
+  }
+  const list = box.querySelector('.fs-list');
+  if (list) {
+    const rows = fastQ.trades.slice(0, 12);
+    const html = rows.length ? rows.map((x, i) => {
+      const prev = rows[i + 1];
+      const t = prev ? tone(x.p - prev.p) : '';
+      return '<li><span>' + esc(fHMS.format(x.t)) + '</span><b class="' + t + '">' + esc(money(x.p, cur)) + '</b><span>' + esc(isNum(x.v) ? N4.format(x.v) : '') + '</span></li>';
+    }).join('') : '<li class="muted">' + esc(T('Nog geen trades.')) + '</li>';
+    if (list.innerHTML !== html) list.innerHTML = html;
+  }
+}
+// Sluiten met Escape (voordat de bedrijfspagina zelf Escape als "terug" ziet)
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || !fastQ.tk || !document.body.classList.contains('fast-open')) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  fastStop(); liveSchedule(liveDelay()); fastPaint();
+}, true);
+addEventListener('resize', () => { if (fastQ.tk) fastPaint(); }, { passive: true });
 // Bovenaan de tegel: links de koers van één aandeel met de verandering van vandaag, rechts je positie met winst of
 // verlies sinds aankoop. In de snelle modus uit de laatste trade, anders uit de live stand of de laatste meting.
 function fastHead(tk, on) {
@@ -591,7 +685,8 @@ function fastChart(cv, cs) {
   if (!isFinite(lo)) { lo = hi = fastQ.last; }
   const padP = Math.max((hi - lo) * 0.08, hi * 0.0002);
   lo -= padP; hi += padP;
-  const R = 70, top = 8, bot = 20, cw = W - R, sw = cw / slots;
+  // Onderin een strook met het aantal trades per kaars
+  const R = 70, top = 8, volH = Math.round(Math.min(90, H * 0.16)), bot = 20 + volH + 8, cw = W - R, sw = cw / slots;
   const x = (t) => (t - t0) / size * sw + sw / 2;
   const y = (p) => top + (hi - p) / (hi - lo) * (H - top - bot);
   // Hulplijnen met koersen rechts, tijden onder
@@ -616,18 +711,31 @@ function fastChart(cv, cs) {
     const yo = y(k.o), yc = y(k.c);
     g.fillRect(Math.round(cx - bw / 2), Math.min(yo, yc), Math.round(bw), Math.max(1, Math.abs(yc - yo)));
   });
+  // Trades per kaars, als lichte staafjes onderin
+  const nMax = Math.max(1, ...cs.filter((k) => k.t >= t0).map((k) => k.n));
+  const vb = H - 20;
+  g.globalAlpha = 0.35;
+  cs.forEach((k) => {
+    if (k.t < t0) return;
+    const hgt = Math.max(1, (k.n / nMax) * volH);
+    g.fillStyle = k.c >= k.o ? C.gain : C.loss;
+    g.fillRect(Math.round(x(k.t) - bw / 2), vb - hgt, Math.round(bw), hgt);
+  });
+  g.globalAlpha = 1;
   // Laatste koers: lijn met label rechts
   const yl = Math.round(y(fastQ.last)) + 0.5;
   g.strokeStyle = C.accent; g.lineWidth = 1;
   g.beginPath(); g.moveTo(0, yl); g.lineTo(cw, yl); g.stroke();
   const lab = N2.format(fastQ.last), lw = g.measureText(lab).width + 10;
   g.fillStyle = C.accent; g.fillRect(cw + 2, yl - 9, Math.min(lw, R - 2), 18);
-  g.fillStyle = '#FFFFFF'; g.textBaseline = 'middle'; g.fillText(lab, cw + 7, yl); g.textBaseline = 'alphabetic';
+  g.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--on-accent').trim() || '#FFFFFF'; g.textBaseline = 'middle'; g.fillText(lab, cw + 7, yl); g.textBaseline = 'alphabetic';
 }
 
 document.addEventListener('click', (e) => {
   const t = /** @type {Element} */ (e.target);
   if (!t || !t.closest) return;
+  const go = /** @type {HTMLElement|null} */ (t.closest('[data-fast-go]'));
+  if (go) { if (fastQ.tk !== go.dataset.fastGo) fastStart(go.dataset.fastGo, false); return; }
   const b = t.closest('[data-fast-btn]');
   if (b) {
     const tk = /** @type {HTMLElement} */ (b.closest('[data-fast-tk]')).dataset.fastTk;
@@ -648,9 +756,18 @@ document.addEventListener('click', (e) => {
   }
   if (t.closest('[data-gx-reset]')) { gettexSave(/** @type {HTMLElement} */ (t.closest('[data-fast-tk]')), null); return; }
   const s = /** @type {HTMLElement|null} */ (t.closest('[data-fast-size]'));
-  if (s) { fastQ.size = Number(s.dataset.fastSize); fastPaint(); return; }
+  // Kaars en periode passen bij elkaar: minstens 8 kaarsen in beeld
+  if (s) {
+    fastQ.size = Number(s.dataset.fastSize);
+    if (fastQ.win / fastQ.size < 8) fastQ.win = (FAST_WINS.find((x) => x[0] / fastQ.size >= 8) || FAST_WINS[FAST_WINS.length - 1])[0];
+    fastPaint(); return;
+  }
   const w = /** @type {HTMLElement|null} */ (t.closest('[data-fast-win]'));
-  if (w) { fastQ.win = Number(w.dataset.fastWin); fastPaint(); }
+  if (w) {
+    fastQ.win = Number(w.dataset.fastWin);
+    if (fastQ.win / fastQ.size < 8) fastQ.size = FAST_SIZES.filter((x) => fastQ.win / x[0] >= 8).pop()[0];
+    fastPaint();
+  }
 });
 
 // Eigen gettex-symbool per aandeel (prefs.gettex); null zet het terug naar het standaardsymbool

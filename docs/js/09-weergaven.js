@@ -140,11 +140,11 @@ function listSummary() {
 }
 
 function renderList() {
-  $('list-sub').textContent = listSummary();
-  listWeights();
-  segButtons($('list-filter'), FILTERS, ui.listFilter, (k) => { ui.listFilter = k; renderList(); });
-  segButtons($('list-sort'), SORTS, ui.listSort, (k) => { ui.listSort = k; renderList(); });
-  segButtons($('list-span'), SPANS, ui.listSpan, (k) => { ui.listSpan = k; renderList(); });
+  segButtons($('list-filter'), FILTERS, ui.listFilter, (k) => { ui.listFilter = k; refresh('list'); });
+  segButtons($('list-sort'), SORTS, ui.listSort, (k) => { ui.listSort = k; refresh('list'); });
+  segButtons($('list-span'), SPANS, ui.listSpan, (k) => { ui.listSpan = k; refresh('list'); });
+  // Alleen bij 'Tegels' tekent deze functie de tegels; de andere indelingen tekent de weergave 'list' (js/26-posities.js)
+  if (typeof posGroupBy === 'function' && posGroupBy() !== 'tiles') return;
   const items = filteredCompanies();
   fill('list-grid', items.length ? items.map((c) => {
     const pts = marketSeries(c.tk, ui.listSpan);
@@ -158,7 +158,7 @@ function renderList() {
   }) : ['<p class="empty">Geen bedrijven gevonden' + (ui.listQuery ? ' voor “' + esc(ui.listQuery) + '”' : '') + '.</p>']);
 }
 
-$('list-search').addEventListener('input', (e) => { ui.listQuery = e.target.value; if (M) renderList(); });
+$('list-search').addEventListener('input', (e) => { ui.listQuery = e.target.value; if (M) refresh('list'); });
 
 function detailNav(c) {
   const order = sortedCompanies();
@@ -166,32 +166,74 @@ function detailNav(c) {
   return { prev: order[(i - 1 + order.length) % order.length], next: order[(i + 1) % order.length] };
 }
 
+// Bedrijfspagina (ontwerp 2026): kop met koers per aandeel en je positie, grote grafiek, een balk met knoppen en
+// periode, kerncijfers in één strook en daaronder de onderdelen met links hun kop. Alle tegels blijven bestaan.
+const fdSince = new Intl.DateTimeFormat(LOCALE, { day: 'numeric', month: 'short', year: 'numeric' });
+function bdMeta(c) {
+  const kind = isFundC(c) ? 'fonds' : listSectorOf(c);
+  return [c.tk, c.cur && c.cur !== 'EUR' ? 'in ' + (c.cur === 'USD' ? 'dollar' : c.cur === 'GBX' ? 'pence' : c.cur) : 'in euro', kind,
+    c.since ? 'in je portefeuille sinds ' + fdSince.format(c.since) : ''].filter(Boolean).join(' · ');
+}
+// Knoppen onder de grafiek: kopen en verkopen (als handelen aan staat), koersalarm, notitie, vergelijken en de snelle modus
+function bdActs(c) {
+  const trade = typeof tradingOn === 'function' && tradingOn() && !sharedView && c.qty;
+  const fast = typeof liveAllowed === 'function' && liveAllowed();
+  return '<div class="bd-acts">' +
+    (trade ? '<button type="button" class="btn dark" data-trade="BUY" data-tk="' + esc(c.tk) + '">Kopen</button><button type="button" class="btn ghost" data-trade="SELL" data-tk="' + esc(c.tk) + '">Verkopen</button>' : '') +
+    '<button type="button" class="btn ghost" data-jump="d-alarm">Koersalarm</button>' +
+    '<button type="button" class="btn ghost" data-jump="d-diary">Notitie</button>' +
+    '<button type="button" class="btn ghost" data-act="compare">Vergelijken</button>' +
+    (fast ? '<button type="button" class="btn ghost bd-fast" data-fast-go="' + esc(c.tk) + '"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg>Snelle modus</button>' : '') +
+    '</div>';
+}
+// Kop: links de koers van één aandeel, rechts je positie
+function bdFigs(c) {
+  const per = c.qty ? c.value / c.qty : null;
+  const nat = c.cur && c.cur !== 'EUR' && isNum(c.priceNative) ? money(c.priceNative, c.cur) : '';
+  return '<div class="bd-figs">' +
+    '<div><p class="bd-lbl">Koers per aandeel · in euro</p><p class="bd-big">' + esc(eur(per)) + (nat ? ' <span class="bd-nat">' + esc(nat) + '</span>' : '') + '</p>' +
+      '<p class="bd-chg ' + tone(c.changePct) + '">' + esc(isNum(c.changePct) ? spct(c.changePct) + ' ' + M.dayWord : 'nog geen verandering ' + M.dayWord) + '</p></div>' +
+    '<div class="r"><p class="bd-lbl">In jouw portefeuille' + (c.qty ? ' · ' + esc(N4.format(c.qty)) + (c.qty === 1 ? ' aandeel' : ' aandelen') : '') + '</p><p class="bd-big">' + esc(eur(c.value)) + '</p>' +
+      '<p class="bd-chg ' + tone(c.change) + '">' + esc(changeLine(c)) + '</p></div></div>';
+}
+// Eén onderdeel: links kop en uitleg, rechts de tegels
+function bdSec(title, sub, html, id) {
+  if (!html) return '';
+  return '<section class="bd-sec"' + (id ? ' id="' + id + '"' : '') + '><div class="bd-sh"><h2>' + esc(title) + '</h2>' + (sub ? '<p>' + esc(sub) + '</p>' : '') + '</div>' +
+    '<div class="bd-sb">' + html + '</div></section>';
+}
+function bdSections(c, I) {
+  return bdSec('Jouw positie', 'aankopen, resultaat en je eigen koersdoel', I.posTile + I.tradeTile + lotsTile(c) + myTargetTile(c.tk)) +
+    bdSec('Live koers', 'snelle modus: kaarsen, tick voor tick', fastTile(c)) +
+    bdSec('Koers en markt', 'dagbereik, historie en risico', I.rangeTile + I.histTile + I.riskTile) +
+    bdSec('Berichten en cijfers', 'nieuws, analisten, kwartaalcijfers en insiders', I.research.join('')) +
+    bdSec('Agenda', 'kwartaalcijfers en dividend', I.agendaTile) +
+    bdSec('Waardering', 'duur of goedkoop tegenover zichzelf en de sector', valuationTile(c)) +
+    bdSec('Profiel', 'sector en vergelijkbare bedrijven', I.market.tiles.join('') + (I.market.table ? '<div class="bd-wide">' + I.market.table + '</div>' : '')) +
+    bdSec('Ook in je fondsen', 'hoeveel je er via fondsen nog meer van hebt', overlapTileC(c)) +
+    bdSec('Notities en alarmen', 'alleen voor jou', '<div id="d-diary">' + diaryTile(c.tk) + '</div>' + priceAlertTile(c.tk, c.priceNative, c.cur), 'd-alarm') +
+    bdSec('Patronen', 'dagen, weken en reeksen', I.patterns.join(''));
+}
+
 function renderDetailDesktop(c, swapDir) {
   const { prev, next } = detailNav(c);
   const I = companyInfo(c);
   const sw = swapDir ? ' swap-' + swapDir : '';
-  return '<div class="band">' + crumbNav(c.tk + ' · ' + c.name) +
-      '<div class="d-top"><button type="button" class="btn dark" data-act="back">← Terug</button>' +
-        '<div class="d-nav">' + (typeof tradingOn === 'function' && tradingOn() && !sharedView && c.qty ? '<button type="button" class="btn primary" data-trade="BUY" data-tk="' + esc(c.tk) + '">Kopen</button><button type="button" class="btn line" data-trade="SELL" data-tk="' + esc(c.tk) + '">Verkopen</button>' : '') + '<button type="button" class="btn line" data-act="compare">Vergelijken</button><button type="button" class="btn line" data-act="prev" aria-label="Vorige: ' + esc(prev.name) + '">← ' + esc(prev.tk) + '</button>' +
+  return '<div class="band bd-band">' + crumbNav(c.tk + ' · ' + c.name) +
+      '<div class="d-top bd-top"><button type="button" class="bd-back" data-act="back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>' + esc(crumbParent(ui.detail).label) + '</button>' +
+        '<div class="d-nav"><button type="button" class="btn line" data-act="prev" aria-label="Vorige: ' + esc(prev.name) + '">← ' + esc(prev.tk) + '</button>' +
         '<button type="button" class="btn line" data-act="next" aria-label="Volgende: ' + esc(next.name) + '">' + esc(next.tk) + ' →</button></div></div>' +
-      '<div class="hero-head' + sw + '"><div><p class="hero-label">' + esc(c.name) + '</p>' +
-        '<h2 id="d-title" class="hero-value">' + esc(c.tk) + ' ' + esc(eur(c.value)) + '</h2>' +
-        '<p class="hero-change ' + tone(c.change) + '">' + esc(changeLine(c) + ', ' + baseText(c)) + '</p></div>' +
-        '<div class="hero-ctrl"><div id="d-ranges" class="seg" role="group" aria-label="Periode van de grafiek"></div>' +
+      '<div class="hero-head bd-hero' + sw + '"><div class="bd-id"><p class="bd-meta">' + esc(bdMeta(c)) + '</p>' +
+        '<h2 id="d-title" class="bd-name">' + esc(c.name) + '</h2>' + bdFigs(c) + '</div></div>' +
+      '<div id="d-chart" class="chart hero-chart bd-chart" role="img" aria-label="' + esc('Verloop van ' + c.name) + '"></div>' +
+      '<div id="d-x" class="xlabels"></div><div id="d-legend"></div>' +
+      '<div class="bd-bar">' + bdActs(c) +
+        '<div class="bd-per"><span class="lbl">Periode</span><div id="d-ranges" class="seg light" role="group" aria-label="Periode van de grafiek"></div>' +
         '<label class="check"><input type="checkbox" id="d-compare"' + (ui.compare ? ' checked' : '') + '> Vergelijk met portefeuille</label></div></div>' +
-      '<div id="d-chart" class="chart hero-chart" role="img" aria-label="' + esc('Verloop van ' + c.name) + '"></div>' +
-      '<div id="d-legend"></div><div id="d-x" class="xlabels"></div><p id="d-note" class="chart-note"></p>' +
+      '<p id="d-note" class="chart-note"></p>' +
     '</div>' +
-    '<div class="wrap' + sw + '">' +
-      '<div class="grid">' + I.kpis.join('') + '</div>' +
-      '<div class="grid wide" style="margin-top:16px">' + fastTile(c) + I.rangeTile + I.posTile + I.tradeTile + lotsTile(c) + myTargetTile(c.tk) + diaryTile(c.tk) + I.histTile + I.agendaTile + I.riskTile + valuationTile(c) + overlapTileC(c) + priceAlertTile(c.tk, c.priceNative, c.cur) + '</div>' +
-      '<div class="section-head"><h2>Nieuws, analisten en cijfers</h2></div>' +
-      '<div class="grid wide">' + I.research.join('') + '</div>' +
-      '<div class="section-head"><h2>Sector en vergelijkbare bedrijven</h2></div>' +
-      '<div class="grid wide">' + I.market.tiles.join('') + '</div>' +
-      (I.market.table ? '<div style="margin-top:16px">' + I.market.table + '</div>' : '') +
-      '<div class="section-head"><h2>Patronen</h2></div>' +
-      '<div class="grid">' + I.patterns.join('') + '</div>' +
+    '<div class="bd-kband' + sw + '"><div class="bd-kpis">' + I.kpis.join('') + '</div></div>' +
+    '<div class="wrap bd-wrap' + sw + '">' + bdSections(c, I) +
       '<p class="foot">' + esc(FOOT) + '</p>' +
     '</div>';
 }
@@ -250,7 +292,7 @@ function spanPct(c, pts) {
   return pts.length > 1 && pts[0].v > 0 ? pts[pts.length - 1].v / pts[0].v - 1 : null;
 }
 function renderMList() {
-  $('m-list-sub').textContent = listSummary();
+  $('m-list-sub').textContent = bcSummary();
   const wn = watchSyms().length;
   $$('#m-list-tabs [data-lpane]').forEach((b) => {
     const k = /** @type {HTMLElement} */ (b).dataset.lpane;
@@ -315,16 +357,17 @@ document.addEventListener('click', (e) => {
   renderMList();
 });
 
-// Desktop: verdelingsbalk boven de tegels
-function listWeights() {
-  const el = $('list-weights');
+// Verdelingsbalk: één blokje per positie, het grootste het donkerst. De tinten volgen de accentkleur (CSS-variabele
+// --accent, gemengd met de pagina), dus ook bij een ander accent of thema. Breed genoeg: de ticker in het blokje.
+function listWeights(id) {
+  const el = $(id || 'list-weights');
   if (!el || !M.totalValue) return;
   const cs = M.companies.slice().sort((a, b) => b.value - a.value);
-  const shades = ['#1F4FC4', '#2B5BD7', '#4A73DE', '#6A8CE4', '#8FAEF0', '#A9BFF0', '#C2D2F5', '#D7E0F7'];
   el.innerHTML = cs.map((c, i) => {
     const w = c.value / M.totalValue;
-    return '<button type="button" data-ticker="' + esc(c.tk) + '" style="flex:' + (w * 100).toFixed(2) + ' 1 0" aria-label="' + esc(c.tk + ', ' + P1.format(w) + ' van je beleggingen. Openen') + '">' +
-      '<i style="background:' + shades[Math.min(i, shades.length - 1)] + '"></i><span><b>' + esc(c.tk) + '</b> ' + esc(PCT0.format(w)) + '</span></button>';
+    const k = Math.max(0.2, 1 - i * 0.085);
+    return '<button type="button" data-ticker="' + esc(c.tk) + '" class="' + (k < 0.55 ? 'lt' : '') + (w >= (id === 'm-list-weights' ? 0.09 : 0.035) ? ' lab' : '') + '" style="flex:' + (w * 100).toFixed(2) + ' 1 0;--k:' + (k * 100).toFixed(0) + '%" aria-label="' + esc(c.tk + ', ' + P1.format(w) + ' van je beleggingen. Openen') + '">' +
+      '<i></i><span><b>' + esc(c.tk) + '</b> ' + esc(PCT0.format(w)) + '</span></button>';
   }).join('');
 }
 
@@ -362,15 +405,6 @@ function renderMStats() {
   fill('m-patterns', patternTiles(TOTAL, S));
 }
 
-// Knoppen onder de grafiek: kopen en verkopen (als handelen aan staat), vergelijken en koersalarm
-function detailActs(c) {
-  const trade = typeof tradingOn === 'function' && tradingOn() && !sharedView && c.qty;
-  return '<div class="d-acts">' +
-    (trade ? '<button type="button" class="btn primary" data-trade="BUY" data-tk="' + esc(c.tk) + '">Kopen</button><button type="button" class="btn ghost" data-trade="SELL" data-tk="' + esc(c.tk) + '">Verkopen</button>' : '') +
-    '<button type="button" class="btn ghost" data-act="compare">Vergelijken</button>' +
-    '<button type="button" class="btn ghost" data-jump="d-alarm">Koersalarm</button></div>';
-}
-
 document.addEventListener('click', (e) => {
   const t = /** @type {Element} */ (e.target);
   const b = /** @type {HTMLElement|null} */ (t && t.closest ? t.closest('[data-jump]') : null);
@@ -378,42 +412,36 @@ document.addEventListener('click', (e) => {
   if (el) el.scrollIntoView({ behavior: reduceMotion() ? 'auto' : 'smooth', block: 'start' });
 });
 
-// Telefoon: één lange pagina in de volgorde van het ontwerp, met een kop per onderdeel
+// Telefoon: één lange pagina in de volgorde van het ontwerp, met een kop per onderdeel. Bovenaan een terugpijl.
 function renderDetailMobile(c, swapDir) {
   const { prev, next } = detailNav(c);
   const I = companyInfo(c);
   const sw = swapDir ? ' swap-' + swapDir : '';
-  const head = (t) => '<div class="m-head"><h2>' + esc(t) + '</h2></div>';
-  const block = (t, html) => (html ? head(t) + '<div class="m-stack">' + html + '</div>' : '');
-  const kind = isFundC(c) ? 'fonds in bezit' : 'in bezit';
+  const block = (t, sub, html, id) => (html ? '<section class="bd-msec"' + (id ? ' id="' + id + '"' : '') + '><div class="m-head"><h2>' + esc(t) + '</h2>' + (sub ? '<p class="m-sub">' + esc(sub) + '</p>' : '') + '</div><div class="m-stack">' + html + '</div></section>' : '');
   return '<div class="md">' +
-    '<div class="m-dtop"><button type="button" class="m-back" data-act="back">' + esc(crumbBack(c.tk)) + '</button><span class="t">' + esc(c.tk) + '</span>' +
+    '<div class="m-dtop bd-mtop"><button type="button" class="m-back bd-mback" data-act="back" aria-label="' + esc('Terug naar ' + crumbParent(ui.detail).label) + '"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button><span class="t">' + esc(c.name) + '</span>' +
       '<div class="m-nav"><button type="button" data-act="prev" aria-label="Vorige: ' + esc(prev.name) + '">‹</button><button type="button" data-act="next" aria-label="Volgende: ' + esc(next.name) + '">›</button></div></div>' +
     crumbNav(c.tk) +
-    '<div class="m-hero">' +
-      '<div class="m-swipe' + sw + '"><p class="hero-label">' + esc(c.name) + ' · ' + esc(kind) + '</p><h2 id="d-title" class="m-value"><span class="d-tk">' + esc(c.tk) + '</span> ' + esc(eur(c.value)) + '</h2>' +
-        '<p><span class="pill-chg ' + tone(c.change) + '">' + esc(changeLine(c)) + '</span></p><span class="base">' + esc(baseText(c)) + '</span></div>' +
+    '<div class="m-hero bd-mhero">' +
+      '<div class="m-swipe' + sw + '"><p class="bd-meta">' + esc(bdMeta(c)) + '</p><h2 id="d-title" class="bd-name">' + esc(c.name) + '</h2>' + bdFigs(c) + '</div>' +
       '<div id="d-chart" class="chart m-chart" role="img" aria-label="' + esc('Verloop van ' + c.name) + '"></div><div id="d-x" class="xlabels"></div>' +
       '<div id="d-ranges" class="m-seg" role="group" aria-label="Periode van de grafiek"></div>' +
       '<label class="check d-cmp"><input type="checkbox" id="d-compare"' + (ui.compare ? ' checked' : '') + '> Vergelijk met je portefeuille</label>' +
       '<div id="d-legend"></div><p id="d-note" class="chart-note"></p>' +
-      detailActs(c) +
+      bdActs(c) +
     '</div>' +
     '<div class="m-body' + sw + '">' +
-      '<div class="m-grid2">' + I.kpis.join('') + '</div>' +
-      block('Je positie', I.posTile + I.tradeTile + lotsTile(c)) +
-      block('Live koers', fastTile(c)) +
-      block('Mijn koersdoel en dagboek', myTargetTile(c.tk) + diaryTile(c.tk)) +
-      block('Koers en bereik', I.rangeTile) +
-      block('Agenda', I.agendaTile) +
-      block('Risico', I.riskTile) +
-      block('Waardering', valuationTile(c)) +
-      block('Nieuws, analisten en cijfers', I.research.join('')) +
-      block('Sector en vergelijkbare bedrijven', I.market.tiles.join('') + (I.market.table || '')) +
-      block('Ook in je fondsen', overlapTileC(c)) +
-      '<div id="d-alarm">' + block('Koersalarm', priceAlertTile(c.tk, c.priceNative, c.cur)) + '</div>' +
-      block('Historie', I.histTile) +
-      block('Patronen', I.patterns.join('')) +
+      '<div class="m-grid2 bd-mkpis">' + I.kpis.join('') + '</div>' +
+      block('Jouw positie', 'aankopen, resultaat en je eigen koersdoel', I.posTile + I.tradeTile + lotsTile(c) + myTargetTile(c.tk)) +
+      block('Live koers', 'snelle modus: kaarsen, tick voor tick', fastTile(c)) +
+      block('Koers en markt', 'dagbereik, historie en risico', I.rangeTile + I.histTile + I.riskTile) +
+      block('Berichten en cijfers', 'nieuws, analisten, kwartaalcijfers en insiders', I.research.join('')) +
+      block('Agenda', 'kwartaalcijfers en dividend', I.agendaTile) +
+      block('Waardering', 'duur of goedkoop tegenover zichzelf en de sector', valuationTile(c)) +
+      block('Profiel', 'sector en vergelijkbare bedrijven', I.market.tiles.join('') + (I.market.table || '')) +
+      block('Ook in je fondsen', '', overlapTileC(c)) +
+      block('Notities en alarmen', 'alleen voor jou', '<div id="d-diary">' + diaryTile(c.tk) + '</div>' + priceAlertTile(c.tk, c.priceNative, c.cur), 'd-alarm') +
+      block('Patronen', '', I.patterns.join('')) +
       '<p class="foot">' + esc(FOOT) + '</p>' +
     '</div></div>';
 }
