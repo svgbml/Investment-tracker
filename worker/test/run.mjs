@@ -2243,5 +2243,105 @@ await test('officieel, geruchten en belangrijk nieuws: herkennen, bewaren en é�
   routes = [];
 });
 
+// Nagebootste klok: new Date() zonder argument en Date.now() geven het gekozen tijdstip (idee 59)
+async function withClock(iso, fn) {
+  const Real = globalThis.Date, at = Real.parse(iso);
+  globalThis.Date = class extends Real { constructor(...a) { super(...(a.length ? a : [at])); } static now() { return at; } };
+  try { return await fn(); } finally { globalThis.Date = Real; }
+}
+
+await test('jaarwisseling: eerdere jaren één keer opnieuw gelezen, daarna uit de cache, en geen dag dubbel (idee 59)', async () => {
+  const T = WM._test;
+  const ins = DB.db.prepare('INSERT OR REPLACE INTO days (day, ticker, name, open, close, low, high, avg, range, range_pct) VALUES (?,?,?,?,?,?,?,?,?,?)');
+  ['2030-12-30', '2030-12-31', '2031-01-02'].forEach((d, i) => ins.run(d, 'JWX', 'Jaarwissel', 100 + i, 101 + i, 99, 102, 100, 3, 0.03));
+  await T.invalidateSeries(env);
+  // Hoe vaak de dagen van eerdere jaren (series_old) uit D1 komen
+  const rows = async (iso) => {
+    MEASURE.log = []; MEASURE.on = true;
+    let r;
+    try { r = await T.seriesRows(env, Date.parse(iso)); } finally { MEASURE.on = false; }
+    const n = MEASURE.log.filter(([, sql]) => /FROM days WHERE day < \?/.test(sql)).length;
+    MEASURE.log = null;
+    return { r, n };
+  };
+  try {
+    assert.equal((await rows('2030-12-31T12:00:00Z')).n, 1, 'eerste keer: eerdere jaren gelezen');
+    assert.equal((await rows('2030-12-31T15:00:00Z')).n, 0, 'zelfde jaar: uit de cache');
+    const nieuw = await rows('2031-01-02T12:00:00Z');
+    assert.equal(nieuw.n, 1, 'nieuw jaar: eerdere jaren één keer opnieuw');
+    assert.equal((await rows('2031-01-02T15:00:00Z')).n, 0, 'daarna weer uit de cache');
+    assert.deepEqual(nieuw.r.dys.filter((r) => r.ticker === 'JWX').map((r) => r.day), ['2030-12-30', '2030-12-31', '2031-01-02']);
+  } finally {
+    DB.db.prepare("DELETE FROM days WHERE ticker = 'JWX'").run();
+    await T.invalidateSeries(env);
+  }
+});
+
+await test('schrikkeldag en een Amerikaanse feestdag: lege sectordag gemarkeerd en niet opnieuw opgehaald (idee 59)', async () => {
+  const T = WM._test;
+  assert.equal(T.dayOf(Date.parse('2028-02-29T12:00:00Z')), '2028-02-29');
+  assert.equal(T.shiftDay('2028-03-01', -1), '2028-02-29');
+  assert.equal(T.shiftDay('2027-03-01', -1), '2027-02-28');
+  assert.equal(T.tradingDay(Date.parse('2028-02-29T12:00:00Z')), '2028-02-29'); // dinsdag
+  assert.equal(T.tradingDay(Date.parse('2032-02-29T12:00:00Z')), '2032-02-27'); // zondag -> vrijdag
+  // Thanksgiving (donderdag 26 november 2026): de Amerikaanse beurs is dicht, FMP geeft een lege lijst
+  const HOLIDAY = '2026-11-26';
+  const e = Object.assign({}, env, { FMP_KEY: 'fmp' });
+  DB.db.prepare("DELETE FROM ext_perf WHERE day = ?").run(HOLIDAY);
+  await withClock('2026-11-27T12:00:00Z', async () => {
+    setKv('mkt_planned', '');
+    await T.planMarket(e);
+    assert.ok(JSON.parse(kv('mkt_queue')).includes('perf:' + HOLIDAY), 'feestdag eerst ingepland');
+    routes = [[/financialmodelingprep\.com\/stable\/(sector|industry)-performance-snapshot/, reply([])]];
+    setKv('mkt_queue', ['perf:' + HOLIDAY]);
+    await req('/api/market', { method: 'POST', env: e });
+    assert.equal(DB.db.prepare("SELECT COUNT(*) AS n FROM ext_perf WHERE day = ? AND name = '-'").get(HOLIDAY).n, 1, 'lege dag gemarkeerd');
+    setKv('mkt_planned', '');
+    await T.planMarket(e);
+    assert.ok(!JSON.parse(kv('mkt_queue')).includes('perf:' + HOLIDAY), 'gemarkeerde feestdag niet opnieuw');
+  });
+  routes = [];
+  setKv('mkt_queue', '[]');
+  setKv('mkt_planned', '');
+});
+
+await test('zomer- en wintertijd: 23 en 25 uurregels, elke meting in precies één dag, en een tweede ronde schrijft niets (idee 59)', async () => {
+  const T = WM._test;
+  // Eigen lege database met hetzelfde schema, zodat de gedeelde testgegevens onaangeroerd blijven
+  const D2 = new D1();
+  for (const { sql } of DB.db.prepare("SELECT sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY type DESC").all()) D2.db.exec(sql);
+  const e2 = Object.assign({}, env, { DB: D2 });
+  const count = (sql, ...a) => D2.db.prepare(sql).get(...a).n;
+  for (const [day, uren] of [['2026-03-29', 23], ['2026-10-25', 25]]) {
+    for (const t of ['intraday', 'hours', 'days', 'kv']) D2.db.exec('DELETE FROM ' + t);
+    // Elke 10 minuten een meting, van de middag ervoor tot de middag erna (UTC); de waarde telt op
+    const ins = D2.db.prepare('INSERT INTO intraday (ts, ticker, name, value, price) VALUES (?,?,?,?,?)');
+    const from = Date.parse(T.shiftDay(day, -1) + 'T12:00:00Z'), to = Date.parse(T.shiftDay(day, 1) + 'T12:00:00Z');
+    const pts = [];
+    for (let ts = from, i = 0; ts < to; ts += 600e3, i++) { ins.run(ts, 'DST', 'Tijdwissel', i, 10); pts.push({ ts, v: i, d: T.dayOf(ts) }); }
+    const now = new Date(Date.parse(T.shiftDay(day, 3) + 'T12:00:00Z'));
+    await T.housekeeping(e2, now);
+    // Uurregels van de dag zelf: 23 in maart (02:00 bestaat niet), 25 in oktober (02:00 komt twee keer)
+    const hrs = D2.db.prepare('SELECT hour, n FROM hours WHERE ticker = ?').all('DST').filter((h) => T.dayOf(h.hour) === day);
+    assert.equal(hrs.length, uren, day + ': uurregels');
+    assert.equal(new Set(hrs.map((h) => h.hour)).size, uren, day + ': geen uur dubbel');
+    // Dagregel: alle metingen van de Amsterdamse dag, open en slot op de grens van middernacht
+    const own = pts.filter((p) => p.d === day);
+    assert.equal(own.length, uren * 6);
+    const d = D2.db.prepare('SELECT * FROM days WHERE day = ? AND ticker = ?').get(day, 'DST');
+    assert.equal(d.n, uren * 6, day + ': metingen in de dagregel');
+    assert.equal(d.open, own[0].v, day + ': open is de eerste meting na middernacht');
+    assert.equal(d.close, own[own.length - 1].v, day + ': slot is de laatste meting voor middernacht');
+    // Elke meting van de afgeronde dagen in precies één dagregel
+    const done = pts.filter((p) => p.d < T.dayOf(now.getTime()));
+    assert.equal(count('SELECT SUM(n) AS n FROM days WHERE ticker = ?', 'DST'), done.length, day + ': som van de dagregels');
+    // Tweede ronde op hetzelfde moment: niets nieuws, dus niets geschreven
+    const before = count('SELECT COUNT(*) AS n FROM hours') + count('SELECT COUNT(*) AS n FROM days');
+    const msg = await T.housekeeping(e2, now);
+    assert.ok(!/uurregels|dagregels/.test(msg), day + ': tweede ronde schreef: ' + msg);
+    assert.equal(count('SELECT COUNT(*) AS n FROM hours') + count('SELECT COUNT(*) AS n FROM days'), before);
+  }
+});
+
 console.log((failed ? failed + ' fout, ' : '') + passed + ' geslaagd');
 process.exit(failed ? 1 : 0);
