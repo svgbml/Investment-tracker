@@ -337,7 +337,7 @@ EN_RE.push([/^Nog (\d+) koppen: scrol verder\.$/, 'Another $1 headlines: keep sc
 EN_RE.push([/^Alleen (.+)$/, 'Only $1'], [/^Posities (\d+)$/, 'Positions $1'], [/^Volglijst (\d+)$/, 'Watchlist $1']);
 // Kruimelpad, getalweergave, meldingen en de startchecklist
 Object.assign(EN, {
-  'Kruimelpad': 'Breadcrumb', '\u2039 Overzicht': '\u2039 Overview', '\u2039 Bedrijven': '\u2039 Companies', 'Melding sluiten': 'Close message', 'Ongedaan maken': 'Undo', 'Teruggezet.': 'Restored.', 'Koersalarm verwijderd.': 'Price alert deleted.', 'Regel uit je beslisdagboek verwijderd.': 'Entry removed from your decision log.',
+  'Kruimelpad': 'Breadcrumb', '\u2039 Overzicht': '\u2039 Overview', '\u2039 Bedrijven': '\u2039 Companies', 'Melding sluiten': 'Close message', 'Ongedaan maken': 'Undo', 'Op deze dag': 'On this day', 'Teruggezet.': 'Restored.', 'Koersalarm verwijderd.': 'Price alert deleted.', 'Regel uit je beslisdagboek verwijderd.': 'Entry removed from your decision log.',
   'Getallen': 'Numbers', 'Grote bedragen afkorten (\u20ac 12,3K)': 'Abbreviate large amounts (\u20ac 12.3K)',
   'Decimalen bij bedragen en procenten': 'Decimals for amounts and percentages',
   'geen (\u20ac 12)': 'none (\u20ac 12)', '\u00e9\u00e9n (\u20ac 12,3)': 'one (\u20ac 12.3)', 'twee (\u20ac 12,34)': 'two (\u20ac 12.34)',

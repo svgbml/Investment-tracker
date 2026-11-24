@@ -488,6 +488,26 @@ function makeDemoData() {
     ] },
     friend: { pct: { week: 0.0062, month: 0.0184, ytd: 0.1142, total: 0.0917 }, since: dIn(-60), generated: dIn(0), weeks: 40 },
   };
+  // Op deze dag (idee 2): ruim twee jaar eerdere dagstanden van het totaal, rustig oplopend en precies aansluitend op
+  // de eerste dag hierboven. Alleen het totaal: posities, weken en orders blijven zoals ze zijn.
+  {
+    const first = days.find((r) => r[1] === TOTAL);
+    if (first) {
+      const older = [];
+      const d = new Date(first[0]);
+      let close = first[2];
+      for (let i = 0; i < 820; i++) {
+        d.setDate(d.getDate() - 1);
+        if (d.getDay() === 0 || d.getDay() === 6) continue;
+        const r = gauss() * 0.006 + 0.0003;
+        const prevClose = close / (1 + r);
+        const hi = Math.max(prevClose, close) * (1 + rnd() * 0.004), lo = Math.min(prevClose, close) * (1 - rnd() * 0.004);
+        older.push([iso(d), TOTAL, r2(prevClose), r2(close), r2(lo), r2(hi), r2((prevClose + close) / 2), r2(hi - lo), (hi - lo) / ((prevClose + close) / 2)]);
+        close = prevClose;
+      }
+      days.unshift(...older.reverse());
+    }
+  }
   // Officieel en geruchten (js/21-nieuwsplus.js): verzonnen berichten met de vorm die de Worker levert
   const newsFlash = [
     [40 / 60, 'NVDA', 'official', true, 'Business Wire', 'Voorbeeld: Nvidia benoemt een nieuwe financieel directeur'],

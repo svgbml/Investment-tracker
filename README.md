@@ -48,6 +48,7 @@ Zet ze aan op de website onder *Instellingen → Koppelingen en functies*. Sleut
 | Privacy en veiligheid: zoeken in de instellingen, privacyscherm (waas als de app naar de achtergrond gaat), snel verbergen met twee vingers of Ctrl+Shift+H, eigen code per apparaat met "uitloggen op alle apparaten", logboek van sleutelwijzigingen, inlogpogingen, orders en links, functies in ontwikkeling op één plek, en je voorkeuren meenemen naar een ander apparaat | je eigen Worker | niets extra |
 | Volledige geschiedenis inlezen uit de CSV-export van Trading 212 (ook de echte bronbelasting) | Trading 212 | niets extra |
 | Reservebronnen als een bron zijn limiet bereikt of hapert (ECB, Eurostat, Finnhub, Twelve Data, Tiingo, Polygon, Marketaux, SEC, Alpha Vantage); bij Koppelingen zie je welke in gebruik is | diverse | werkt beter met meer sleutels |
+| Op deze dag: onder de dagsamenvatting hoe je portefeuille het op deze datum een en twee jaar geleden deed (in het weekend de handelsdag ervoor), zodra je een jaar meet | Trading 212 | niets extra |
 | Ongedaan maken: na het verwijderen van een aandeel van je volglijst, een koersalarm of een regel uit je beslisdagboek 8 seconden een knop in de melding die het terugzet | je eigen Worker | niets extra |
 | Statuspagina (laatste meting, welke bronnen werken) en een melding als de metingen een paar keer achter elkaar mislukken | je eigen Worker | niets extra |
 | Reservekopie van je gegevens downloaden en terugzetten (zonder sleutels) | je eigen Worker | niets extra |

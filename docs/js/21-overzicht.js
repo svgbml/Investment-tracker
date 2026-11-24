@@ -173,6 +173,39 @@ function newsMoodSentence() {
   return 'Het nieuws over je aandelen was ' + mood.word + ' (' + mood.pos + ' positief, ' + mood.neg + ' negatief van ' + mood.n + ' koppen, geschat uit de woorden in de kop).';
 }
 
+// ---------- Op deze dag (idee 2) ----------
+// De dagverandering van het totaal op deze datum een en twee jaar geleden, uit de dagreeks (aan- en verkopen tellen
+// niet mee, zie dailyReturns). In het weekend of op een dag zonder meting de handelsdag ervoor; zonder een jaar
+// geschiedenis niets. 29 februari wordt in een gewoon jaar 28 februari.
+function onThisDay() {
+  if (!M) return [];
+  const d = seriesOf(TOTAL).daily;
+  if (!d.length) return [];
+  const rets = new Map(dailyReturns(TOTAL).map((x) => [dayKey(x.t), x]));
+  const prevClose = new Map(d.map((x, i) => [dayKey(x.t), i ? d[i - 1].close : null]));
+  const now = new Date(M.lastT || Date.now());
+  const out = [];
+  [1, 2].forEach((n) => {
+    const t = new Date(now.getFullYear() - n, now.getMonth(), now.getDate(), 12);
+    if (t.getMonth() !== now.getMonth()) t.setDate(0);
+    if (t.getTime() < d[0].t - 4 * DAY) return;   // zo ver gaat de geschiedenis niet terug
+    for (let k = 0; k < 5; k++, t.setDate(t.getDate() - 1)) {
+      const r = rets.get(dayKey(t.getTime()));
+      if (!r) continue;
+      const pc = prevClose.get(dayKey(r.t));
+      out.push({ n, t: r.t, pct: r.pct, amt: isNum(pc) ? r.pct * pc : null });
+      return;
+    }
+  });
+  return out;
+}
+const onThisDayWord = (o) => (o.n === 1 ? 'vorig jaar' : o.n + ' jaar geleden');
+function onThisDayText() {
+  const L = calmMode() ? [] : onThisDay();
+  if (!L.length) return '';
+  return 'Op deze dag ' + L.map((o) => onThisDayWord(o) + ' ' + spct(o.pct) + (isNum(o.amt) ? ' (' + seur(o.amt) + ')' : '')).join(', ') + '.';
+}
+
 function dayLineText() {
   if (!M) return '';
   if (calmMode()) {
@@ -195,7 +228,7 @@ function dayLineText() {
   else txt = word + ' ' + (dir > 0 ? 'staat er ' : 'ging er ') + seur(T.change).replace(/^[+−]⁠?/, '') + ' ' + (dir > 0 ? 'bij' : 'af') + ' (' + spct(T.changePct) + ')' +
     (same && Math.abs(same.change) >= Math.abs(T.change) * 0.25 ? ', vooral door ' + same.tk + ' (' + seur(same.change) + ')' : '') + '.';
   const breadth = withChange.length ? ' ' + up + ' van je ' + withChange.length + ' posities ' + (up === 1 ? 'steeg' : 'stegen') + ', ' + down + (down === 1 ? ' daalde' : ' daalden') + '.' : '';
-  return txt + breadth + (newsMoodSentence() ? ' ' + newsMoodSentence() : '');
+  return txt + breadth + (newsMoodSentence() ? ' ' + newsMoodSentence() : '') + (onThisDayText() ? ' ' + onThisDayText() : '');
 }
 
 // Samenvatting als blokken over de hele breedte: verandering, grootste stijger en daler, en de toon van het nieuws
@@ -227,7 +260,15 @@ function daySumItems() {
     best ? pos(best, 'Grootste stijger') : { k: 'Grootste stijger', v: '–', s: 'Geen positie steeg' },
     worst ? pos(worst, 'Grootste daler') : { k: 'Grootste daler', v: '–', s: 'Geen positie daalde' },
     news,
+    onThisDayItem(),
   ].filter(Boolean);
+}
+function onThisDayItem() {
+  const L = onThisDay();
+  if (!L.length) return null;
+  const [a, b] = L;
+  return { k: T('Op deze dag'), v: spct(a.pct), t: tone(a.pct), cls: 'ds-otd',
+    s: onThisDayWord(a) + ' (' + fD.format(a.t) + ')' + (isNum(a.amt) ? ', ' + seur(a.amt) : '') + (b ? ' · ' + onThisDayWord(b) + ' ' + spct(b.pct) : '') };
 }
 function daySumHtml() {
   const items = daySumItems();
@@ -235,7 +276,7 @@ function daySumHtml() {
   const cell = (x) => {
     const inner = '<span class="ds-k">' + esc(x.k) + '</span><span class="ds-v ' + (x.t || '') + '">' + esc(x.v) + '</span><span class="ds-s">' + esc(x.s || '') + '</span>';
     return x.tk ? '<button type="button" class="ds-c" data-ticker="' + esc(x.tk) + '" aria-label="' + esc(x.k + ': ' + (x.name || x.v) + ', ' + x.s + '. Openen') + '">' + inner + '</button>'
-      : '<div class="ds-c">' + inner + '</div>';
+      : '<div class="ds-c' + (x.cls ? ' ' + x.cls : '') + '">' + inner + '</div>';
   };
   return items.map(cell).join('');
 }

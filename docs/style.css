@@ -1430,6 +1430,9 @@ html[data-motion="off"] button.ds-c:hover { transform: none; }
 .ds-v { font-size: 20px; font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; }
 .ds-s { font-size: 13px; color: var(--ink-2); }
 .m-body .day-sum { grid-template-columns: 1fr 1fr; gap: 8px; margin: 2px 0 16px; }
+/* Op deze dag (idee 2): één regel over de hele breedte, zodat er geen los vakje overblijft */
+.day-sum .ds-otd { grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; align-items: baseline; column-gap: 10px; }
+.day-sum .ds-otd .ds-v { font-size: 16px; }
 .m-body .ds-c { padding: 10px 12px; border-radius: 14px; }
 .m-body .ds-v { font-size: 16.5px; }
 .m-body .ds-s { font-size: 12px; }
