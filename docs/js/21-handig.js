@@ -8,6 +8,9 @@
 // (gemaakt met node tools/changelog.mjs); hieronder staat alleen wat de gebruiker merkt.
 // Bij een nieuwe versie: zet de regels van die versie bovenaan, met VERSION uit js/01-basis.js als sleutel.
 const WHATS_NEW = {
+  v83: [
+    'Aankopen per keer: na het verkopen van al je stukken in een fractie bleef soms een afrondingsrest staan, waardoor de FIFO-kostprijs per stuk een vreemd bedrag kon tonen. Een volledig verkochte aankoop telt nu als helemaal weg.',
+  ],
   v82: [
     'De snelle modus staat nu ook op de pagina van een aandeel op je volglijst: de live grafiek van gettex, en met een Finnhub-sleutel bij een Amerikaans aandeel ook elke trade als eigen kaarsen. De koers van Trading 212 elke 2 seconden is er niet, omdat Trading 212 alleen koersen van je eigen posities geeft.',
   ],

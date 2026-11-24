@@ -178,6 +178,7 @@ function lotsModel(c) {
       if (q <= 0) break;
       const take = Math.min(o.left, q);
       o.left -= take; q -= take;
+      if (o.left < 1e-9) o.left = 0;   // afrondingsrest van breuken: helemaal verkocht
     }
   });
   const totQty = sum(buys.map((b) => b.qty));

@@ -5,7 +5,7 @@
 //
 // Wat getest wordt:
 //   XIRR, TWR, drawdown, risicoklasse (srri), samenhang (correlatie), kwantiel,
-//   Monte Carlo (mcSimulate), box 3, en de opmaakhulpjes eur, seur, spct, spct1, money, PCT0, P1, esc en tpl.
+//   Monte Carlo (mcSimulate), box 3, eigenschappen met 500 willekeurige gevallen (XIRR, TWR, FIFO) en de opmaakhulpjes eur, seur, spct, spct1, money, PCT0, P1, esc en tpl.
 //
 // Draaien: node tools/test-reken.mjs
 //          node tools/test-reken.mjs --alles    ook de geslaagde tests tonen
@@ -155,6 +155,106 @@ const results = await page.evaluate(() => {
     T('box 3: met partner verdubbelt het heffingsvrije vermogen', B2.nowTax, Math.max(0, B.start - p.hv * 2) * p.forfait / 100 * p.tarief / 100, 1e-9);
     OK('box 3: met partner is de heffing niet hoger', B2.nowTax <= B.nowTax + 1e-9, '≤ zonder partner');
   } else SKIP('box 3', 'geen jaar met begin- en eindstand in de voorbeeldgegevens');
+
+  // ================= Eigenschappen met willekeurige gevallen (idee 60) =================
+  // Een vaste reeks willekeurige orders en koersen (zaadwaarde ZAAD, dus een fout is herhaalbaar). Per eigenschap
+  // komt hooguit het eerste mislukte geval in de uitvoer, met het nummer om het na te rekenen.
+  const ZAAD = 20261124, GEVALLEN = 500;
+  const rng = (seed) => () => { seed |= 0; seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const sign = (x) => (x > 1e-9 ? 1 : x < -1e-9 ? -1 : 0);
+  const geen = (v) => v === undefined || (typeof v === 'number' && !isFinite(v));
+  const eigenschap = (naam, fn) => {
+    let fout = null;
+    for (let i = 0; i < GEVALLEN && !fout; i++) {
+      try { const r = fn(rng(ZAAD + i * 7919), i); if (r !== true) fout = 'geval ' + i + ': ' + r; }
+      catch (e) { fout = 'geval ' + i + ': ' + (e && e.message || e); }
+    }
+    out.push({ naam: naam + ' (' + GEVALLEN + ' gevallen)', ok: !fout, got: fout || 'alles klopt', want: 'alles klopt' });
+  };
+  const echtM = M;
+  try {
+    // Weekstanden: een koers per week (stappen tot ±8%) en stortingen die tegen die koers stukken kopen
+    const weekReeks = (R) => {
+      const WK = 7 * DAY, n = 3 + Math.floor(R() * 150), t0 = Date.now() - (n + 1) * WK;
+      let p = 10 + R() * 90, units = 0, inleg = 0;
+      const weeks = [], prices = [];
+      const geenStort = R() < 0.25;
+      for (let i = 0; i < n; i++) {
+        if (i) p *= 1 + (R() - 0.5) * 0.16;
+        const dep = i === 0 ? 100 + R() * 5000 : !geenStort && R() < 0.3 ? Math.round(R() * 2000) : 0;
+        units += dep / p; inleg += dep;
+        prices.push(p);
+        weeks.push({ t: t0 + i * WK, accountValue: units * p, newDeposits: i ? dep : null });
+      }
+      return { weeks, prices, inleg, eind: units * p, geenStort };
+    };
+    eigenschap('xirr: zelfde teken als het resultaat (eind − inleg), nooit NaN', (R) => {
+      const w = weekReeks(R);
+      M = { weeks: w.weeks, accountNow: w.eind };
+      const f = accountFlows(), x = xirrOf(f);
+      if (geen(x)) return 'xirr is ' + x;
+      const res = w.eind - w.inleg;
+      if (Math.abs(res) < 0.01 * w.inleg) return true;   // vrijwel nul: teken zegt dan niets
+      return x === null ? 'geen xirr bij resultaat ' + res.toFixed(2) : sign(x) === sign(res) || 'xirr ' + x + ' bij resultaat ' + res.toFixed(2);
+    });
+    eigenschap('twr: gelijk aan het koersrendement, wat je ook stort; zonder stortingen zelfde teken als het resultaat', (R) => {
+      const w = weekReeks(R);
+      M = { weeks: w.weeks, accountNow: w.eind };
+      const tw = accountTwr();
+      if (!tw || geen(tw.total)) return 'twr is ' + (tw && tw.total);
+      const koers = w.prices[w.prices.length - 1] / w.prices[0] - 1;
+      if (Math.abs(tw.total - koers) > 1e-9) return 'twr ' + tw.total + ', koersrendement ' + koers;
+      if (w.geenStort && Math.abs(w.eind - w.inleg) > 1e-6 && sign(tw.total) !== sign(w.eind - w.inleg)) return 'teken twr ' + tw.total + ' tegen resultaat ' + (w.eind - w.inleg);
+      return true;
+    });
+    // Orders: aankopen tegen wisselende prijzen en verkopen van hooguit wat je hebt; soms alles verkopen
+    const orderReeks = (R) => {
+      const n = 1 + Math.floor(R() * 40), t0 = Date.now() - 400 * DAY;
+      const list = [];
+      let held = 0, p = 20 + R() * 200;
+      const zelfdePrijs = R() < 0.2;
+      for (let i = 0; i < n; i++) {
+        if (!zelfdePrijs) p *= 1 + (R() - 0.5) * 0.3;
+        const t = t0 + i * DAY * (1 + Math.floor(R() * 5));
+        if (held > 1e-6 && R() < 0.3) {
+          const qty = R() < 0.3 ? held : Math.round(held * R() * 1e6) / 1e6;
+          if (qty > 0) { list.push({ t, side: 'SELL', qty, price: p, cur: 'USD', net: qty * p, kind: 'TRADE' }); held -= qty; }
+        } else {
+          const qty = Math.round((0.01 + R() * 10) * 1e6) / 1e6;
+          list.push({ t, side: 'BUY', qty, price: p, cur: 'USD', net: qty * p * (1 + R() * 0.002), kind: 'TRADE' });
+          held += qty;
+        }
+      }
+      if (R() < 0.25 && held > 0) { list.push({ t: t0 + 300 * DAY, side: 'SELL', qty: held, price: p, cur: 'USD', net: held * p, kind: 'TRADE' }); held = 0; }
+      return { list, held, zelfdePrijs };
+    };
+    // Los nagerekend: een rij aankopen, verkopen nemen de oudste eerst
+    const fifoRef = (list) => {
+      const q = [];
+      list.forEach((x) => {
+        if (x.side === 'BUY') q.push({ left: x.qty, per: x.net / x.qty });
+        else { let rest = x.qty; while (rest > 1e-12 && q.length) { const take = Math.min(q[0].left, rest); q[0].left -= take; rest -= take; if (q[0].left <= 1e-12) q.shift(); } }
+      });
+      return { qty: sum(q.map((o) => o.left)), cost: sum(q.map((o) => o.left * o.per)) };
+    };
+    eigenschap('lotsModel: FIFO gelijk aan een losse berekening, aantallen kloppen, nooit NaN', (R) => {
+      const o = orderReeks(R);
+      M = { tx: { byTk: new Map([['PROEF', o.list]]) } };
+      const L = lotsModel({ tk: 'PROEF' });
+      if (!L) return 'geen model bij ' + o.list.length + ' orders';
+      for (const k of ['sold', 'totQty', 'totNet', 'openQty', 'fifoCost', 'avgEur', 'fifoEur']) if (geen(L[k])) return k + ' is ' + L[k];
+      const ref = fifoRef(o.list);
+      if (Math.abs(L.openQty - o.held) > 1e-6) return 'aantal ' + L.openQty + ', verwacht ' + o.held;
+      if (Math.abs(L.fifoCost - ref.cost) > 1e-6 * Math.max(1, ref.cost)) return 'FIFO-kostprijs ' + L.fifoCost + ', los nagerekend ' + ref.cost;
+      if (L.fifoCost < -1e-9 || L.fifoCost > L.totNet + 1e-6) return 'FIFO-kostprijs ' + L.fifoCost + ' buiten 0…' + L.totNet;
+      // Alles verkocht: van geen van beide methoden blijft kostprijs over
+      if (o.held <= 1e-9 && (Math.abs(L.fifoCost) > 1e-6 || L.fifoEur !== null)) return 'alles verkocht, toch FIFO-kostprijs ' + L.fifoCost;
+      // Elke aankoop tegen dezelfde prijs per stuk: beide methoden geven dezelfde kostprijs per stuk
+      const perStuk = o.list.filter((x) => x.side === 'BUY').map((x) => x.net / x.qty);
+      if (o.held > 1e-6 && Math.max(...perStuk) - Math.min(...perStuk) < 1e-9 && Math.abs(L.fifoEur - L.avgEur) > 1e-6) return 'zelfde prijs, toch FIFO ' + L.fifoEur + ' en gemiddeld ' + L.avgEur;
+      return true;
+    });
+  } finally { M = echtM; }
 
   // ================= Opmaak van getallen =================
   // Deze hulpjes staan in docs/js/01-basis.js (eur, seur, spct, spct1, P1, P2, N2, NI),
