@@ -8,6 +8,11 @@
 // (gemaakt met node tools/changelog.mjs); hieronder staat alleen wat de gebruiker merkt.
 // Bij een nieuwe versie: zet de regels van die versie bovenaan, met VERSION uit js/01-basis.js als sleutel.
 const WHATS_NEW = {
+  v74: [
+    'Nieuw uiterlijk, stap 2: Overzicht. De grote waarde staat nu over een grafiek die de hele breedte vult, met speldjes voor het hoogste punt, stortingen en je eigen aan- en verkopen (op de computer).',
+    'Onder de grafiek een strook met je kerncijfers. Elke sectie heeft links haar titel en rechts de inhoud; meldingen staan op één vaste plek en stijgers en dalers staan als twee lijstjes onder Vandaag.',
+    'Secties schuiven zacht in beeld tijdens het scrollen, behalve als je minder beweging hebt gekozen.',
+  ],
   v73: [
     'Nieuw uiterlijk, stap 1: elke pagina is één rustig geheel met dunne lijnen in plaats van losse tegels, met een nieuwe kop en menu op de computer en een nieuwe tabbalk op de telefoon.',
     'Vier thema\'s: licht, donker, amoled (zwart) en automatisch, en een accentkleur naar keuze bij Instellingen, Weergave.',

@@ -35,17 +35,9 @@ function renderHome() {
   const up = withChange.filter((c) => c.change > 0).length, down = withChange.filter((c) => c.change < 0).length;
   $('breadth').innerHTML = withChange.length ? split(up, down) + esc(up + ' gestegen, ' + down + ' gedaald') : '';
   $('link-all').textContent = 'Alle ' + M.companies.length + ' bedrijven bekijken';
-  $('movers-title').textContent = 'Stijgers, markt en dalers ' + M.dayWord;
+  $('movers-title').textContent = M.dayWord === 'vandaag' ? 'Vandaag' : 'Laatste handelsdag';
   const mv = moversModel();
-  const moverTile = (c, kind) =>
-    '<button type="button" class="tile" data-ticker="' + esc(c.tk) + '" aria-label="' + esc(c.name + ', ' + spct(c.changePct) + ' ' + M.dayWord + '. Inzoomen') + '">' +
-      '<span class="row"><span class="tk">' + esc(c.tk) + '</span><span class="tag ' + tone(c.changePct) + '">' + esc(kind) + '</span></span>' +
-      '<span class="nm">' + esc(c.name) + '</span>' +
-      '<span class="v big ' + tone(c.changePct) + '">' + esc(spct(c.changePct)) + '</span>' +
-      '<span class="sub"><b class="' + tone(c.change) + '">' + esc(seur(c.change)) + '</b> op ' + esc(eur(c.value)) + '</span>' +
-      spark(marketSeries(c.tk, 'today'), toneColor(c.changePct), 'spark tall') + '</button>';
-  fill('movers', mv.up.length ? mv.up.map((c) => moverTile(c, c.changePct > 0 ? 'Stijger' : 'Beste')).concat([marketTile(mv)], mv.down.map((c) => moverTile(c, c.changePct < 0 ? 'Daler' : 'Zwakste')))
-    : ['<p class="empty">Nog geen metingen van vandaag.</p>']);
+  fill('movers', mv.up.length ? moverLists(mv) : ['<p class="empty">Nog geen metingen van vandaag.</p>']);
 
   fill('agenda', agendaTiles());
 }
@@ -68,8 +60,8 @@ function moversModel() {
   const bench = M.bench;
   const pool = M.companies.filter((c) => isNum(c.changePct) && (!bench || c.tk !== bench.c.tk));
   const byPct = pool.slice().sort((a, b) => b.changePct - a.changePct);
-  const up = byPct.slice(0, 2);
-  const down = byPct.slice(-2).reverse().filter((c) => !up.includes(c));
+  const up = byPct.slice(0, 3);
+  const down = byPct.slice(-3).reverse().filter((c) => !up.includes(c));
   // Portefeuille over dezelfde periode als de marktmaatstaf
   let mine = M.tot.changePct;
   if (bench && bench.c.base && M.tot.base && bench.c.base.kind !== M.tot.base.kind) {
@@ -78,6 +70,25 @@ function moversModel() {
     mine = pts.length > 1 && pts[0].v > 0 ? pts[pts.length - 1].v / pts[0].v - 1 : null;
   }
   return { up, down, bench, mine, diff: bench && isNum(mine) && isNum(bench.c.changePct) ? mine - bench.c.changePct : null };
+}
+
+// Stijgers en dalers als twee lijstjes naast elkaar (computer), met de markt eronder
+function moverLists(mv) {
+  const bm = mv.bench && isNum(mv.bench.c.changePct) ? mv.bench.c.changePct : null;
+  const row = (c, i) => '<button type="button" class="mv-row" data-ticker="' + esc(c.tk) + '" aria-label="' + esc(c.name + ', ' + spct(c.changePct) + ' ' + M.dayWord + '. Inzoomen') + '">' +
+      '<span class="mv-n" aria-hidden="true">' + (i + 1) + '</span>' +
+      '<span class="mv-nm"><b>' + esc(c.tk) + '</b><span>' + esc(c.name) + '</span></span>' +
+      spark(marketSeries(c.tk, 'today'), toneColor(c.changePct), 'mv-spark') +
+      '<span class="mv-pct"><b class="' + tone(c.changePct) + '">' + esc(spct(c.changePct)) + '</b>' +
+        (isNum(bm) ? '<span>' + esc(sgn((c.changePct - bm) * 100, N2) + ' pp vs markt') + '</span>' : '') + '</span>' +
+      '<span class="mv-eur ' + tone(c.change) + '">' + esc(seur(c.change)) + '</span></button>';
+  const allUp = mv.up.every((c) => c.changePct > 0), allDown = mv.down.every((c) => c.changePct < 0);
+  const col = (cls, title, list) => '<section class="mv-col ' + cls + '"><h3><i aria-hidden="true"></i>' + esc(title) + '</h3>' + list.map(row).join('') + '</section>';
+  return [
+    col('up', allUp ? 'Grootste stijgers' : 'Best presterend', mv.up),
+    mv.down.length ? col('down', allDown ? 'Grootste dalers' : 'Zwakst presterend', mv.down) : '',
+    marketTile(mv),
+  ].filter(Boolean);
 }
 
 function vsMarket(mv) {
@@ -209,7 +220,7 @@ function renderMHome() {
   const withChange = M.companies.filter((c) => isNum(c.change));
   const up = withChange.filter((c) => c.change > 0).length, down = withChange.filter((c) => c.change < 0).length;
   $('m-breadth').innerHTML = withChange.length ? split(up, down) + esc(up + ' omhoog, ' + down + ' omlaag') : '';
-  $('m-movers-title').textContent = 'Stijgers, markt en dalers';
+  $('m-movers-title').textContent = M.dayWord === 'vandaag' ? 'Vandaag' : 'Laatste handelsdag';
   const mv = moversModel();
   const row = (c) => mRow(c, marketSeries(c.tk, 'today'), { top: spct(c.changePct), bottom: seur(c.change), tone: c.changePct });
   let market = '';

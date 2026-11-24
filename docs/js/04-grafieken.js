@@ -78,7 +78,7 @@ function lineChart(host, sets, o) {
       const cut = sets.map((s) => Object.assign({}, s, { pts: s.pts.filter((p) => p.t >= z[0] && p.t <= z[1]) }));
       if (cut[0].pts.length >= 3) {
         sets = cut;
-        o = Object.assign({}, o, { markers: (o.markers || []).map((mk) => (mk.i != null ? { t: full[mk.i] && full[mk.i].t, label: mk.label } : mk)).filter((mk) => mk.t >= z[0] && mk.t <= z[1]) });
+        o = Object.assign({}, o, { markers: (o.markers || []).map((mk) => (mk.i != null ? { t: full[mk.i] && full[mk.i].t, label: mk.label, kind: mk.kind } : mk)).filter((mk) => mk.t >= z[0] && mk.t <= z[1]) });
       } else host._zoom = null;
     }
   }
@@ -111,7 +111,9 @@ function lineChart(host, sets, o) {
     const idx = [...ser[k].keys()].sort((a, b) => a - b);
     if (idx.length < 2) return;
     const d = idx.map((i, j) => (j ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(ser[k].get(i)).toFixed(2)).join('');
-    // Geen gekleurde vlakken onder lijnen meer (rustig ontwerp); 'area' wordt genegeerd
+    // Geen gekleurde vlakken onder lijnen (rustig ontwerp); 'area' wordt genegeerd. Alleen de grote grafiek
+    // van Overzicht vraagt met 'fill' om een heel licht vlak in de kleur van de lijn
+    if (s.fill) svg += '<path class="lc-fill" d="' + d + 'L' + X(idx[idx.length - 1]).toFixed(1) + ' 100L' + X(idx[0]).toFixed(1) + ' 100Z" fill="' + s.color + '" stroke="none"/>';
     svg += '<path d="' + d + '" fill="none" stroke="' + s.color + '" stroke-width="' + (s.width || 2.5) + '" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"' + (s.dash ? ' stroke-dasharray="6 5"' : '') + '/>';
   });
   host.innerHTML = svg + '</svg>';
@@ -122,11 +124,12 @@ function lineChart(host, sets, o) {
     if (!isNum(v)) return;
     const el = document.createElement('div');
     const xp = X(i) / 10;
-    el.className = 'marker' + (xp > 82 ? ' r' : xp < 18 ? ' l' : '');
+    el.className = 'marker' + (xp > 82 ? ' r' : xp < 18 ? ' l' : '') + (mk.kind ? ' mk-' + mk.kind : '');
     el.style.left = xp + '%';
     el.style.top = Y(v) + '%';
     el.innerHTML = '<span></span><i></i>';
     el.firstChild.textContent = mk.label;
+    if (mk.kind) el.title = mk.label;
     host.appendChild(el);
   });
 
@@ -594,18 +597,39 @@ function drawWeekChart(root) {
   ], { top: 0.08, bottom: 0.08, xl: root.querySelector('[data-x="weeks"]'), xcount: 2, xfmt: (t) => fDM.format(t), tfmt: (t) => 'Week tot ' + fDM.format(t), empty: 'Na de tweede weekmeting zie je hier het verloop.' });
 }
 
+// Speldjes op de grote grafiek (alleen op de computer; de telefoon toont de kale lijn): het hoogste punt,
+// stortingen en je eigen aan- en verkopen in de gekozen periode. kind bepaalt de kleur (zie ontwerp.css).
+const HERO_PIN_KINDS = [['high', 'Hoogste punt'], ['dep', 'Storting'], ['buy', 'Jij kocht'], ['sell', 'Jij verkocht']];
 function heroMarkers(pts, range) {
   const markers = [];
   if (pts.length > 2) {
     let mi = 0;
     pts.forEach((p, i) => { if (p.v > pts[mi].v) mi = i; });
-    markers.push({ i: mi, label: 'hoogste ' + eur(pts[mi].v) });
+    markers.push({ i: mi, label: 'hoogste ' + eur(pts[mi].v), kind: 'high' });
     if (range === 'all' || range === '1m') {
       M.weeks.filter((w) => isNum(w.newDeposits) && w.newDeposits > 0 && w.t >= pts[0].t && w.t <= pts[pts.length - 1].t + DAY)
-        .slice(-3).forEach((w) => { const i = nearestIdx(pts, w.t); if (i !== mi) markers.push({ i, label: 'storting ' + eur(w.newDeposits) }); });
+        .slice(-3).forEach((w) => { const i = nearestIdx(pts, w.t); if (i !== mi) markers.push({ i, label: 'storting ' + eur(w.newDeposits), kind: 'dep' }); });
+    }
+    if (range !== 'detail' && M.tx && M.tx.trades) {
+      const t0 = pts[0].t, t1 = pts[pts.length - 1].t + HOUR;
+      M.tx.trades.filter((x) => x.t >= t0 && x.t <= t1).slice(-5).forEach((x) => {
+        const i = nearestIdx(pts, x.t);
+        const label = (x.side === 'SELL' ? 'verkoop ' : 'koop ') + x.tk + ' ' + eur(Math.abs(x.net || 0));
+        const same = markers.find((m) => m.i === i && m.kind !== 'high');
+        if (same) same.label += ' · ' + label;
+        else if (i !== mi) markers.push({ i, label, kind: x.side === 'SELL' ? 'sell' : 'buy' });
+      });
     }
   }
   return markers;
+}
+
+// Legenda onder de grote grafiek: alleen de soorten speldjes die er nu staan
+function heroLegend(p, markers) {
+  const host = $(p + 'hero-legend');
+  if (!host) return;
+  const has = new Set(mode === 'm' ? [] : markers.map((m) => m.kind));
+  host.innerHTML = HERO_PIN_KINDS.filter(([k]) => has.has(k)).map(([k, l]) => '<span class="mk-' + k + '"><i aria-hidden="true"></i>' + esc(l) + '</span>').join('');
 }
 
 function segButtons(host, opts, current, onPick) {
@@ -620,11 +644,14 @@ function drawHero(p, animate) {
   segButtons($(p + 'hero-ranges'), heroRangeList(), r, (k) => { ui.heroRange = k; saveHeroRange(k); if (typeof heroCmpFitRange === 'function') heroCmpFitRange(k); drawHero(p, true); });
   heroCmpButtons(p);
   const cmp = heroCmpSets(pts);
-  lineChart($(p + 'hero-chart'), [{ pts, color: C.accent, width: 2.5, label: 'Jouw beleggingen' }].concat(cmp.sets), {
-    animate, markers: heroMarkers(pts, r), xl: $(p + 'hero-x'), xfmt: xFmt(r, pts), tfmt: tFmt(r, pts),
+  const pins = heroMarkers(pts, r);
+  // Op de computer staat de waarde over de grafiek heen: de lijn blijft in het onderste deel
+  lineChart($(p + 'hero-chart'), /** @type {any[]} */ ([{ pts, color: C.accent, width: 2.5, label: 'Jouw beleggingen', fill: true }]).concat(cmp.sets), {
+    animate, markers: pins, xl: $(p + 'hero-x'), xfmt: xFmt(r, pts), tfmt: tFmt(r, pts), top: p ? undefined : 0.44,
     empty: 'Nog te weinig metingen voor deze periode. De tracker meet op werkdagen de hele dag, elke 10 minuten.',
   });
   // Zei de lijn iets anders dan de waarde zelf, dan staat erbij dat aan- en verkopen eruit zijn gehaald
+  heroLegend(p, pins);
   const raw = seriesFor(TOTAL, r);
   const tradesOut = pts !== raw && pts.some((x, i) => raw[i] && Math.abs(x.v - raw[i].v) > 0.5);
   $(p + 'hero-note').textContent = [cmp.note, coverageNote(r, pts), tradesOut ? 'Aan- en verkopen tellen niet mee: de lijn toont de koersbeweging van je huidige posities.' : ''].filter(Boolean).join(' ');

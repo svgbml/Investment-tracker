@@ -119,6 +119,7 @@ const EN_RE = [
   [/^Stijgers, markt en dalers (.*)$/, 'Risers, market and fallers $1'], [/^(\d+) dagen$/, '$1 days'], [/^(\d+) jaar$/, '$1 years'], [/^Accountwaarde, (.+) · beleggingen (.+) \+ (.+) vrij saldo$/, 'Account value, $1 · investments $2 + $3 free cash'], [/^Waarde beleggingen, (.+)$/, 'Investments value, $1'],
   [/^Bijgewerkt (.+)$/, 'Updated $1'], [/^vandaag$/, 'today'], [/^Nieuwe versie (.+)$/, 'New version $1'],
   [/^(.+) vandaag$/, '$1 today'], [/^sinds het slot van (.+)$/, 'since the close of $1'], [/^(.+) sinds het slot van (.+)$/, '$1 since the close of $2'],
+  [/^([+−\u2060\d.,]+) pp vs markt$/, '$1 pp vs market'], [/^koop (\S+) (.+)$/, 'buy $1 $2'], [/^verkoop (\S+) (.+)$/, 'sell $1 $2'],
   [/^sinds de opening(.*)$/, 'since the open$1'], [/^Sinds aankoop (.+)$/, 'Since purchase $1'], [/^(\d+) posities, samen (.+)$/, '$1 positions, together $2'],
 ];
 Object.assign(EN, {
@@ -307,6 +308,12 @@ Object.assign(EN, {
   'Langste taak': 'Longest task', 'Taken boven 50 ms': 'Tasks over 50 ms', 'Elementen op Overzicht': 'Elements on Overview', 'Elementen op Bedrijven': 'Elements on Companies',
   'Elementen op Nieuws': 'Elements on News', 'Elementen op Analyse': 'Elements on Analysis', 'Elementen op Plannen': 'Elements on Plans',
   '1 week': '1 week', 'Alleen waarde': 'Value only', 'Maatstaf': 'Benchmark', 'Vergelijken met': 'Compare with', 'Jouw beleggingen': 'Your investments',
+  'Wat je aandacht vraagt, op één vaste plek': 'What needs your attention, in one fixed place', 'Grootste stijgers': 'Biggest risers', 'Grootste dalers': 'Biggest fallers',
+  'Best presterend': 'Best performers', 'Zwakst presterend': 'Weakest performers', 'Hoogste punt': 'Highest point', 'Storting': 'Deposit', 'Jij kocht': 'You bought', 'Jij verkocht': 'You sold',
+  'Accountwaarde, inleg en resultaat per week': 'Account value, deposits and result per week', 'Van de hele portefeuille': 'Of the whole portfolio',
+  'Kwartaalcijfers en dividenden van je posities': 'Earnings and dividends of your positions', 'Waar je aandelen in zitten en hoe die sectoren het doen': 'Which sectors your shares are in and how those sectors are doing',
+  'Hoe de mening van analisten per sector schoof': 'How analyst opinion shifted per sector', 'Euro-dollarkoers en inflatie': 'Euro-dollar rate and inflation',
+  'Hoe sterk je beleggingen schommelen, en waardoor': 'How much your investments swing, and why',
   'Je ritme en mijlpalen': 'Your rhythm and milestones', 'Dividend dat eraan komt, wat je hebt bereikt en je stortingen': 'Upcoming dividend, what you reached and your deposits',
   'Volgend dividend': 'Next dividend', 'Stortingen op rij': 'Deposits in a row', 'Maandresultaten': 'Monthly results', 'Net bereikt': 'Just reached',
   'Eerste € 1.000': 'First € 1,000', 'Eerste dividend': 'First dividend', 'Eén jaar beleggen': 'One year of investing', '12 maanden storten op rij': '12 months of deposits in a row',
