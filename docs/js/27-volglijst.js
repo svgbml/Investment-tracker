@@ -77,6 +77,96 @@ document.addEventListener('click', (e) => {
   }).catch(() => {});
 });
 
+// ---------- Meerdere tegelijk (idee 36) ----------
+// Kiezen zet vinkjes voor de aandelen; de balk eronder geeft ze samen een label, een koersalarm (een percentage onder
+// of boven de koers van nu) of haalt ze van de volglijst (met Ongedaan maken). Elke actie is één opslag in de Worker.
+const wPick = { on: false, sel: new Set() };
+function watchPickHtml() {
+  const list = watchSyms();
+  wPick.sel.forEach((x) => { if (!list.includes(x)) wPick.sel.delete(x); });
+  const n = wPick.sel.size, all = n === list.length;
+  const tags = watchTagList();
+  return String(tpl`<section class="tile pad watch-pick"><div class="plan-head"><h3>${T('Aandelen kiezen')}</h3>
+      <button type="button" class="btn primary" data-wp="done">${T('Klaar')}</button></div>
+    <p class="small muted"><button type="button" class="linklike" data-wp="all">${all ? T('Niets kiezen') : T('Alles kiezen')}</button></p>
+    <ul class="wp-list">${list.map((sym) => {
+      const nm = watchPseudo(sym).name, tg = watchMeta(sym).tags || [];
+      return tpl`<li><label class="check"><input type="checkbox" data-wp-sym="${sym}"${wPick.sel.has(sym) ? raw(' checked') : null}><b>${sym}</b> <span class="muted small">${nm !== sym ? nm : ''}${tg.length ? ' · ' + tg.join(', ') : ''}</span></label></li>`;
+    })}</ul>
+    <div class="wp-bar" role="group" aria-label="${T('Met de gekozen aandelen')}">
+      <p class="wp-n"><b>${n}</b> ${T('gekozen')}</p>
+      <div class="wp-act"><label class="small">${T('Label')}<input type="text" data-wp-f="tag" maxlength="20" list="wp-tags" autocomplete="off" placeholder="bijv. dividend"></label>
+        <datalist id="wp-tags">${tags.map((t) => tpl`<option value="${t}">`)}</datalist>
+        <button type="button" class="btn ghost" data-wp="tag"${n ? null : raw(' disabled')}>${T('Label geven')}</button></div>
+      <div class="wp-act"><label class="small">${T('Koersalarm')}<select data-wp-f="op"><option value="below">${T('daling van')}</option><option value="above">${T('stijging van')}</option></select></label>
+        <label class="small">%<input type="number" data-wp-f="pct" min="1" max="90" step="1" value="5" inputmode="numeric"></label>
+        <button type="button" class="btn ghost" data-wp="alarm"${n ? null : raw(' disabled')}>${T('Alarm zetten')}</button></div>
+      <div class="wp-act"><button type="button" class="btn ghost danger" data-wp="del"${n ? null : raw(' disabled')}>${T('Van volglijst halen')}</button></div>
+      <p class="small watch-status wp-st" role="status" aria-live="polite"></p>
+    </div></section>`);
+}
+const wpSay = (t, cls) => { const st = [...document.querySelectorAll('.wp-st')].find((x) => /** @type {HTMLElement} */ (x).offsetParent); if (st) { st.textContent = t; st.className = 'small watch-status wp-st ' + (cls || ''); } };
+const wpField = (k) => /** @type {HTMLInputElement|null} */ ([...document.querySelectorAll('[data-wp-f="' + k + '"]')].find((x) => /** @type {HTMLElement} */ (x).offsetParent) || null);
+document.addEventListener('change', (e) => {
+  const c = /** @type {HTMLInputElement} */ (e.target);
+  if (!c || !c.dataset || !c.dataset.wpSym) return;
+  if (c.checked) wPick.sel.add(c.dataset.wpSym); else wPick.sel.delete(c.dataset.wpSym);
+  renderWatch();
+  const back = /** @type {HTMLElement|null} */ ([...document.querySelectorAll('[data-wp-sym="' + CSS.escape(c.dataset.wpSym) + '"]')].find((x) => /** @type {HTMLElement} */ (x).offsetParent) || null);
+  if (back) back.focus();
+});
+document.addEventListener('click', async (e) => {
+  const b = near(e, '[data-wp]');
+  if (!b) return;
+  const how = b.dataset.wp;
+  if (how === 'start' || how === 'done') {
+    wPick.on = how === 'start';
+    if (!wPick.on) wPick.sel.clear();
+    renderWatch();
+    const f = /** @type {HTMLElement|null} */ ([...document.querySelectorAll(wPick.on ? '.watch-pick [data-wp="done"]' : '[data-wp="start"]')].find((x) => /** @type {HTMLElement} */ (x).offsetParent) || null);
+    if (f) f.focus();
+    return;
+  }
+  if (how === 'all') {
+    const list = watchSyms();
+    if (wPick.sel.size === list.length) wPick.sel.clear(); else list.forEach((x) => wPick.sel.add(x));
+    renderWatch();
+    return;
+  }
+  const syms = watchSyms().filter((x) => wPick.sel.has(x));
+  if (!syms.length) return;
+  if (how === 'del') {
+    const note = syms.length === 1 ? syms[0] + ' is van je volglijst gehaald.' : syms.length + ' aandelen zijn van je volglijst gehaald.';
+    wPick.sel.clear();
+    unwatchUndo(syms, null, note).catch(() => {});
+    return;
+  }
+  if (how === 'tag') {
+    const tag = (wpField('tag') ? wpField('tag').value : '').trim().slice(0, 20);
+    if (!tag) { wpSay(T('Typ eerst een label.'), 'loss'); return; }
+    const meta = Object.assign({}, userPrefs().watchMeta || {});
+    syms.forEach((sym) => { const m = Object.assign({}, meta[sym] || {}); const t = (m.tags || []).filter((x) => x !== tag); m.tags = t.concat([tag]).slice(-6); meta[sym] = m; });
+    try { await savePrefs({ watchMeta: meta }); renderWatch(); wpSay(syms.length + ' × ' + tag, 'gain'); }
+    catch (err) { wpSay(foutTekst('Het label kon niet worden opgeslagen', err), 'loss'); }
+    return;
+  }
+  if (how === 'alarm') {
+    const pct = Number(wpField('pct') ? wpField('pct').value : 0), op = wpField('op') && wpField('op').value === 'above' ? 'above' : 'below';
+    if (!(pct >= 1 && pct <= 90)) { wpSay(T('Kies een percentage tussen 1 en 90.'), 'loss'); return; }
+    const all = ((M.settings && M.settings.priceAlerts) || []).map((a) => Object.assign({}, a));
+    const add = syms.map((sym) => { const p = M.mk.ok ? M.mk.prof(sym) : null; return p && p.price > 0 ? { sym, price: Math.round(p.price * (op === 'below' ? 1 - pct / 100 : 1 + pct / 100) * 100) / 100 } : null; }).filter(Boolean);
+    const none = syms.length - add.length;
+    if (!add.length) { wpSay(T('Voor deze aandelen is nog geen koers bekend.'), 'loss'); return; }
+    if (all.length + add.length > 30) { wpSay('Maximaal 30 alarmen; er is nog plaats voor ' + Math.max(0, 30 - all.length) + '.', 'loss'); return; }
+    const next = all.concat(add.map((a) => ({ id: Math.random().toString(36).slice(2, 10), sym: a.sym, op, price: a.price, on: true })));
+    try {
+      await saveSettings({ priceAlerts: next });
+      rerenderAll();
+      wpSay(add.length + ' ' + (add.length === 1 ? 'alarm' : 'alarmen') + ' gezet' + (none ? '; ' + none + ' zonder bekende koers overgeslagen' : '') + '.', 'gain');
+    } catch (err) { wpSay(foutTekst('De alarmen konden niet worden opgeslagen', err), 'loss'); }
+  }
+});
+
 // ---------- Een lijst symbolen invoeren, eerst bekijken, dan toevoegen ----------
 const WIMP_MAX = 50;
 const WIMP_SKIP = new Set(['TICKER', 'TICKERS', 'SYMBOL', 'SYMBOOL', 'NAME', 'NAAM', 'AANDEEL', 'STOCK', 'QTY', 'QUANTITY', 'AANTAL',

@@ -235,14 +235,16 @@ function watchAddForm(id) {
 function renderWatch() {
   // Volgorde wijzigen (js/27-volglijst.js): dan de hele lijst als rijen met knoppen, zonder labelfilter
   const ordering = wOrder.on && watchSyms().length > 1;
+  // Meerdere tegelijk kiezen (idee 36, js/27-volglijst.js)
+  const picking = !ordering && wPick.on && watchSyms().length > 0;
   const syms = ordering ? watchSyms() : watchSyms().filter(watchTagFilter);
   const empty = '<p class="empty">Nog niets op je volglijst. Voeg een beurssymbool toe (zoals NVDA of LMT) om koers, agenda, nieuws en cijfers te volgen zonder het aandeel te hebben.</p>';
-  if ($('watch-grid')) { if (!$('watch-in')) $('watch-add').innerHTML = watchAddForm('watch-in'); fill('watch-grid', ordering ? [watchOrderHtml()] : syms.length ? syms.map((x) => watchTile(x, false)) : [empty]); }
-  if ($('m-watch-rows')) { if (!$('m-watch-in')) $('m-watch-add').innerHTML = watchAddForm('m-watch-in'); fill('m-watch-rows', ordering ? [watchOrderHtml()] : syms.length ? syms.map((x) => watchTile(x, true)) : ['<p class="m-sub" style="padding:16px">Nog niets op je volglijst.</p>']); }
+  if ($('watch-grid')) { if (!$('watch-in')) $('watch-add').innerHTML = watchAddForm('watch-in'); fill('watch-grid', ordering ? [watchOrderHtml()] : picking ? [watchPickHtml()] : syms.length ? syms.map((x) => watchTile(x, false)) : [empty]); }
+  if ($('m-watch-rows')) { if (!$('m-watch-in')) $('m-watch-add').innerHTML = watchAddForm('m-watch-in'); fill('m-watch-rows', ordering ? [watchOrderHtml()] : picking ? [watchPickHtml()] : syms.length ? syms.map((x) => watchTile(x, true)) : ['<p class="m-sub" style="padding:16px">Nog niets op je volglijst.</p>']); }
   const bad = unknownSyms();
   const clean = bad.length ? '<p class="small loss watch-clean">' + esc(bad.length + (bad.length === 1 ? ' symbool wordt' : ' symbolen worden') + ' niet gevonden: ' + bad.join(', ') + '.') + ' <button type="button" class="linklike" data-xa="watch-clean">Ongeldige verwijderen</button></p>' : '';
   ['watch-add', 'm-watch-add'].forEach((id) => { const host = $(id); if (!host) return; const old = host.querySelector('.watch-clean'); if (old) old.remove(); if (clean) host.insertAdjacentHTML('beforeend', clean); const oc = host.querySelector('.watch-tags'); if (oc) oc.remove(); host.insertAdjacentHTML('beforeend', watchTagChips());
-    const ob = host.querySelector('.wo-start'); if (ob) ob.remove(); if (!ordering && watchSyms().length > 1 && !sharedView) host.insertAdjacentHTML('beforeend', '<p class="wo-start"><button type="button" class="btn ghost" data-wo="start">' + esc(T('Volgorde wijzigen')) + '</button></p>'); });
+    const ob = host.querySelector('.wo-start'); if (ob) ob.remove(); if (!ordering && !picking && watchSyms().length && !sharedView) host.insertAdjacentHTML('beforeend', '<p class="wo-start">' + (watchSyms().length > 1 ? '<button type="button" class="btn ghost" data-wo="start">' + esc(T('Volgorde wijzigen')) + '</button> ' : '') + '<button type="button" class="btn ghost" data-wp="start">' + esc(T('Kiezen')) + '</button></p>'); });
   const sg = watchSuggestTile();
   if ($('watch-sugg')) $('watch-sugg').innerHTML = sg;
   if ($('m-watch-sugg')) $('m-watch-sugg').innerHTML = sg;

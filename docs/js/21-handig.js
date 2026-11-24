@@ -8,6 +8,9 @@
 // (gemaakt met node tools/changelog.mjs); hieronder staat alleen wat de gebruiker merkt.
 // Bij een nieuwe versie: zet de regels van die versie bovenaan, met VERSION uit js/01-basis.js als sleutel.
 const WHATS_NEW = {
+  v90: [
+    'Meerdere tegelijk: met Kiezen op je volglijst zet je vinkjes en geef je de gekozen aandelen in één keer een label, een koersalarm (een percentage onder of boven de koers van nu) of haal je ze van de volglijst, met Ongedaan maken.',
+  ],
   v89: [
     'Aantekeningen in de grafiek: klik met rechts (of druk lang) op de grote grafiek om bij een dag een korte aantekening te zetten. Op de computer staan ze als speldje op de lijn; bij Instellingen, Weergave pas je ze aan of verwijder je ze.',
     'Meldingen met Ongedaan maken staan nu ook boven een open venster zoals Instellingen, zodat de knop daar te gebruiken is.',
