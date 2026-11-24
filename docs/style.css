@@ -277,8 +277,6 @@ footer.foot-page { max-width: 1184px; margin: 0 auto; padding: 0 48px 40px; font
 /* ---------- Beweging ---------- */
 .zoom-anim { transition: transform .45s var(--ease), opacity .35s; }
 .zoomed { transform: scale(1.08); opacity: 0; }
-.page.in-r, .m-view.in-r { animation: inR .38s var(--ease) both; }
-.page.in-l, .m-view.in-l { animation: inL .38s var(--ease) both; }
 .page.enter .stagger > *, .m-view.enter .stagger > * { animation: up .45s var(--ease) backwards; animation-delay: calc(var(--i, 0) * 45ms + 60ms); }
 
 @keyframes inR { from { opacity: 0; transform: translateX(64px); } to { opacity: 1; transform: none; } }
@@ -767,32 +765,7 @@ tr.rowlink:hover td { background: var(--bg); }
 .tile .inset .spark { width: 100%; margin: 4px 0 8px; padding-top: 0; }
 .hbars .r.wide-l .tk { font-size: 14px; font-weight: 600; }
 
-/* Inklapbare panelen en geen lege ruimte in rijen */
 .grid.wide, #patterns { align-items: start; }
-.tile.fold { position: relative; cursor: pointer; }
-.tile.fold.folded { max-height: var(--fold-h, 320px); overflow: hidden; }
-.tile.fold.fold-anim { overflow: hidden; transition: max-height .38s cubic-bezier(.2, .7, .2, 1); }
-.tile.fold.folded > * { flex-shrink: 0; }
-.tile.fold::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 96px; pointer-events: none; opacity: 0; transition: opacity .3s;
-  border-radius: 0 0 var(--radius) var(--radius); z-index: 2;
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%237C8AA5' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat center bottom 10px / 20px,
-    linear-gradient(to bottom, rgba(255, 255, 255, 0), var(--surface) 62%); }
-:root[data-theme="dark"] .tile.fold::after { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238C9AB5' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat center bottom 10px / 20px,
-    linear-gradient(to bottom, rgba(24, 28, 35, 0), var(--surface) 62%); }
-.tile.fold.folded::after { opacity: 1; }
-/* Hoekjes: deze tegel kan meer laten zien */
-.tile.fold::before { content: ""; position: absolute; inset: 0; z-index: 3; pointer-events: none; border-radius: var(--radius); border: 2px solid #BCC8E2;
-  -webkit-mask: linear-gradient(to right, #000 0 30px, transparent 30px calc(100% - 30px), #000 calc(100% - 30px)), linear-gradient(to bottom, #000 0 30px, transparent 30px calc(100% - 30px), #000 calc(100% - 30px));
-  -webkit-mask-composite: source-in; mask: linear-gradient(to right, #000 0 30px, transparent 30px calc(100% - 30px), #000 calc(100% - 30px)), linear-gradient(to bottom, #000 0 30px, transparent 30px calc(100% - 30px), #000 calc(100% - 30px));
-  mask-composite: intersect; transition: border-color .2s; }
-.tile.fold:hover::before { border-color: var(--accent); }
-:root[data-theme="dark"] .tile.fold::before { border-color: #3E4D6E; }
-:root[data-theme="dark"] .tile.fold:hover::before { border-color: var(--accent); }
-.fold-btn { position: absolute; left: 50%; bottom: 10px; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
-.fold-btn:focus-visible { width: auto; height: auto; clip-path: none; transform: translateX(-50%); z-index: 4; padding: 8px 16px; border: 1px solid var(--rule); border-radius: 999px;
-  background: var(--surface); color: var(--accent); font: inherit; font-size: 14px; font-weight: 600; outline: 2px solid var(--accent); outline-offset: 2px; }
-:root[data-motion="off"] .tile.fold.fold-anim { transition: none; }
-.tile.fold.fold-anim > * { flex-shrink: 0; }
 .welcome { max-width: 760px; }
 .feat-list { list-style: none; margin: 32px 0 20px; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap: 12px; }
 .feat-list li { display: flex; flex-direction: column; gap: 4px; padding: 16px; border-radius: 14px; background: var(--surface); }
@@ -828,37 +801,10 @@ button.alt:hover { outline: 2px solid var(--accent); }
 .why-d[open]::details-content { block-size: auto; }
 .why-in { padding: 0 4px 16px 4px; }
 :root[data-motion="off"] .why-d::details-content, :root[data-motion="off"] .why-d summary::after { transition: none; }
-/* Ingeklapte tegels: grafiek past helemaal */
-.tile.fold-anim .bars, .tile.fold-anim .chart, .tile.fold-anim svg.dual, .tile.fold-anim .donut, .tile.fold-anim .fin-bars { transition: height .38s cubic-bezier(.2, .7, .2, 1), width .38s cubic-bezier(.2, .7, .2, 1); }
-.tile.folded .fit-chart { height: var(--fit-h) !important; }
-.tile.folded .donut.fit-chart { width: var(--fit-h); }
-.tile.fold.fit::after { height: 44px; background-position: center bottom 4px, 0 0; background-size: 18px, auto; }
 :root[data-motion="off"] .bars, :root[data-motion="off"] .chart, :root[data-motion="off"] svg.dual, :root[data-motion="off"] .donut, :root[data-motion="off"] .fin-bars { transition: none; }
 
 /* Overgangen: meten zonder animatie, en pagina's die in elkaar overlopen */
 .no-tr, .no-tr *, .no-tr::before, .no-tr::after, .no-tr *::before, .no-tr *::after { transition: none !important; }
-.tile.fold.fold-anim { will-change: max-height; }
-.tile.fold:active:not(:has(button:active, a:active, input:active)) { transform: scale(.995); }
-.tile.fold { transition: transform .15s; }
-.tile.fold.fold-anim { transition: max-height .38s cubic-bezier(.2, .7, .2, 1), transform .15s; }
-@supports (view-transition-name: none) {
-  .topbar { view-transition-name: topbar; }
-  .m-top { view-transition-name: mtop; }
-  .m-tabs { view-transition-name: mtabs; }
-  ::view-transition-old(topbar), ::view-transition-old(mtop), ::view-transition-old(mtabs) { display: none; }
-  ::view-transition-new(topbar), ::view-transition-new(mtop), ::view-transition-new(mtabs) { animation: none; }
-  ::view-transition-group(topbar), ::view-transition-group(mtop), ::view-transition-group(mtabs) { animation: none; z-index: 2; }
-  html[data-nav]::view-transition-old(root) { animation: vtOutL .22s cubic-bezier(.4, 0, 1, 1) both; }
-  html[data-nav]::view-transition-new(root) { animation: vtInR .36s cubic-bezier(.2, .7, .2, 1) both; }
-  html[data-nav="b"]::view-transition-old(root) { animation-name: vtOutR; }
-  html[data-nav="b"]::view-transition-new(root) { animation-name: vtInL; }
-}
-@keyframes vtOutL { to { opacity: 0; transform: translateX(-40px); } }
-@keyframes vtOutR { to { opacity: 0; transform: translateX(40px); } }
-@keyframes vtInR { from { opacity: 0; transform: translateX(56px); } }
-@keyframes vtInL { from { opacity: 0; transform: translateX(-56px); } }
-:root[data-motion="off"]::view-transition-group(*), :root[data-motion="off"]::view-transition-old(*), :root[data-motion="off"]::view-transition-new(*) { animation: none !important; }
-.tile.folded .donut.fit-chart { height: auto !important; }
 
 /* ---------- Uitbreidingen ---------- */
 .plan-grid > .full, .grid > .full { grid-column: 1 / -1; }
@@ -941,7 +887,6 @@ details.acct summary { display: grid; grid-template-columns: auto minmax(0, 1fr)
 #page-plan .plan-grid > .tile, #m-plan .plan-grid > .tile, #page-news .grid > .tile, #m-news .grid > .tile, #val-grid .tile, #m-val .tile { content-visibility: auto; contain-intrinsic-size: auto 420px; }
 /* Hoogstens twaalf tegels tegelijk laten inschuiven */
 .page.enter .stagger > :nth-child(n+13), .m-view.enter .stagger > :nth-child(n+13) { animation: none; }
-.page.in-r, .page.in-l, .m-view.in-r, .m-view.in-l { will-change: transform, opacity; }
 
 /* Volglijst: zoeken, ongeldige symbolen, grafiek die nog komt */
 .ws-wrap { position: relative; flex: 1 1 260px; min-width: 0; display: flex; }
@@ -1383,10 +1328,6 @@ body.welcoming #mshell { padding-bottom: 0; }
 .news-more { display: flex; justify-content: center; margin-top: 12px; }
 
 
-/* Paginawissel van of naar Overzicht: de balk hoort bij de pagina en schuift mee (zie showPage) */
-@supports (view-transition-name: none) {
-  html[data-bar="move"] .topbar { view-transition-name: none; }
-}
 
 
 /* Koppen en zoekveld dicht bij elkaar, ook op een breed scherm */
@@ -2011,7 +1952,7 @@ body.skeleton footer.foot-page { visibility: hidden; }
   body { background: #FFFFFF; }
   /* Knoppen en navigatie horen niet op papier */
   .topbar, .m-top, .m-tabs, .m-ptabs, .pillnav, .pill, #notices, .seg, .m-seg, .d-nav, .m-nav, .d-acts, .controls,
-  .icon-btn, .m-icon, .btn, .fold-btn, .zoom-reset, .chart-hover, .toasts, .tip, .tour, .m-back, .onb,
+  .icon-btn, .m-icon, .btn, .zoom-reset, .chart-hover, .toasts, .tip, .tour, .m-back, .onb,
   .m-list-tools, .news-more, .set-top, #welcome, .marker, .hero-ctrl, .check, .sec-tabs { display: none !important; }
   /* Donkere chips en vlakken gaan op papier terug naar licht */
   :root[data-theme="dark"] .pill-chg.gain, :root[data-theme="dark"] .tag.gain { background: #E4F3EB; color: #0B6B43; }
@@ -2033,8 +1974,6 @@ body.skeleton footer.foot-page { visibility: hidden; }
     max-height: none !important; overflow: visible !important; transform: none !important; opacity: 1 !important; background: #FFFFFF; }
   .detail-inner { position: static !important; overflow: visible !important; }
   /* Ingeklapte tegels helemaal uitklappen, geen verloop of hoekjes */
-  .tile.fold.folded, .tile.fold { max-height: none !important; overflow: visible !important; min-height: 0 !important; }
-  .tile.fold::before, .tile.fold::after { display: none !important; }
   .tile, .m-stat, .m-card { break-inside: avoid; box-shadow: none !important; border: 1px solid var(--rule); background: #FFFFFF; }
   .grid, .grid.wide, .grid.stats, .grid.movers, .plan-grid, .m-grid2 { grid-template-columns: 1fr 1fr !important; gap: 8px !important; }
   .chart, .chart.hero-chart, .chart.m-chart { height: 120px !important; margin-left: 0 !important; margin-right: 0 !important; break-inside: avoid; }
@@ -2153,8 +2092,7 @@ html.applocked { overflow: hidden; }
 
 /* Idee 106: wat buiten het beeld valt, hoeft de browser niet neer te zetten.
    Alleen op lijstregels en tegels zonder grafiek of tabel: in een overgeslagen stuk heeft niets een maat,
-   en dan meten foldAll(), fitChart() en de grafieken nul. De beginpagina (page-home, m-home, m-stats)
-   blijft er dus buiten, want daar klapt foldAll() tegels in op gemeten hoogte. */
+   en dan meten fitChart() en de grafieken nul. */
 .news .news-i { content-visibility: auto; contain-intrinsic-size: auto 104px; }
 .gloss > div { content-visibility: auto; contain-intrinsic-size: auto 72px; }
 #plan-body .plan-grid > .tile:not(:has(.chart, svg, canvas, .bars, .donut, .hbars, .corr, .fin-bars, table)),

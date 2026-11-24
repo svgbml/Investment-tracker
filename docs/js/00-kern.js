@@ -64,7 +64,7 @@ function yieldNow() {
 }
 
 // ---------- Werk samenvoegen: meten en zetten één keer per frame ----------
-// rafWork('fold', fn) met dezelfde sleutel in hetzelfde frame doet het werk één keer, in plaats van
+// rafWork('balk', fn) met dezelfde sleutel in hetzelfde frame doet het werk één keer, in plaats van
 // bij elke gebeurtenis opnieuw te meten en te zetten (dat dwingt de browser telkens tot herberekenen).
 const rafJobs = new Map();
 let rafJobId = 0;

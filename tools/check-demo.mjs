@@ -35,8 +35,6 @@ for (const size of ['desktop', 'telefoon']) {
   for (const p of PAGES) {
     const sel = await gotoPage(page, size, p);
     const collect = async () => {
-      // Alle secties uitklappen: ingeklapte tegels verbergen hun inhoud
-      await page.evaluate(() => { try { document.querySelectorAll('.tile.folded').forEach((t) => t.classList.remove('folded')); } catch (e) { /* niets */ } });
       return page.evaluate((s) => {
         const root = document.querySelector(s);
         if (!root) return [];

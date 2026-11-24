@@ -1,0 +1,211 @@
+/* =====================================================================================================
+ * ontwerp.css – Ontwerp 2026 "Eén geheel" (v73): thema's, accentkleur, nieuwe shell en paginawissel
+ * Laadt na style.css en overschrijft daar wat nodig is. Nieuwe regels voor het nieuwe ontwerp horen hier.
+ * -----------------------------------------------------------------------------------------------------
+ * Thema's (per apparaat, js/00-vroeg.js): licht is de basis. Donker zet <html data-theme="dark">, amoled
+ * zet daarnaast data-amoled="1" en overschrijft alleen de vlakken; alle regels voor donker gelden dus ook
+ * voor amoled. Automatisch volgt het apparaat tussen licht en donker.
+ * Kleurtokens:
+ *   --page       achtergrond van de pagina, de kop en de tabbalk (één geheel)
+ *   --surface    verhoogd vlak (dialogen, invoer); in amoled net iets lichter dan zwart
+ *   --bg         licht vlak binnen de pagina (rij bij aanwijzen, invoer, blokjes)
+ *   --rule       dunne lijn tussen onderdelen; --rule-soft voor de kop en tabbalk
+ *   --chip       achtergrond van segmentknoppen
+ *   --soft, --soft-ink  zacht vlak met tekst (meldingsbalken, gemarkeerde rijen); volgt het accent
+ *   --accent, --accent-dark, --accent-soft, --accent-tint, --on-accent: afgeleid uit de gekozen accentkleur
+ *     per thema (accentVars in js/00-vroeg.js, inline op <html>); de waarden hieronder zijn alleen de
+ *     terugval voor blauw. --gain en --loss veranderen nooit mee.
+ * Pagina's zijn geen stapel kaarten meer: tegels hebben geen eigen vlak, onderdelen worden gescheiden
+ * door een dunne lijn (border-top: 1px solid var(--rule)).
+ * ===================================================================================================== */
+:root {
+  --page: #FFFFFF; --surface: #FFFFFF; --bg: #F6F7F9; --band: var(--page);
+  --rule: #E4E7EC; --rule-soft: #EEF0F3; --chip: #F2F4F7;
+  --accent-tint: rgba(43, 91, 215, .1); --on-accent: #FFFFFF;
+  --soft: var(--accent-tint); --soft-ink: var(--accent-dark);   /* meldingsbalken en zachte vlakken volgen het accent */
+  --spring: cubic-bezier(.2, .8, .2, 1.15); --glide: cubic-bezier(.2, .75, .2, 1);
+}
+:root[data-theme="dark"] {
+  --page: #14181F; --surface: #14181F; --bg: #0E1116; --band: var(--page);
+  --rule: #2A303B; --rule-soft: #222831; --chip: #1E232C; --empty: #20262F;
+  --soft: var(--accent-tint); --soft-ink: var(--ink);
+}
+:root[data-theme="dark"][data-amoled="1"] {
+  --page: #000000; --surface: #0A0B0D; --bg: #0B0C0F; --band: var(--page);
+  --rule: #1F232A; --rule-soft: #16191E; --chip: #121418; --empty: #15181D; --track: #262A31; --grid: #5A6272;
+}
+body { background: var(--page); }
+.detail.open { background: var(--page); }
+/* Instellingen houdt tot de eigen ontwerpstap zijn vlakken op een licht grijze ondergrond */
+.set-search input { min-height: 44px; padding: 0 16px; border: 1px solid var(--rule); border-radius: 999px; background: var(--surface); color: var(--ink); }
+
+/* Geen zichtbare schuifbalken; schuiven werkt gewoon */
+html { scrollbar-gutter: auto; }
+* { scrollbar-width: none; }
+*::-webkit-scrollbar { display: none; width: 0; height: 0; }
+
+/* Knoppen geven een klein beetje mee als je erop drukt */
+:root[data-motion="on"] button:not([disabled]):active, :root[data-motion="on"] .btn:not([disabled]):active { scale: .96; }
+:root[data-motion="on"] a[href]:active { scale: .985; }
+:root[data-motion="on"] button.tile:active, :root[data-motion="on"] .m-row:active, :root[data-motion="on"] .rowbtn:active { scale: .99; }
+.btn:active { transform: none; }
+.btn.primary, :root[data-theme="dark"] .btn.primary { background: var(--accent); color: var(--on-accent); }
+:root[data-theme="dark"] .watch-tags button[aria-pressed="true"] { color: var(--on-accent); }
+
+/* ---------- Kop op de computer: logo, waarde en verandering, menu met pilletje, oog en tandwiel ---------- */
+.topbar, body[data-page="home"] .topbar {
+  position: sticky; top: 0; z-index: 30; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 24px;
+  padding: 12px 40px; background: var(--page); border-bottom: 1px solid var(--rule-soft); transition: none;
+}
+.brand { display: flex; align-items: center; gap: 8px; flex: none; color: var(--ink); font-size: 17px; font-weight: 700; text-decoration: none; }
+.brand:hover { color: var(--ink); }
+.brand svg { display: block; width: 22px; height: 22px; color: var(--accent); }
+body.hero-past[data-page="home"] .brand-txt { display: inline; }
+/* Waarde en verandering van vandaag: op Overzicht pas als de grote waarde uit beeld is, elders altijd */
+.topbar .top-mini { display: inline-flex; align-items: baseline; gap: 10px; min-width: 0; animation: titleIn .35s var(--glide) backwards; }
+body[data-page="home"]:not(.hero-past) .topbar .top-mini { display: none; }
+.topbar .mini-v { font-size: 17px; }
+.topbar .mini-spark { display: none; }
+.pillnav, :root[data-theme="dark"] .pillnav { position: relative; display: flex; gap: 0; margin: 0 0 0 auto; padding: 0; border-radius: 0; background: none; font-size: 15px; font-weight: 600; }
+.pillnav a, :root[data-theme="dark"] .pillnav a {
+  position: relative; z-index: 1; display: block; width: 100px; min-width: 0; padding: 10px 0; border-radius: 999px;
+  color: var(--ink-2); text-align: center; text-decoration: none; transition: color .25s;
+}
+.pillnav a:hover { color: var(--ink); }
+.pillnav a[aria-current="page"], :root[data-theme="dark"] .pillnav a[aria-current="page"] { color: var(--ink); }
+.pill, :root[data-theme="dark"] .pill {
+  position: absolute; top: 2px; bottom: 2px; left: 0; width: 100px; height: auto; border-radius: 999px; background: var(--accent-tint);
+  transition: transform .45s var(--spring), opacity .25s, scale .3s;
+}
+body.set-open .pill { opacity: 0; scale: .6 1; }
+.top-actions { display: flex; align-items: center; gap: 8px; flex: none; }
+.icon-btn, :root[data-theme="dark"] .icon-btn, .m-icon, :root[data-theme="dark"] .m-icon {
+  width: 40px; height: 40px; display: grid; place-items: center; padding: 0; border: 1px solid var(--rule); border-radius: 50%;
+  background: var(--page); color: var(--ink); cursor: pointer; transition: background-color .25s, color .25s, border-color .25s;
+}
+.icon-btn:hover, :root[data-theme="dark"] .icon-btn:hover { background: var(--bg); }
+.icon-btn svg, .m-icon svg { width: 18px; height: 18px; }
+.btn-settings svg { transition: rotate .45s var(--glide); }
+body.set-open .btn-settings, body.set-open .btn-settings:hover { background: var(--ink); color: var(--page); border-color: var(--ink); }
+body.set-open .btn-settings svg { rotate: 90deg; }
+@media (max-width: 1100px) {
+  .topbar, body[data-page="home"] .topbar { padding: 10px 20px; }
+  .pillnav a, :root[data-theme="dark"] .pillnav a { width: 92px; }
+  .brand-txt { display: none; }
+}
+@media (max-width: 900px) {
+  .pillnav { order: 3; flex-basis: 100%; justify-content: center; margin: 0; }
+  .top-actions { margin-left: auto; }
+}
+
+/* ---------- Kop op de telefoon: paginatitel, oog en tandwiel ---------- */
+.m-top, body[data-page="list"] .m-top, body[data-page="stats"] .m-top, :root[data-theme="dark"] .m-top, :root[data-theme="dark"] body:not([data-page="home"]) .m-top {
+  display: flex; align-items: center; justify-content: flex-start; gap: 10px; min-height: 56px;
+  padding: calc(8px + env(safe-area-inset-top)) 16px 8px; background: var(--page); border-bottom: 1px solid var(--rule-soft); box-shadow: none;
+}
+.m-top h1, :root[data-theme="dark"] .m-top h1 { flex: 1 1 auto; min-width: 0; font-size: 18px; letter-spacing: -.3px; color: var(--ink); }
+.m-top h1.t-in { animation: titleIn .35s var(--glide) backwards; }
+.m-top .m-mini { flex: 1 1 auto; }
+.m-top-actions { display: flex; align-items: center; gap: 8px; flex: none; }
+
+/* ---------- Tabbalk op de telefoon: vijf pagina's, een licht pilletje schuift naar de actieve tab ---------- */
+.m-tabs, :root[data-theme="dark"] .m-tabs {
+  grid-template-columns: repeat(5, minmax(0, 1fr)); padding: 6px 4px calc(10px + env(safe-area-inset-bottom));
+  background: color-mix(in srgb, var(--page) 97%, transparent); border-top: 1px solid var(--rule);
+}
+.m-tabs a { min-height: 50px; gap: 3px; color: var(--ink-2); font-size: 11px; font-weight: 600; text-decoration: none; transition: color .3s; }
+.m-tabs a svg { width: 22px; height: 22px; transition: transform .35s cubic-bezier(.2, .75, .2, 1.3); }
+.m-tabs a[aria-current="page"] { color: var(--accent); }
+.m-tabs a[aria-current="page"] svg { transform: translateY(-2px); }
+.m-tab-ind { position: absolute; top: 8px; left: 0; width: 20%; height: 30px; display: flex; justify-content: center; border-radius: 0; background: none;
+  transition: transform .45s var(--spring), opacity .25s; }
+.m-tab-ind i { display: block; width: 56px; height: 30px; border-radius: 15px; background: var(--accent-tint); }
+body.set-open .m-tab-ind { opacity: 0; }
+#mshell { padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
+
+/* ---------- Paginawissel (showPage in js/10-navigatie.js) ----------
+ * De oude pagina vervaagt en schuift 170 ms weg; de nieuwe komt binnen uit de richting van het menu.
+ * Alleen transform en opacity, en fill-mode backwards (geen transform die blijft hangen). */
+.page.pg-out, .m-view.pg-out { opacity: 0; pointer-events: none; transition: opacity .17s ease, transform .17s ease; }
+.m-view.pg-out[data-dir="r"] { transform: translateX(-28px); }
+.m-view.pg-out[data-dir="l"] { transform: translateX(28px); }
+.page.pg-out[data-dir="r"] { transform: translateX(-48px); }
+.page.pg-out[data-dir="l"] { transform: translateX(48px); }
+.m-view.pg-in[data-dir="r"] { animation: pgR .42s var(--glide) backwards; }
+.m-view.pg-in[data-dir="l"] { animation: pgL .42s var(--glide) backwards; }
+.page.pg-in[data-dir="r"] { animation: pgRw .5s var(--glide) backwards; }
+.page.pg-in[data-dir="l"] { animation: pgLw .5s var(--glide) backwards; }
+.swap-r { animation: inR .32s var(--ease) backwards; }
+.swap-l { animation: inL .32s var(--ease) backwards; }
+@keyframes pgR { from { opacity: 0; transform: translateX(44px); } }
+@keyframes pgL { from { opacity: 0; transform: translateX(-44px); } }
+@keyframes pgRw { from { opacity: 0; transform: translateX(90px); } }
+@keyframes pgLw { from { opacity: 0; transform: translateX(-90px); } }
+@keyframes pgU { from { opacity: 0; transform: translateY(40px); } }
+@keyframes titleIn { from { opacity: 0; transform: translateY(8px); } }
+@keyframes gearTurn { from { rotate: 0deg; } }
+
+/* Instellingen komt van onderen binnen; het tandwiel rechtsboven staat aan en draait een kwartslag */
+#dlg-settings[open] { animation: pgU .45s var(--glide) backwards; }
+#dlg-settings[open]::backdrop { animation: fadeIn .3s ease backwards; }
+#dlg-settings .set-top { min-height: 64px; padding: calc(12px + env(safe-area-inset-top)) 40px 12px; background: var(--page); border-bottom: 1px solid var(--rule-soft); }
+#dlg-settings .set-gear { width: 40px; height: 40px; background: var(--ink); color: var(--page); border-color: var(--ink); }
+#dlg-settings .set-gear svg { rotate: 90deg; }
+#dlg-settings[open] .set-gear svg { animation: gearTurn .45s .1s var(--glide) backwards; }
+@media (max-width: 1100px) { #dlg-settings .set-top { padding-left: 20px; padding-right: 20px; } }
+@media (max-width: 760px) { #dlg-settings .set-top { min-height: 56px; padding: calc(8px + env(safe-area-inset-top)) 16px 8px; } }
+
+/* Thema- en accentkeuze in Instellingen → Weergave */
+.accent-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.acc-sw { width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%; background: var(--sw); cursor: pointer;
+  box-shadow: 0 0 0 2px var(--page), 0 0 0 3px transparent; transition: box-shadow .2s; }
+.acc-sw[aria-pressed="true"] { box-shadow: 0 0 0 3px var(--page), 0 0 0 5px var(--ink); }
+.acc-own { position: relative; display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 14px 0 6px; border: 1px solid var(--rule); border-radius: 999px; font-size: 14px; font-weight: 600; cursor: pointer; }
+.acc-own input { width: 28px; height: 28px; padding: 0; border: 0; border-radius: 50%; background: none; cursor: pointer; }
+.acc-own input::-webkit-color-swatch-wrapper { padding: 0; }
+.acc-own input::-webkit-color-swatch { border: 0; border-radius: 50%; }
+.acc-own input::-moz-color-swatch { border: 0; border-radius: 50%; }
+.acc-own.on { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+.seg.light, :root[data-theme="dark"] .seg.light { background: var(--chip); }
+.seg.light button[aria-pressed="true"], :root[data-theme="dark"] .seg.light button[aria-pressed="true"] { background: var(--page); color: var(--ink); box-shadow: 0 1px 3px rgba(20, 24, 31, .12); }
+:root[data-theme="dark"] .seg.light button[aria-pressed="true"] { background: var(--rule); }
+
+/* ---------- Eén geheel: geen kaarten, onderdelen gescheiden door dunne lijnen ---------- */
+.grid, .grid.wide, .grid.stats, .grid.movers { column-gap: 40px; row-gap: 0; }
+.tile, .m-stack .tile, .dash-sec .tile {
+  background: transparent; border-radius: 0; border-top: 1px solid var(--rule);
+  padding: 20px 0 18px; overflow: clip; overflow-clip-margin: 8px; contain: none;
+}
+.tile.pad { padding-bottom: 20px; }
+.tile .spark, .tile .spark.tall { width: 100%; margin: auto 0 0; }
+.tile.market, .tile.market .tag { background: transparent; }
+button.tile:hover, .tile.clickable:hover, :root[data-theme="dark"] button.tile:hover, :root[data-theme="dark"] .tile.clickable:hover { transform: none; box-shadow: none; }
+button.tile:hover .tk, button.tile:hover h3, .tile.clickable:hover h3 { color: var(--accent); }
+.empty { background: transparent; border-top: 1px solid var(--rule); border-radius: 0; }
+.section-head { margin: 40px 0 8px; }
+/* Telefoon */
+.m-body { padding: 8px 16px 24px; }
+.m-stack { gap: 0; }
+.m-stack .tile { padding: 16px 0; }
+.m-stack .tile.pad { padding-bottom: 16px; }
+.m-grid2 { gap: 0 16px; }
+.m-stat, .m-stat.pad { padding: 12px 0; background: transparent; border-radius: 0; border-top: 1px solid var(--rule); }
+.m-stat .spark { width: 100%; margin: auto 0 0; }
+.m-card { background: transparent; border-radius: 0; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+.m-row, .m-row.market { padding-left: 2px; padding-right: 2px; background: transparent; }
+.m-row:active { background: var(--bg); }
+#m-list .m-rows { margin: 0 16px 24px; }
+.m-head { margin: 28px 0 8px; }
+.md .m-dtop, :root[data-theme="dark"] .md .m-dtop { background: var(--page); border-bottom: 1px solid var(--rule-soft); }
+.m-list-tools { background: var(--page); }
+/* Dagsamenvatting: geen losse kaartjes, cellen met een lijn erboven zoals de rest */
+.day-sum { column-gap: 40px; row-gap: 0; }
+.m-body .day-sum { column-gap: 16px; row-gap: 0; }
+.ds-c, .m-body .ds-c { padding: 14px 0; border: 0; border-top: 1px solid var(--rule); border-radius: 0; background: transparent; }
+button.ds-c:hover { transform: none; }
+button.ds-c:hover b { color: var(--accent); }
+/* Afdrukken (pdf-rapport): een tegel die langer is dan een bladzijde mag doorlopen in plaats van afgekapt te worden */
+@media print {
+  .tile, .m-stat { overflow: visible; contain: none; }
+  .tile:has(table, .tbl) { break-inside: auto; }
+}

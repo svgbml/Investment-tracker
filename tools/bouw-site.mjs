@@ -1,6 +1,6 @@
 // Bouwt de gepubliceerde site: een kopie van docs/ waarin
 //  - de gewone scripts onderaan index.html samen één verkleind bestand zijn (js/app.js, met source map),
-//  - de overige scripts (lui geladen, modules) en style.css los verkleind zijn.
+//  - de overige scripts (lui geladen, modules), style.css en ontwerp.css los verkleind zijn.
 // De bron in docs/ blijft zoals hij is: zonder deze stap werkt de site precies zo, alleen groter.
 // Gebruik: node tools/bouw-site.mjs [--uit _site]   (esbuild nodig: npm i --no-save esbuild@0.28.2)
 import fs from 'node:fs';
@@ -62,7 +62,11 @@ for (const file of rest) {
   wr(file, r.code);
   a += src.length; b += r.code.length;
 }
-const css = rd('style.css');
-const rc = await transform(css, { ...OPTS, loader: 'css' });
-wr('style.css', rc.code);
-console.log(rest.length + ' losse scripts: ' + kb(a) + ' → ' + kb(b) + '; style.css: ' + kb(css.length) + ' → ' + kb(rc.code.length));
+let c0 = 0, c1 = 0;
+for (const file of ['style.css', 'ontwerp.css']) {
+  const css = rd(file);
+  const rc = await transform(css, { ...OPTS, loader: 'css' });
+  wr(file, rc.code);
+  c0 += css.length; c1 += rc.code.length;
+}
+console.log(rest.length + ' losse scripts: ' + kb(a) + ' → ' + kb(b) + '; style.css en ontwerp.css: ' + kb(c0) + ' → ' + kb(c1));

@@ -65,7 +65,7 @@ if (!diffGelukt) {
   console.log('        Er is daarom niets nagekeken. Lokaal: node tools/check-stijl.mjs --basis <tak>, of --alles voor het hele bestand.');
   process.exit(0);
 }
-const files = ['docs/style.css'];
+const files = ['docs/style.css', 'docs/ontwerp.css'];
 const res = await stylelint.lint({ files: files.map((f) => root + f), configFile: root + '.stylelintrc.json' });
 let shown = 0, total = 0;
 res.results.forEach((r) => {

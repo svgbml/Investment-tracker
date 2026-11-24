@@ -64,15 +64,15 @@ files.forEach((f) => { if (!sw.includes('./js/' + f)) fail('js/' + f + ' staat n
 }
 
 // 4. CSS: elke { heeft een }. Eén ontbrekende accolade (bijvoorbeeld na samenvoegen) zet alles daarna stil in een @media-blok.
-{
-  const css = readFileSync(join(root, 'style.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g, '""');
+for (const cssFile of ['style.css', 'ontwerp.css']) {
+  const css = readFileSync(join(root, cssFile), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g, '""');
   let depth = 0, line = 1, openAt = [];
   for (const ch of css) {
     if (ch === '\n') line++;
     else if (ch === '{') { depth++; openAt.push(line); }
-    else if (ch === '}') { depth--; openAt.pop(); if (depth < 0) { fail('style.css: losse } op regel ' + line); depth = 0; } }
+    else if (ch === '}') { depth--; openAt.pop(); if (depth < 0) { fail(cssFile + ': losse } op regel ' + line); depth = 0; } }
   }
-  if (depth > 0) fail('style.css: ' + depth + ' blok(ken) niet afgesloten, geopend rond regel ' + openAt.join(', ') + ' (regelnummers zonder commentaar)');
+  if (depth > 0) fail(cssFile + ': ' + depth + ' blok(ken) niet afgesloten, geopend rond regel ' + openAt.join(', ') + ' (regelnummers zonder commentaar)');
 }
 
 console.log(errors ? errors + ' fouten' : 'Site in orde: ' + classic.length + ' scripts, ' + modules.length + ' modules, ' + seen.size + ' namen.');

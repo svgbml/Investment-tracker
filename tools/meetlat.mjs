@@ -4,7 +4,7 @@
 // vier keer tragere processor (ongeveer een middenklasse telefoon) en meet:
 //  - wanneer de pagina gereed is (DOMContentLoaded: alle scripts ingelezen en uitgevoerd, plus wat daarvoor al draaide);
 //  - de langste blokkerende taak bij het laden en het aantal taken boven 50 ms in de eerste 4 seconden;
-//  - hoe lang renderAll(), alleen Start, alleen Analyse en foldAll() duren (mediaan van een paar keer);
+//  - hoe lang renderAll(), alleen Start en alleen Analyse duren (mediaan van een paar keer);
 //  - het aantal elementen in de pagina, in totaal en per pagina;
 //  - de langste taak bij de eerste keer openen van elke andere pagina.
 // Een taak is "blokkerend" als de browser er langer dan 50 ms niet door kan reageren (Long Tasks API).
@@ -133,7 +133,6 @@ async function meetEenKeer(browser, base, fmt) {
   // Tekenen op Start
   r.renderAll = await tijd(page, 'await renderAll();');
   r.start = await tijd(page, 'await refresh(...PAGE_VIEWS.home);');
-  r.foldAll = await tijd(page, 'foldAll();');
   // Elke andere pagina voor het eerst openen: hoe lang blokkeert dat?
   r.openen = {};
   for (const p of PAGINAS.slice(1)) {
@@ -161,7 +160,7 @@ function samen(runs) {
     gereed: m((r) => r.gereed), langsteLaden: m((r) => r.langsteLaden), takenLaden: m((r) => r.takenLaden), blokkeertijd: m((r) => r.blokkeertijd),
     renderAll: m((r) => r.renderAll.ms), renderAllLangst: m((r) => r.renderAll.langst),
     analyse: m((r) => r.analyse && r.analyse.ms), analyseLangst: m((r) => r.analyse && r.analyse.langst),
-    start: m((r) => r.start.ms), foldAll: m((r) => r.foldAll.ms),
+    start: m((r) => r.start.ms),
     elementen: m((r) => r.elementen), elementenNaAlles: m((r) => r.elementenNaAlles),
     perPagina: {}, openen: {},
     fouten: [...new Set(runs.flatMap((r) => r.fouten))],
@@ -204,7 +203,6 @@ const regels = [
   rij('Alleen Analyse opnieuw tekenen', getal(d.analyse, ' ms'), getal(t.analyse, ' ms')),
   rij('… waarvan langste taak', getal(d.analyseLangst, ' ms'), getal(t.analyseLangst, ' ms')),
   rij('Alleen Start (home) opnieuw tekenen', getal(d.start, ' ms'), getal(t.start, ' ms')),
-  rij('Tegels opvouwen (`foldAll`)', getal(d.foldAll, ' ms'), getal(t.foldAll, ' ms')),
   rij('Elementen in de pagina (na laden, op Start)', getal(d.elementen), getal(t.elementen)),
   ...PAGINAS.map((p) => rij('… waarvan pagina ' + p.key, getal(d.perPagina[p.key]), getal(t.perPagina[p.key]))),
   rij('Elementen na het openen van alle pagina\'s', getal(d.elementenNaAlles), getal(t.elementenNaAlles)),

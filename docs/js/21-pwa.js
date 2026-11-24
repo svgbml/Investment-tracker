@@ -19,7 +19,7 @@ function haptic(kind) {
   if (!hapticOn() || reduceMotion() || !hapticAble()) return;
   try { nav2.vibrate(HAPTIC_PAT[kind] || HAPTIC_PAT.tik); } catch (e) { /* niet ondersteund */ }
 }
-const HAPTIC_SEL = '.btn-hide, .seg button, .m-seg button, [data-sectab], [data-lpane], .fold-btn, [data-theme-pick], [data-motion-pick], [data-disp], .m-tabs a, .pillnav a, [data-icon-pick]';
+const HAPTIC_SEL = '.btn-hide, .seg button, .m-seg button, [data-sectab], [data-lpane], [data-theme-pick], [data-accent-pick], [data-motion-pick], [data-disp], .m-tabs a, .pillnav a, [data-icon-pick]';
 document.addEventListener('click', (e) => {
   const t = /** @type {Element} */ (e.target);
   if (t && t.closest && t.closest(HAPTIC_SEL)) haptic('tik');

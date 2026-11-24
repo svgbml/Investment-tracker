@@ -63,6 +63,8 @@ function thinSets(host, sets, o) {
 
 function lineChart(host, sets, o) {
   o = o || {};
+  // Telefoon: alleen de kale lijn, zonder speldjes (hoogste punt, stortingen, eigen aan- en verkopen, nieuws)
+  if (mode === 'm' && o.markers && o.markers.length) o = Object.assign({}, o, { markers: [] });
   // Inzoomen: de volledige reeks blijft bewaard, getekend wordt alleen het gekozen stuk
   if (o.zoom !== false) {
     host._lc = { sets, o };

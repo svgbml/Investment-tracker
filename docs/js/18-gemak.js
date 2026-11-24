@@ -227,9 +227,6 @@ function dashApply(root, key) {
     const z = sizes[sec.dataset.sec];
     if (z === 's' || z === 'l') sec.dataset.size = z; else delete sec.dataset.size;
   });
-  // Opvouwen vóór de volgende tekening van het scherm, niet meteen: meteen dwingt de browser de hele pagina
-  // op te meten terwijl de tekenfunctie nog bezig is (en renderAll vouwt aan het eind toch op)
-  rafWork('fold', foldAll);
 }
 const DASH_SIZES = [['s', 'Klein'], ['m', 'Normaal'], ['l', 'Groot']];
 // Slepen om een sectie te verplaatsen (werkt met de muis en met een vinger)

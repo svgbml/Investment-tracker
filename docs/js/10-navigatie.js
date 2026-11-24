@@ -186,86 +186,63 @@ const TITLES = { home: 'Overzicht', list: 'Bedrijven', news: 'Nieuws', stats: 'A
 const pageId = (p) => (mode === 'm' ? 'm-' + p : 'page-' + p);
 const pageHash = (p) => (p === 'list' ? 'bedrijven' : p === 'stats' ? 'analyse' : p === 'news' ? 'nieuws' : p === 'plan' ? 'plannen' : 'overzicht');
 
-// Balk op de computer (menu plus knoppen, één rij): op Overzicht tussen de grote grafiek en de tegels
-// (blijft bij scrollen bovenaan staan), op de andere pagina's bovenaan
-// Geeft true terug als de balk verplaatst is
-function placeDeskNav() {
-  const bar = /** @type {HTMLElement|null} */ (document.querySelector('#shell .topbar'));
-  if (!bar || mode !== 'd') return false;
-  const band = document.querySelector('#page-home > .band');
-  if (ui.page === 'home' && band) { if (band.nextElementSibling !== bar) { band.after(bar); return true; } }
-  else { const shell = $('shell'); if (shell && shell.firstElementChild !== bar) { shell.prepend(bar); return true; } }
-  return false;
-}
-let pillLast = null;
+// Het lichte pilletje achter het actieve menu-item (computer) en achter de actieve tab (telefoon).
+// Het schuift met een CSS-overgang op transform; de breedte volgt de knop en verandert alleen bij een andere schermmaat.
+// Bij Instellingen is geen menu-item actief: dan vervaagt het pilletje (body.set-open, zie js/02-instellingen.js).
 function placeIndicators() {
   const pill = /** @type {HTMLElement|null} */ (document.querySelector('.pill'));
-  placeDeskNav();
   const a = /** @type {HTMLElement|null} */ (document.querySelector('.pillnav a[aria-current="page"]'));
   if (a && pill && mode === 'd' && a.offsetWidth) {
-    const w = Math.round(a.offsetWidth * 0.5);
-    const t = 'translateX(' + (a.offsetLeft + (a.offsetWidth - w) / 2) + 'px)';
-    pill.style.width = w + 'px'; pill.style.transform = t;
-    // Zelf laten schuiven (geen CSS-overgang): die start niet als de balk net verplaatst is (van of naar Overzicht)
-    if (pillLast && pillLast.t !== t && !reduceMotion() && pill.animate) {
-      pill.getAnimations().forEach((x) => x.cancel());
-      pill.animate([{ transform: pillLast.t, width: pillLast.w }, { transform: t, width: w + 'px' }], { duration: 350, easing: 'cubic-bezier(.2, .7, .2, 1)' });
-    }
-    pillLast = { t, w: w + 'px' };
+    pill.style.width = a.offsetWidth + 'px';
+    pill.style.transform = 'translateX(' + a.offsetLeft + 'px)';
   }
-  const t = document.querySelector('.m-tabs a[aria-current="page"]');
-  const ind = document.querySelector('.m-tab-ind');
-  if (t && ind && mode === 'm') { const w = t.offsetWidth * 0.5; ind.style.width = w + 'px'; ind.style.transform = 'translateX(' + (t.offsetLeft + (t.offsetWidth - w) / 2) + 'px)'; }
+  const t = /** @type {HTMLElement|null} */ (document.querySelector('.m-tabs a[aria-current="page"]'));
+  const ind = /** @type {HTMLElement|null} */ (document.querySelector('.m-tab-ind'));
+  if (t && ind && mode === 'm' && t.offsetWidth) { ind.style.width = t.offsetWidth + 'px'; ind.style.transform = 'translateX(' + t.offsetLeft + 'px)'; }
 }
 
+// Paginawissel: de oude pagina vervaagt en schuift ± 170 ms weg, de nieuwe komt binnen vanuit de richting van
+// het menu (verder naar rechts = van rechts, terug = van links). Alleen transform en opacity, en animaties met
+// fill-mode backwards: een transform die blijft staan, maakt van de pagina een nieuw kader voor position: fixed.
+const PAGE_OUT_MS = 170;
 function showPage(p, animate, force) {
   const prev = ui.page;
   ui.page = p;
   if (M) ensurePage(p);
   const ids = ['home', 'list', 'news', 'stats', 'plan'];
   const el = $(pageId(p));
-  const move = animate && !reduceMotion();
+  const old = prev !== p ? $(pageId(prev)) : null;
+  const move = animate && !reduceMotion() && !ui.detail;
+  const dir = prev === p ? '' : ORDER[p] > ORDER[prev] ? 'r' : 'l';
+  // Menu en titel meteen: het pilletje schuift al terwijl de oude pagina weggaat
+  document.body.dataset.page = p;
+  $$('.pillnav a, .m-tabs a').forEach((a) => {
+    if (a.dataset.page === p) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
+  });
+  const mt = $('m-title');
+  mt.textContent = TITLES[p];
+  if (move && prev !== p) { mt.classList.remove('t-in'); void mt.offsetWidth; mt.classList.add('t-in'); }
+  placeIndicators();
   const swap = () => {
-    document.body.dataset.page = p;
-    $$('.pillnav a, .m-tabs a').forEach((a) => {
-      if (a.dataset.page === p) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
-    });
-    $('m-title').textContent = TITLES[p];
-    { const cs = getComputedStyle(document.documentElement); document.querySelector('meta[name="theme-color"]').content = (mode === 'm' && p !== 'home' ? cs.getPropertyValue('--bg') : cs.getPropertyValue('--band')).trim(); }
     ids.forEach((k) => { $(pageId(k)).hidden = k !== p; });
-    placeIndicators();
     if (prev !== p || force) window.scrollTo(0, 0);
-    foldAll(); // meteen in de juiste (ingeklapte) vorm, vóór de eerste keer tekenen
+    if (typeof heroPast === 'function') heroPast();
   };
   clearTimeout(showPage.timer);
-  if (move) markFresh();
-  $$('.page, .m-view').forEach((x) => x.classList.remove('in-r', 'in-l', 'enter'));
-  const dir = ORDER[p] > ORDER[prev] ? 'f' : 'b';
-  // Browsers met view transitions: de oude pagina schuift weg terwijl de nieuwe binnenkomt
-  if (move && prev !== p && document.startViewTransition && !ui.detail) {
-    const root = document.documentElement;
-    root.dataset.nav = dir;
-    // Van of naar Overzicht verhuist de balk (onder de grafiek of bovenaan): dan schuift hij mee met zijn pagina
-    if (mode === 'd' && (prev === 'home' || p === 'home')) root.dataset.bar = 'move'; else delete root.dataset.bar;
-    let vt;
-    try { vt = document.startViewTransition(() => { swap(); el.classList.add('enter'); }); } catch (e) { vt = null; }
-    if (vt) {
-      const clean = () => { if (showPage.vt === vt) { delete root.dataset.nav; delete root.dataset.bar; } };
-      showPage.vt = vt;
-      vt.finished.then(clean, clean);
-      if (vt.ready) vt.ready.catch(() => {}); // een snel volgende wissel breekt deze af; dat is geen fout
-      showPage.timer = setTimeout(() => el.classList.remove('enter'), 1400);
-      return;
-    }
-    delete root.dataset.nav; delete root.dataset.bar;
-  }
-  swap();
-  if (move) {
+  $$('.page, .m-view').forEach((x) => { x.classList.remove('pg-out', 'pg-in', 'enter'); delete x.dataset.dir; });
+  if (!move) { swap(); return; }
+  markFresh();
+  const enter = () => {
+    swap();
     void el.offsetWidth;
-    if (prev !== p) el.classList.add(dir === 'f' ? 'in-r' : 'in-l');
-    el.classList.add('enter');
-    showPage.timer = setTimeout(() => el.classList.remove('in-r', 'in-l', 'enter'), 1400);
-  }
+    if (dir) el.dataset.dir = dir;
+    el.classList.add('pg-in', 'enter');
+    showPage.timer = setTimeout(() => { el.classList.remove('pg-in', 'enter'); delete el.dataset.dir; }, 1400);
+  };
+  if (!old || old.hidden) { enter(); return; }
+  old.dataset.dir = dir;
+  old.classList.add('pg-out');
+  showPage.timer = setTimeout(() => { old.classList.remove('pg-out'); delete old.dataset.dir; enter(); }, PAGE_OUT_MS);
 }
 
 function parseHash() {
@@ -293,7 +270,7 @@ function route(first) {
 
 window.addEventListener('hashchange', () => route(false));
 onResize(() => { placeIndicators(); setMtop(); }, { lead: true, key: 'balk' });
-if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { placeIndicators(); setMtop(); foldAll(); });
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { placeIndicators(); setMtop(); });
 
 // ---------- Tekenen ----------
 // Weergaven (zie js/00-kern.js): renderAll() tekent ze allemaal, refresh('naam') alleen dat stuk
@@ -329,7 +306,7 @@ function loadViewScripts(n) {
     .then(() => yieldNow())                // inlezen en tekenen in twee taken, niet in één lange
     .then(() => {
       viewScriptsOk.add(n);
-      if (M) { refresh(n); foldSoon(); }   // tekent alleen als de pagina nog open is; anders blijft hij verouderd
+      if (M) refresh(n);                   // tekent alleen als de pagina nog open is; anders blijft hij verouderd
     })
     .catch((err) => {
       viewScriptsBusy.delete(n);           // bij de volgende keer openen opnieuw proberen
@@ -370,7 +347,6 @@ async function renderAll() {
   for (const n of now) {
     if (!staleViews.has(n)) continue;                    // intussen al getekend (pagina geopend)
     if (performance.now() - t0 > RENDER_SLICE) {
-      rafWork('fold', foldAll);                          // wat er al staat vóór de volgende tekening opvouwen
       await yieldNow();
       if (gen !== renderGen) return;                     // een nieuwere tekenbeurt heeft het overgenomen
       t0 = performance.now();
@@ -378,7 +354,6 @@ async function renderAll() {
     refresh(n);
   }
   renderBusy = null;
-  foldSoon();
 }
 // Pagina openen: eerst bijwerken wat sinds de laatste gegevens nog niet getekend is
 function ensurePage(p) {
@@ -389,142 +364,6 @@ function ensurePage(p) {
   refresh(...want);
 }
 
-// ---------- Panelen inklappen: lange tegels op de beginpagina's starten compact ----------
-// Tegels in dezelfde rij krijgen ingeklapt dezelfde hoogte; een klik op een leeg stuk van de tegel klapt hem uit of in.
-function foldSoon() {
-  // Vóór de volgende tekening van het scherm (requestAnimationFrame), niet meteen: dan rekent de browser de
-  // opmaak één keer uit voor opvouwen én tekenen, in plaats van midden in het werk een extra keer
-  rafWork('fold', foldAll);
-  // Nog één keer als de browser alles heeft neergezet (webfont, afbeeldingen); samengevoegd, dus hoogstens één keer per frame
-  cancelAnimationFrame(foldTimer);
-  foldTimer = requestAnimationFrame(() => rafWork('fold', foldAll));
-}
-// Eerst alles meten, daarna alles aanpassen: om en om meten en wijzigen dwingt de browser telkens de hele
-// opmaak opnieuw uit te rekenen (bij ± 25 tegels op Start was dat 25 keer per opvouwbeurt, nu drie keer).
-function foldAll() {
-  const H = mode === 'm' ? 300 : 320;
-  // 1. Lezen: welke wortels zijn zichtbaar en niet midden in een animatie
-  const roots = FOLD_ROOTS.map((rid) => ({ rid, root: $(rid), tiles: [], info: [] }))
-    .filter((x) => x.root && !x.root.hidden && x.root.offsetParent && !x.root.querySelector('.fold-anim'));
-  if (!roots.length) return;
-  // 2. Schrijven: alles terug naar de natuurlijke hoogte, zonder overgangen (anders "ademen" de grafieken)
-  roots.forEach((x) => {
-    x.root.classList.add('no-tr');
-    x.tiles = [...x.root.querySelectorAll('.tile.pad, .m-stack > .tile')].filter((t) => !t.closest(FOLD_SKIP) && !t.classList.contains('fold-anim'));
-    x.tiles.forEach((t) => { t.classList.remove('folded', 'fit'); t.style.minHeight = ''; t.style.maxHeight = ''; t.querySelectorAll('.fit-chart').forEach((c) => c.classList.remove('fit-chart')); });
-  });
-  // 3. Lezen: hoogtes, rijen en waar de grafiek staat (één keer opmaak uitrekenen voor alles)
-  roots.forEach((x) => {
-    x.info = x.tiles.map((t, i) => {
-      const h3 = t.querySelector('h3');
-      const full = t.scrollHeight;
-      return { t, key: x.rid + ':' + (h3 ? h3.textContent : i), full, row: (t.parentElement.id || '') + ':' + t.offsetTop, fit: full > H + 24 ? fitMeasure(t, H) : null };
-    });
-  });
-  // 4. Schrijven: opvouwen, gelijke hoogte per rij, grafieken passend maken
-  roots.forEach((x) => {
-    const rows = new Map();
-    x.info.forEach((o) => { const r = rows.get(o.row) || []; r.push(o); rows.set(o.row, r); });
-    rows.forEach((row) => {
-      const even = row.length > 1 ? Math.min(H, Math.max(...row.map((o) => o.full))) : 0;
-      row.forEach((o) => {
-        const t = o.t;
-        t.style.setProperty('--fold-h', H + 'px');
-        if (even) t.style.minHeight = even + 'px';
-        if (o.full <= H + 24) { t.classList.remove('fold'); t.removeAttribute('data-fold'); const b = t.querySelector(':scope > .fold-btn'); if (b) b.remove(); return; }
-        t.classList.add('fold');
-        t.dataset.fold = o.key;
-        const open = unfolded.has(o.key);
-        fitApply(t, o.fit);
-        t.classList.toggle('folded', !open);
-        if (t.tagName === 'BUTTON') return; // een klikbare tegel opent zijn eigen pagina met alles
-        let b = t.querySelector(':scope > .fold-btn');
-        if (!b) { b = Object.assign(document.createElement('button'), { type: 'button', className: 'fold-btn' }); t.appendChild(b); }
-        b.setAttribute('aria-expanded', open ? 'true' : 'false');
-        b.textContent = open ? 'Minder tonen' : 'Meer tonen';
-      });
-    });
-  });
-  // 5. De nieuwe stand vastleggen zonder overgangen, daarna mogen ze weer
-  void roots[0].root.offsetHeight;
-  roots.forEach((x) => x.root.classList.remove('no-tr'));
-}
-// Ingeklapt moet een grafiek met zijn labels helemaal zichtbaar zijn: maak hem zo nodig lager (de y-as wordt dan samengedrukt)
-const CHART_SEL = '.bars, .chart, svg.dual, .donut, .fin-bars';
-// Alleen meten (in de natuurlijke stand van de tegel); fitApply zet het daarna
-function fitMeasure(t, H) {
-  const ch = t.querySelector(CHART_SEL);
-  if (!ch) return null;
-  const tr = t.getBoundingClientRect(), cr = ch.getBoundingClientRect();
-  if (cr.top - tr.top > H - 120 || cr.height < 40) return null;
-  let end = ch, sib = ch.nextElementSibling;
-  while (sib && sib.matches('.bar-labels, .xlabels, .legend, .heat-key, .srri-l')) { end = sib; sib = sib.nextElementSibling; }
-  if (end === ch && ch.parentElement !== t) { // labels kunnen naast de omhullende staan
-    let w = ch.parentElement.nextElementSibling;
-    while (w && w.matches('.bar-labels, .xlabels, .legend')) { end = w; w = w.nextElementSibling; }
-  }
-  const bottom = end.getBoundingClientRect().bottom - tr.top;
-  const limit = H - 44;
-  return { ch, h: bottom <= limit ? null : Math.floor(Math.max(48, cr.height - (bottom - limit))) };
-}
-function fitApply(t, f) {
-  if (!f) return;
-  t.classList.add('fit');
-  if (f.h == null) return;
-  f.ch.style.setProperty('--fit-h', f.h + 'px');
-  f.ch.classList.add('fit-chart');
-}
-function toggleFold(t) {
-  if (t.classList.contains('fold-anim')) return;
-  const key = t.dataset.fold;
-  const open = !unfolded.has(key);
-  if (open) unfolded.add(key); else unfolded.delete(key);
-  const b = t.querySelector(':scope > .fold-btn');
-  if (b) { b.textContent = open ? 'Minder tonen' : 'Meer tonen'; b.setAttribute('aria-expanded', open ? 'true' : 'false'); }
-  if (reduceMotion()) { t.classList.toggle('folded', !open); return; }
-  // 1. Meet de eindhoogte in de eindtoestand, zonder overgangen (anders meet je een half gegroeide grafiek)
-  const from = t.getBoundingClientRect().height;
-  t.classList.add('no-tr');
-  t.classList.toggle('folded', !open);
-  t.style.maxHeight = '';
-  const to = t.getBoundingClientRect().height;
-  // 2. Terug naar de begintoestand, vastgezet op de beginhoogte
-  t.classList.toggle('folded', open);
-  t.style.maxHeight = from + 'px';
-  void t.offsetHeight;
-  t.classList.remove('no-tr');
-  // 3. Animeren: tegel en grafiek bewegen met dezelfde duur en curve
-  t.classList.add('fold-anim');
-  t.classList.toggle('folded', !open);
-  t.style.maxHeight = to + 'px';
-  let fin = false;
-  const done = (e) => {
-    if (e && (e.target !== t || e.propertyName !== 'max-height')) return; // overgangen van onderdelen in de tegel tellen niet
-    if (fin) return; fin = true;
-    t.removeEventListener('transitionend', done);
-    t.classList.add('no-tr'); t.classList.remove('fold-anim'); t.style.maxHeight = ''; void t.offsetHeight; t.classList.remove('no-tr');
-  };
-  t.addEventListener('transitionend', done);
-  setTimeout(() => done(), 520);
-  if (Math.abs(to - from) < 1) done();
-  if (!open) { const r = t.getBoundingClientRect(); const topbar = mode === 'm' ? 64 : 96; if (r.top < topbar) window.scrollBy({ top: r.top - topbar - 12, behavior: 'smooth' }); }
-}
-// Klik op een leeg stuk van de tegel (niet op een knop, link, invoerveld of regel die zelf iets opent)
-const FOLD_IGNORE = 'a, input, select, textarea, label, summary, details, [data-open], [data-ticker]:not(.tile), [data-act], [data-plan], [data-cal], [data-export], [data-seg], .seg, [contenteditable]';
-document.addEventListener('click', (e) => {
-  const t = e.target.closest('.tile.fold[data-fold]');
-  if (!t || t.tagName === 'BUTTON') return;
-  const fb = e.target.closest('.fold-btn');
-  if (!fb) {
-    const hit = e.target.closest(FOLD_IGNORE);
-    if (hit && t.contains(hit)) return;
-    const btn = e.target.closest('button');
-    if (btn && btn !== t && t.contains(btn)) return;
-    if (window.getSelection && String(window.getSelection()).length) return;
-  }
-  toggleFold(t);
-});
-onResize(foldAll, { key: 'fold' });
 
 function render() {
   clearSkeleton();

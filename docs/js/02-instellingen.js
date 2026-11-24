@@ -41,11 +41,20 @@ function openSettings(showImport) {
   if (typeof renderPush === 'function') { renderPush(); renderShare(); }
   if (typeof renderPrivacy === 'function') renderPrivacy();
   $('dlg-settings').showModal();
+  setOpenState(true);
   if (!getToken() && !demo) setGo('account');
   else if (showImport === true) setGo('import');
   else if (matchMedia('(max-width: 760px)').matches) setList();
   else setGo(setCur || 'links');
 }
+
+// Instellingen open: het tandwiel staat aan (een kwartslag gedraaid) en het pilletje in het menu vervaagt.
+// Instellingen komt van onderen binnen (style.css, #dlg-settings[open]).
+function setOpenState(on) {
+  document.body.classList.toggle('set-open', on);
+  $$('.btn-settings').forEach((b) => b.setAttribute('aria-pressed', String(on)));
+}
+$('dlg-settings').addEventListener('close', () => setOpenState(false));
 
 // ---------- Instellingen als pagina: een lijst met onderdelen, één onderdeel tegelijk ----------
 let setCur = null;
@@ -69,7 +78,7 @@ function setSums() {
   const on = L ? LINKS.filter((x) => { const ks = (x.keys || []).filter((k) => !k[2]).map((k) => L.keys[String(k[0])]); return x.flag ? L.flags[String(x.flag)] !== false && (!x.keys || x.optKeys || ks.every(Boolean)) : ks.every(Boolean); }).length : null;
   put('links', demo ? 'alles aan met voorbeeldgegevens' : on == null ? 'je bronnen en extra functies' : on + ' van ' + LINKS.length + ' aan');
   put('account', getToken() ? 'gekoppeld · code in deze browser' : 'nog niet gekoppeld');
-  put('view', ({ light: 'Licht', dark: 'Donker', auto: 'Automatisch' })[th] + ' · ' + ({ nl: 'Nederlands', en: 'English', de: 'Deutsch', fr: 'Français' })[LANG]);
+  put('view', ({ light: 'Licht', dark: 'Donker', amoled: 'Amoled', auto: 'Automatisch' })[th] + ' · ' + ({ nl: 'Nederlands', en: 'English', de: 'Deutsch', fr: 'Français' })[LANG]);
   put('push', 'koersbewegingen, cijfers en insiders');
   put('share', 'een link om mee te kijken');
   put('install', 'op je beginscherm, met meldingen');
@@ -403,14 +412,56 @@ syncHideButtons();
 function syncThemeButtons() {
   const pref = themePref();
   $$('[data-theme-pick]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.themePick === pref)));
+  syncAccentPick();
 }
 document.addEventListener('click', (e) => {
   const b = e.target.closest && e.target.closest('[data-theme-pick]');
   if (!b) return;
   try { localStorage.setItem('tracker.theme', b.dataset.themePick); } catch (err) { /* niet erg */ }
-  applyTheme(); syncThemeButtons(); rerenderAll(); if (M) showPage(ui.page, false);
+  themeChanged();
 });
+// Na een wissel van thema of accent: kleuren opnieuw lezen en alles opnieuw tekenen (grafieken lezen C)
+function themeChanged() {
+  applyTheme(); syncThemeButtons(); rerenderAll(); if (M) showPage(ui.page, false);
+  setSums();
+}
 THEME_MQ.addEventListener('change', () => { if (themePref() === 'auto') { applyTheme(); rerenderAll(); } });
+
+// Accentkleur: zes vaste kleuren (ACCENTS in js/00-vroeg.js) of een eigen kleur, alleen op dit apparaat
+const ACCENT_NAMES = { blauw: 'Blauw', petrol: 'Petrol', paars: 'Paars', oranje: 'Oranje', cyaan: 'Cyaan', roze: 'Roze' };
+function renderAccentPick() {
+  const box = $('accent-pick');
+  if (!box) return;
+  box.innerHTML = ACCENTS.map(([k, hex]) => '<button type="button" class="acc-sw" data-accent-pick="' + hex + '" aria-pressed="false" title="' + ACCENT_NAMES[k] + '" aria-label="' + ACCENT_NAMES[k] + '" style="--sw:' + hex + '"></button>').join('') +
+    '<label class="acc-own" title="Eigen kleur"><input type="color" data-accent-own aria-label="Eigen kleur"><span>Eigen kleur</span></label>';
+  syncAccentPick();
+}
+function syncAccentPick() {
+  const cur = accentPref();
+  const preset = ACCENTS.some((a) => a[1] === cur);
+  $$('[data-accent-pick]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.accentPick === cur)));
+  const own = /** @type {HTMLInputElement|null} */ (document.querySelector('[data-accent-own]'));
+  if (own) { own.value = cur.toLowerCase(); own.closest('.acc-own').classList.toggle('on', !preset); }
+}
+function setAccent(hex) {
+  try { localStorage.setItem('tracker.accent', hex.toUpperCase()); } catch (err) { /* niet erg */ }
+  themeChanged();
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('[data-accent-pick]');
+  if (b) setAccent(b.dataset.accentPick);
+});
+// Eigen kleur: tijdens het slepen alleen de kleuren bijwerken, kort na loslaten ook alles opnieuw tekenen
+let accentDrag = null;
+document.addEventListener('input', (e) => {
+  const t = /** @type {HTMLInputElement} */ (e.target);
+  if (!t.matches || !t.matches('[data-accent-own]')) return;
+  try { localStorage.setItem('tracker.accent', t.value.toUpperCase()); } catch (err) { /* niet erg */ }
+  setThemeAttrs();
+  clearTimeout(accentDrag);
+  accentDrag = setTimeout(themeChanged, 250);
+});
+renderAccentPick();
 syncThemeButtons();
 
 // ---------- Agenda-abonnement (.ics) ----------
@@ -447,7 +498,6 @@ function applyMode() {
   $('shell').hidden = mode !== 'd';
   $('mshell').hidden = mode !== 'm';
   $(mode === 'd' ? 'd-notices' : 'm-notices').appendChild($('notices'));
-  { const cs = getComputedStyle(document.documentElement); document.querySelector('meta[name="theme-color"]').content = (mode === 'm' && ui.page !== 'home' ? cs.getPropertyValue('--bg') : cs.getPropertyValue('--band')).trim(); }
   setMtop();
 }
 function setMtop() {

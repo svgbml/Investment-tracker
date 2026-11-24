@@ -343,14 +343,6 @@ function a11yNamePass(root) {
     e.insertAdjacentHTML('beforeend', '<span class="sr-only sr-extra">. ' + esc(hint) + '</span>');
   });
 }
-function a11yFoldPass(root) {
-  root.querySelectorAll('.tile.fold > .fold-btn').forEach((el) => {
-    const b = /** @type {HTMLElement} */ (el);
-    const h = b.parentElement ? b.parentElement.querySelector('h3') : null;
-    const t = h ? (h.textContent || '').trim() : '';
-    b.setAttribute('aria-label', (b.textContent || '').trim() + (t ? ': ' + t : ''));
-  });
-}
 function a11yBarsPass(root) {
   // Aanbevelingen van analisten als smalle balk: zonder kleur te zien staat er nu ook wat erin zit
   root.querySelectorAll('.rec-bar').forEach((el) => {
@@ -453,7 +445,6 @@ function a11yPass() {
       if (!root || root.hidden) return;
       a11yRowsPass(root);
       a11yNamePass(root);
-      a11yFoldPass(root);
       a11yBarsPass(root);
       a11yScrollPass(root);
       a11yLangPass(root);

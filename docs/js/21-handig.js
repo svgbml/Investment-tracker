@@ -8,6 +8,11 @@
 // (gemaakt met node tools/changelog.mjs); hieronder staat alleen wat de gebruiker merkt.
 // Bij een nieuwe versie: zet de regels van die versie bovenaan, met VERSION uit js/01-basis.js als sleutel.
 const WHATS_NEW = {
+  v73: [
+    'Nieuw uiterlijk, stap 1: elke pagina is één rustig geheel met dunne lijnen in plaats van losse tegels, met een nieuwe kop en menu op de computer en een nieuwe tabbalk op de telefoon.',
+    'Vier thema\'s: licht, donker, amoled (zwart) en automatisch, en een accentkleur naar keuze bij Instellingen, Weergave.',
+    'Tegels klappen niet meer in: je ziet meteen alles. Grafieken op de telefoon tonen alleen de lijn, zonder speldjes.',
+  ],
   v69: [
     'De Worker meet op werkdagen nu de hele dag elke 10 minuten, ook in de nacht en vroeg in de ochtend. Orders en marktgegevens haalt hij nog steeds buiten de handelsuren op.',
     'Het grote bedrag toont de accountwaarde met het vrije saldo erbij, net als Trading 212.',

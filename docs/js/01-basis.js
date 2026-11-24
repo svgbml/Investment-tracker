@@ -15,10 +15,6 @@ const MIN_DAYS_BEST = 3;     // minimaal aantal dagen voor beste/slechtste dag
 const MIN_DAYS_SD = 5;       // voor beweeglijkheid
 const MIN_DAYS_CORR = 10;    // voor samenhang met de portefeuille
 const ZOOM_MS = 450;
-const unfolded = new Set();
-const FOLD_ROOTS = ['page-home', 'm-home', 'm-stats'];
-const FOLD_SKIP = '.grid.stats, .m-grid2, #kpis, #movers, #stats, #m-analyse-body, #onboard, #m-onboard';
-let foldTimer = null;
 const HOUR = 3600e3;
 const DAY = 864e5;
 
@@ -26,7 +22,7 @@ const DAY = 864e5;
 // Taal: Nederlands (standaard), Engels, Duits of Frans; getallen en datums volgen de gekozen taal
 const LANG = (() => { try { const l = localStorage.getItem('tracker.lang'); return ['en', 'de', 'fr'].includes(l) ? l : 'nl'; } catch (e) { return 'nl'; } })();
 const LOCALE = { en: 'en-GB', de: 'de-DE', fr: 'fr-FR' }[LANG] || 'nl-NL';
-const VERSION = 'v72';
+const VERSION = 'v73';
 const nf = (o) => new Intl.NumberFormat(LOCALE, o);
 // Getallen: per apparaat te kiezen bij Instellingen > Weergave (zie js/15-ui.js).
 // numFmtKort: bedragen vanaf duizend afgekort (€ 12,3K) in plaats van volledig (€ 12.345,60).
@@ -105,13 +101,13 @@ function countTo(el, v, fmt) {
   el._raf = requestAnimationFrame(step);
 }
 const C = { accent: '#2B5BD7', gain: '#0B7A4B', loss: '#B4311F', ink2: '#5B6472', soft: '#8FAEF0', ink: '#14181F', grid: '#9AA3B5' };
-// Thema: licht, donker of automatisch (volgt het apparaat)
+// Thema: licht, donker, amoled of automatisch (volgt het apparaat tussen licht en donker); accentkleur per apparaat.
+// setThemeAttrs() en accentVars() staan in js/00-vroeg.js (die draait al vóór de eerste tekening).
+// Grafieken lezen hun kleuren uit C: na een wissel van thema of accent dus opnieuw tekenen (rerenderAll).
 const THEME_MQ = window.matchMedia('(prefers-color-scheme: dark)');
-const themePref = () => { try { return localStorage.getItem('tracker.theme') || 'auto'; } catch (e) { return 'auto'; } };
+const themePref = () => { try { const t = localStorage.getItem('tracker.theme'); return ['light', 'dark', 'amoled'].includes(t) ? t : 'auto'; } catch (e) { return 'auto'; } };
 function applyTheme() {
-  const pref = themePref();
-  const dark = pref === 'dark' || (pref === 'auto' && THEME_MQ.matches);
-  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  setThemeAttrs();
   const cs = getComputedStyle(document.documentElement);
   const v = (n, d) => (cs.getPropertyValue(n).trim() || d);
   C.accent = v('--accent', '#2B5BD7'); C.gain = v('--gain', '#0B7A4B'); C.loss = v('--loss', '#B4311F'); C.ink2 = v('--ink-2', '#5B6472'); C.ink = v('--ink', '#14181F'); C.soft = v('--accent-soft', '#8FAEF0');

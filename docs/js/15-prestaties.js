@@ -60,13 +60,8 @@ async function paintSnap() {
   $('app').hidden = false;
   $('m-main').hidden = false;
   $('demo-banner').hidden = !snapDemo();
-  // De balk met knoppen (instellingen, vernieuwen, bedragen verbergen) staat op de computer in de beginpagina.
-  // Eerst eruit halen: de bewaarde tekening zou hem anders vervangen door een kopie zonder werkende knoppen.
-  const bar = document.querySelector('#shell .topbar');
-  if (bar && host.contains(bar)) $('shell').prepend(bar);
   host.innerHTML = o.html;
-  host.querySelectorAll('.topbar').forEach((x) => x.remove());   // oudere tekeningen bevatten nog zo'n kopie
-  if (typeof placeDeskNav === 'function') placeDeskNav();
+  host.querySelectorAll('.topbar').forEach((x) => x.remove());   // oudere tekeningen bevatten nog een kopie van de balk
   host.dataset.snap = '1';
   host.setAttribute('aria-busy', 'true');
   snapShown = true;
