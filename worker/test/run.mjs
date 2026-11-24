@@ -2343,5 +2343,46 @@ await test('zomer- en wintertijd: 23 en 25 uurregels, elke meting in precies Ã©Ã
   }
 });
 
+// De echte uitvoer van /api/data tegen het contract in docs/js/types.d.ts, met TypeScript (idee 61).
+// TypeScript: de versie in TSC (pad naar tsc), anders via npx typescript@5.6.3, net als tools/check-types.mjs.
+// Kan TypeScript niet starten (geen verbinding), dan slaat de test zich over, behalve in GitHub Actions.
+await test('gegevens van /api/data volgen het contract in types.d.ts (idee 61)', async () => {
+  const { spawnSync } = await import('node:child_process');
+  const { fileURLToPath } = await import('node:url');
+  const fs = await import('node:fs'), os = await import('node:os'), path = await import('node:path');
+  routes = t212Routes();
+  await req('/api/run', { method: 'POST' });
+  const core = await jsonOf(await req('/api/data?part=core&split=1'));
+  const extra = await jsonOf(await req('/api/data?part=extra'));
+  const series = await jsonOf(await req('/api/data?part=series'));
+  const delta = await jsonOf(await req('/api/data?part=series&since=' + (series.seriesTs - 1)));
+  for (const [naam, d] of [['extra', extra], ['series', series]]) {
+    ['orders', 'intraday', 'hours', 'days'].filter((k) => d[k]).forEach((k) => assert.ok(d[k].rows.length, naam + '.' + k + ' is leeg; dan zegt de controle weinig'));
+  }
+  // Lange tabellen inkorten: het gaat om de vorm, niet om elke regel
+  const kort = (d) => JSON.stringify(d, (k, v) => (k === 'rows' && Array.isArray(v) ? v.slice(0, 5) : v));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'contract-'));
+  fs.writeFileSync(path.join(dir, 'contract.ts'), [
+    'const core: ContractCore = ' + kort(core) + ';',
+    'const extra: ContractExtra = ' + kort(extra) + ';',
+    'const series: ContractSeries = ' + kort(series) + ';',
+    'const delta: ContractSeries = ' + kort(delta) + ';',
+    'export { core, extra, series, delta };', ''].join('\n'));
+  fs.writeFileSync(path.join(dir, 'tsconfig.json'), JSON.stringify({
+    compilerOptions: { strict: true, noEmit: true, target: 'es2022', lib: ['es2022', 'dom'], types: [], skipLibCheck: true },
+    files: [fileURLToPath(new URL('../../docs/js/types.d.ts', import.meta.url)), 'contract.ts'],
+  }));
+  const cmd = process.env.TSC ? [process.env.TSC, ['-p', '.']] : ['npx', ['--yes', '-p', 'typescript@5.6.3', 'tsc', '-p', '.']];
+  const r = spawnSync(cmd[0], cmd[1], { cwd: dir, encoding: 'utf8', shell: process.platform === 'win32', timeout: 180000 });
+  const out = ((r.stdout || '') + (r.stderr || '')).trim();
+  fs.rmSync(dir, { recursive: true, force: true });
+  if ((r.error || (r.status !== 0 && !/error TS\d+/.test(out))) && !process.env.GITHUB_ACTIONS) {
+    console.log('       TypeScript kon niet starten; contract niet gecontroleerd. ' + (r.error ? r.error.message : out.slice(0, 200)));
+    return;
+  }
+  const fouten = out.split(/\r?\n/).filter((l) => /error TS\d+/.test(l)).map((l) => l.replace(/^.*contract\.ts/, 'contract.ts').slice(0, 300));
+  assert.equal(r.status, 0, 'de uitvoer wijkt af van het contract in docs/js/types.d.ts:\n         ' + (fouten.slice(0, 8).join('\n         ') || out.slice(0, 500)));
+});
+
 console.log((failed ? failed + ' fout, ' : '') + passed + ' geslaagd');
 process.exit(failed ? 1 : 0);

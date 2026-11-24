@@ -157,6 +157,75 @@ interface TrackerData {
   [k: string]: any;
 }
 
+// ---------- Contract met de Worker (idee 61) ----------
+// Wat de Worker altijd stuurt, ook met alleen Trading 212. De Worker-test (worker/test/run.mjs) schrijft de echte
+// uitvoer van /api/data weg en laat TypeScript die tegen deze typen controleren: een veld dat verdwijnt, een andere
+// naam krijgt of van soort verandert, laat de test falen. Nieuwe velden mogen erbij (open index); zet ze hier
+// zodra ze vast zijn. Kolomnamen van de tabellen staan vast, zodat de site ze op positie kan lezen.
+
+type ContractOpen = { [k: string]: unknown };
+
+interface ContractWeek {
+  date: string; accountValue: number; netDeposits: number; cash: number; costBasis: number;
+  investmentsValue: number; unrealized: number; totalResult: number; totalResultPct: number;
+  weekChange: number | null; newDeposits: number | null; weekResult: number | null; weekResultPct: number | null;
+  source: string;
+}
+interface ContractPosition {
+  ticker: string; name: string; value: number; unrealized: number; cost: number; quantity: number;
+  /** Alleen bij een meting, niet bij de terugval op de laatste weekstand. */
+  resultPct?: number; price?: number;
+}
+interface ContractToday {
+  ticker: string; name: string; current: number; open: number; low: number; high: number; avg: number;
+  change: number; changePct: number;
+}
+
+/** /api/data?part=core */
+interface ContractCore {
+  ok: true; part: 'core'; generated: string; currency: 'EUR';
+  weeks: ContractWeek[];
+  positions: ContractPosition[];
+  positionsDate: string | null;
+  today: ContractToday[];
+  cashNow: { cash: number; at: string; [k: string]: unknown } | null;
+  posExtra: { [ticker: string]: ContractOpen };
+  settings: ContractOpen;
+  features: { flags: { [k: string]: boolean }; has: { [k: string]: boolean } };
+  newsFlash: unknown[];
+  [k: string]: unknown;
+}
+
+/** /api/data?part=extra (alles in EXTRA_KEYS in de Worker) */
+interface ContractExtra {
+  ok: true; part: 'extra';
+  events: TrackerEvents | null;
+  market: ContractOpen | null;
+  orders: {
+    columns: ['time', 'ticker', 'name', 'side', 'qty', 'price', 'currency', 'fxRate', 'net', 'realised', 'feeFx', 'feeOther', 'kind'];
+    rows: Array<[string, string, string | null, string, number, number, string, number | null, number, number | null, number | null, number | null, string | null]>;
+  };
+  peil: Array<{ date: string; total: number; investments: number; cash: number; [k: string]: unknown }>;
+  etf: ContractOpen;
+  research: { [ticker: string]: ContractOpen };
+  fin: { [ticker: string]: ContractOpen };
+  fx: ContractOpen | null;
+  hicp: ContractOpen | null;
+  idx: ContractOpen | null;
+  ext2: ContractOpen;
+  marketNews: ContractOpen | null;
+  [k: string]: unknown;
+}
+
+/** /api/data?part=series, volledig (met kolomnamen) of als aanvulling (delta, since, zonder kolomnamen) */
+interface ContractSeries {
+  ok: true; part: 'series'; seriesTs: number;
+  delta?: true; since?: number;
+  intraday: { columns?: ['time', 'ticker', 'value', 'qty']; rows: Array<[string, string, number, number | null]> };
+  hours: { columns?: ['hour', 'ticker', 'open', 'close', 'low', 'high', 'avg']; rows: Array<[string, string, number, number, number, number, number]> };
+  days: { columns?: ['date', 'ticker', 'open', 'close', 'low', 'high', 'avg', 'range', 'rangePct']; rows: Array<[string, string, number, number, number, number, number, number, number]> };
+}
+
 // ---------- Afgeleid model (derive() in 03-model.js) ----------
 
 /** Eén bedrijf in het model: waarde, dagverandering, kostprijs en gewicht. */
