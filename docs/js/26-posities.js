@@ -4,16 +4,16 @@
 'use strict';
 
 // ---------- Indeling: tegels, één lijst, of groepen per sector, land, munt of pie ----------
-const POS_GROUPS = [['tiles', 'Tegels'], ['none', 'Lijst'], ['sector', 'Sector'], ['country', 'Land'], ['cur', 'Munt'], ['pie', 'Pie']];
+const POS_GROUPS = [['combi', 'Met detail'], ['tiles', 'Tegels'], ['none', 'Lijst'], ['sector', 'Sector'], ['country', 'Land'], ['cur', 'Munt'], ['pie', 'Pie']];
 const LS_POS_GROUP = 'tracker.posGroup';
 const LS_POS_SHUT = 'tracker.posShut';
 const LS_POS_BASIS = 'tracker.posBasis';
 // Indeling en ingeklapte groepen zijn keuzes per apparaat: die blijven in localStorage
-const posState = { d: 'tiles', m: 'sector', shut: new Set(), basis: 'avg' };
+const posState = { d: 'combi', m: 'sector', shut: new Set(), basis: 'avg' };
 try {
   const o = JSON.parse(localStorage.getItem(LS_POS_GROUP) || '{}');
   if (POS_GROUPS.some((g) => g[0] === o.d)) posState.d = o.d;
-  if (POS_GROUPS.some((g) => g[0] === o.m && g[0] !== 'tiles')) posState.m = o.m;
+  if (POS_GROUPS.some((g) => g[0] === o.m && g[0] !== 'tiles' && g[0] !== 'combi')) posState.m = o.m;
   const s = JSON.parse(localStorage.getItem(LS_POS_SHUT) || '[]');
   if (Array.isArray(s)) s.slice(0, 80).forEach((k) => posState.shut.add(String(k)));
   const b = localStorage.getItem(LS_POS_BASIS);
@@ -22,7 +22,7 @@ try {
 
 const posGroupBy = () => (mode === 'm' ? posState.m : posState.d);
 function setPosGroup(k) {
-  if (mode === 'm') posState.m = k === 'tiles' ? 'none' : k;
+  if (mode === 'm') posState.m = k === 'tiles' ? 'none' : k === 'combi' ? 'sector' : k;
   else posState.d = k;
   try { localStorage.setItem(LS_POS_GROUP, JSON.stringify({ d: posState.d, m: posState.m })); } catch (e) { /* niet erg */ }
 }
@@ -58,7 +58,7 @@ function posGroupOf(c) {
 // Alleen indelingen aanbieden die iets te zeggen hebben
 function posGroupOpts(phone) {
   const pies = posPies().length > 0;
-  return POS_GROUPS.filter((g) => (g[0] !== 'pie' || pies) && (g[0] !== 'tiles' || !phone));
+  return POS_GROUPS.filter((g) => (g[0] !== 'pie' || pies) && ((g[0] !== 'tiles' && g[0] !== 'combi') || !phone));
 }
 function posGroups(items) {
   const g = new Map();
@@ -81,9 +81,9 @@ function posGroupHeadM(grp) {
   const pct = posGroupPct(grp);
   return '<button type="button" class="m-tgroup pg-tog' + (shut ? ' shut' : '') + '" data-pgroup="' + esc(grp.k) + '" aria-expanded="' + (!shut) + '">' +
     '<span><svg class="pg-c" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M9 5l7 7-7 7"/></svg>' +
-    esc(grp.k.toUpperCase() + ' · ' + (M.totalValue ? PCT0.format(grp.v / M.totalValue) : '–')) + '</span>' +
-    '<span>' + esc(eur(grp.v)) + ' · <b class="' + tone(grp.d) + '">' + esc(isNum(pct) ? spct(pct) : '–') + '</b>' +
-    (shut ? ' <span class="muted">' + grp.cs.length + '</span>' : '') + '</span></button>';
+    esc(grp.k) + '</span>' +
+    '<span title="' + esc(eur(grp.v) + ', ' + (isNum(pct) ? spct(pct) : '–') + ' ' + M.dayWord) + '">' + esc(grp.cs.length + (grp.cs.length === 1 ? ' positie' : ' posities')) + ' · <b>' + esc(M.totalValue ? P1.format(grp.v / M.totalValue) : '–') + '</b>' +
+    ' <b class="' + tone(grp.d) + '">' + esc(isNum(pct) ? spct(pct) : '') + '</b></span></button>';
 }
 
 // ---------- Computer: lijst met rijen, grafiekkolom en subtotalen ----------
@@ -127,19 +127,24 @@ function posSegButtons() {
   if (!host) return;
   segButtons(host, posGroupOpts(false), posGroupBy(), (k) => { setPosGroup(k); refresh('list'); });
 }
-// De weergave 'list' opnieuw vastleggen: bij 'Tegels' de oude tegels, anders rijen met groepen
+// De weergave 'list' opnieuw vastleggen: 'Met detail' (lijst per sector met een vak ernaast, js/30-bedrijven.js),
+// 'Tegels' (de oude tegels) of rijen met groepen. Kop en kerncijfers: bcHead.
 defineView('list', () => {
-  if (mode === 'm') { renderMList(); return; }
+  if (mode === 'm') { renderMList(); bcHead(); return; }
   renderList();
   posSegButtons();
+  bcHead();
   const host = $('list-grid');
   if (!host) return;
-  const rows = posGroupBy() !== 'tiles';
+  const g = posGroupBy();
+  const rows = g !== 'tiles' && g !== 'combi';
   host.classList.toggle('plist', rows);
-  if (!rows) return;
+  host.classList.toggle('bc-host', g === 'combi');
+  if (g === 'tiles') return;
   const items = filteredCompanies();
-  host.innerHTML = items.length ? posListHtml(items)
-    : '<p class="empty">Geen bedrijven gevonden' + (ui.listQuery ? ' voor “' + esc(ui.listQuery) + '”' : '') + '.</p>';
+  const none = '<p class="empty">Geen bedrijven gevonden' + (ui.listQuery ? ' voor “' + esc(ui.listQuery) + '”' : '') + '.</p>';
+  if (g === 'combi') { host.innerHTML = items.length ? bcCombiHtml(items) : none; bcPanelChart(); return; }
+  host.innerHTML = items.length ? posListHtml(items) : none;
 });
 
 // Groep in- of uitklappen (computer en telefoon)

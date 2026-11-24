@@ -1,4 +1,4 @@
-/* Investeringstracker – Nieuws als ochtendkrant (stap 4 van het nieuwe uiterlijk, v75)
+/* Investeringstracker – Nieuws als ochtendkrant (stap 4 van het nieuwe uiterlijk, v76)
  * Bovenaan de nieuwspagina: stemmingsbalk, een strook kerncijfers, het belangrijkste bericht met de koers van dat
  * aandeel en de berichten als stipjes erop, "wat heb ik gemist" ernaast, en vier kolommen (officieel, geruchten,
  * markt, cijfers). Daaronder de bestaande onderdelen in secties met de titel links (zie nkSec).

@@ -8,9 +8,14 @@
 // (gemaakt met node tools/changelog.mjs); hieronder staat alleen wat de gebruiker merkt.
 // Bij een nieuwe versie: zet de regels van die versie bovenaan, met VERSION uit js/01-basis.js als sleutel.
 const WHATS_NEW = {
-  v75: [
+  v76: [
     'Nieuw uiterlijk, stap 4: Nieuws als ochtendkrant. Bovenaan de stemming, een strook met kerncijfers en het belangrijkste bericht met de koers van dat aandeel en de berichten als stipjes erop.',
     'Ernaast wat je hebt gemist, daaronder officieel nieuws, geruchten, marktnieuws en kwartaalcijfers in vier kolommen. Alle berichten, de stemmingskaart, analisten en insiders staan in secties met de titel links.',
+  ],
+  v75: [
+    'Nieuw uiterlijk, stap 3: Bedrijven. Bovenaan je kerncijfers in één strook en een verdeling in je eigen accentkleur; daaronder je posities per sector met ernaast het gekozen bedrijf: grafiek, berichten, analisten en knoppen naar de bedrijfspagina, een koersalarm en vergelijken.',
+    'De bedrijfspagina heeft een nieuwe kop met de koers per aandeel en je positie, een grote grafiek met een knoppenbalk eronder, en onderdelen met links hun titel. Op de telefoon staat een terugpijl in de kop.',
+    'De snelle modus vult nu het hele scherm: kaarsen van 30 seconden tot 15 minuten met het aantal trades per kaars, en ernaast je positie, de laatste trades en het laatste nieuws. Sluiten kan ook met Escape.',
   ],
   v74: [
     'Nieuw uiterlijk, stap 2: Overzicht. De grote waarde staat nu over een grafiek die de hele breedte vult, met speldjes voor het hoogste punt, stortingen en je eigen aan- en verkopen (op de computer).',
