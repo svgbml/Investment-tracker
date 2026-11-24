@@ -8,6 +8,9 @@
 // (gemaakt met node tools/changelog.mjs); hieronder staat alleen wat de gebruiker merkt.
 // Bij een nieuwe versie: zet de regels van die versie bovenaan, met VERSION uit js/01-basis.js als sleutel.
 const WHATS_NEW = {
+  v78: [
+    'Analyse: ook de hoofdstukken Doorkijk, Markt, Kopen en verkopen en Transacties openen nu met de kern in één zin, vier cijfers en een grafiek: de verdeling over sectoren, de S&P 500 van het laatste halfjaar en staafjes per maand.',
+  ],
   v77: [
     'Nieuw uiterlijk, stap 5: Analyse als jaarrapport. Bovenaan je kerncijfers in één strook en een balk met de vijf hoofdstukken die blijft staan terwijl je scrolt, met een streep die laat zien hoe ver je bent.',
     'Elk hoofdstuk opent met een groot nummer; Rendement begint met de kern in één zin, vier cijfers en een grafiek van jou tegenover je maatstaf. De onderdelen hebben links hun titel. Op de telefoon dragen de tabbladen hun nummer.',

@@ -825,3 +825,10 @@ body.fast-open #detail { overflow: hidden; }
   #m-stats .chart.an-chart { height: 150px; }
 }
 @media print { .an-open, .an-nav { display: none !important; } }
+/* Analyse, aanvulling: de openingen van de hoofdstukken 02 tot en met 05 (anOpenRest in js/31-analyse-rapport.js) */
+@media screen {
+  .an-stack { display: flex; gap: 2px; height: 34px; margin-top: 20px; overflow: hidden; border-radius: 6px; }
+  .an-stack i { display: flex; align-items: center; min-width: 3px; padding: 0 8px; overflow: hidden; background: color-mix(in srgb, var(--accent) var(--mix, 100%), var(--page)); color: var(--on-accent); font: 600 12px/1 inherit; font-style: normal; white-space: nowrap; }
+  .an-stack i.rest { background: var(--rule); }
+  .an-bars { margin-top: 18px; }
+}
