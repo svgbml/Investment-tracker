@@ -4,6 +4,7 @@
  *
  * Alles hier is bedoeld om hergebruikt te worden:
  *  - toast(tekst, soort): één vorm voor "gelukt" en "mislukt", met role="status" / aria-live.
+ *  - toastUndo(tekst, terugzetten): melding met 8 seconden een knop Ongedaan maken.
  *  - skelTile() en showSkeleton(): grijze plaatshouders zolang de gegevens nog komen.
  *  - crumbNav(titel): kruimelpad bovenaan een detailpagina (computer en telefoon).
  *  - foutTekst(wat, fout): wat er gebeurde, waarom, en wat je kunt doen.
@@ -50,6 +51,30 @@ function closeToast(el) {
   setTimeout(() => el.remove(), 220);
 }
 const toastOk = (t) => toast(t, 'ok');
+// ---------- Ongedaan maken (idee 1) ----------
+// Verwijderen gaat meteen naar de Worker, zoals altijd. De melding houdt daarna 8 seconden een knop die het oude
+// item via dezelfde opslag terugzet. Eén manier voor alles: er blijft niets hangen als je de pagina sluit.
+const UNDO_MS = 8000;
+function toastUndo(text, restore) {
+  const el = toast(text, 'ok');
+  if (!el) return null;
+  let b = /** @type {HTMLButtonElement} */ (el.querySelector('.undo'));
+  if (!b) {
+    b = document.createElement('button');
+    b.type = 'button'; b.className = 'undo'; b.textContent = T('Ongedaan maken');
+    el.insertBefore(b, el.querySelector('.x'));
+  }
+  b.disabled = false;
+  b.onclick = async () => {
+    b.disabled = true;
+    closeToast(el);
+    try { await restore(); toastOk(T('Teruggezet.')); }
+    catch (err) { toastErr(foutTekst('Terugzetten is mislukt', err, 'Probeer het opnieuw, of zet het zelf terug.')); }
+  };
+  clearTimeout(toastTimers.get(el));
+  toastTimers.set(el, setTimeout(() => closeToast(el), UNDO_MS));
+  return el;
+}
 const toastErr = (t) => toast(t, 'err');
 document.addEventListener('click', (e) => {
   const t = /** @type {Element} */ (e.target);

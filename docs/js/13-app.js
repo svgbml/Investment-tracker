@@ -337,7 +337,7 @@ EN_RE.push([/^Nog (\d+) koppen: scrol verder\.$/, 'Another $1 headlines: keep sc
 EN_RE.push([/^Alleen (.+)$/, 'Only $1'], [/^Posities (\d+)$/, 'Positions $1'], [/^Volglijst (\d+)$/, 'Watchlist $1']);
 // Kruimelpad, getalweergave, meldingen en de startchecklist
 Object.assign(EN, {
-  'Kruimelpad': 'Breadcrumb', '\u2039 Overzicht': '\u2039 Overview', '\u2039 Bedrijven': '\u2039 Companies', 'Melding sluiten': 'Close message',
+  'Kruimelpad': 'Breadcrumb', '\u2039 Overzicht': '\u2039 Overview', '\u2039 Bedrijven': '\u2039 Companies', 'Melding sluiten': 'Close message', 'Ongedaan maken': 'Undo', 'Teruggezet.': 'Restored.', 'Koersalarm verwijderd.': 'Price alert deleted.', 'Regel uit je beslisdagboek verwijderd.': 'Entry removed from your decision log.',
   'Getallen': 'Numbers', 'Grote bedragen afkorten (\u20ac 12,3K)': 'Abbreviate large amounts (\u20ac 12.3K)',
   'Decimalen bij bedragen en procenten': 'Decimals for amounts and percentages',
   'geen (\u20ac 12)': 'none (\u20ac 12)', '\u00e9\u00e9n (\u20ac 12,3)': 'one (\u20ac 12.3)', 'twee (\u20ac 12,34)': 'two (\u20ac 12.34)',
@@ -897,16 +897,25 @@ document.addEventListener('click', (e) => {
     if (f) { f.querySelector('input').value = ''; const r = f.querySelector('.ws-results'); r.innerHTML = ''; r.hidden = true; }
     setWatchlist((cur) => (cur.includes(sym) ? cur : cur.concat([sym])), st, sym + ' staat op je volglijst.').catch(() => {});
   } else if (act === 'watch-remove') {
-    setWatchlist((cur) => cur.filter((x) => x !== sym), st, sym + ' is van je volglijst gehaald.').catch(() => {});
+    unwatchUndo([sym], st, sym + ' is van je volglijst gehaald.').catch(() => {});
   } else if (act === 'watch-clean') {
     const bad = new Set(unknownSyms());
-    setWatchlist((cur) => cur.filter((x) => !bad.has(x)), st, bad.size + (bad.size === 1 ? ' ongeldig symbool' : ' ongeldige symbolen') + ' verwijderd.').catch(() => {});
+    unwatchUndo([...bad], st, bad.size + (bad.size === 1 ? ' ongeldig symbool' : ' ongeldige symbolen') + ' verwijderd.').catch(() => {});
   } else if (act === 'watch-more') { xs.suggN = xs.suggN === 30 ? 10 : 30; renderWatch(); }
   else if (act === 'watch-next') { xs.suggOff = (xs.suggOff || 0) + (xs.suggN || 10); renderWatch(); }
 });
 
 // =====================================================================
 // ---------- Koersalarm per aandeel ----------
+// Een verwijderd koersalarm terugzetten (idee 1)
+function alertUndo(gone, after) {
+  toastUndo(T('Koersalarm verwijderd.'), async () => {
+    const cur = ((M.settings && M.settings.priceAlerts) || []).filter((a) => a.id !== gone.id);
+    await saveSettings({ priceAlerts: cur.concat([gone]) });
+    rerenderAll();
+    if (after) after();
+  });
+}
 const alertsOf = (sym) => ((M.settings && M.settings.priceAlerts) || []).filter((a) => a.sym === sym);
 function priceAlertTile(sym, price, cur) {
   const list = alertsOf(sym);
@@ -937,6 +946,7 @@ document.addEventListener('click', async (e) => {
   } else if (b.dataset.palert === 'toggle') next = all.map((a) => (a.id === b.dataset.id ? Object.assign(a, { on: !a.on, hit: a.on ? a.hit : null }) : a));
   else if (b.dataset.palert === 'del') next = all.filter((a) => a.id !== b.dataset.id);
   b.disabled = true;
-  try { await saveSettings({ priceAlerts: next }); rerenderAll(); }
+  const gone = b.dataset.palert === 'del' ? all.find((a) => a.id === b.dataset.id) : null;
+  try { await saveSettings({ priceAlerts: next }); rerenderAll(); if (gone) alertUndo(gone); }
   catch (err) { const t = foutTekst('Het koersalarm kon niet worden opgeslagen', err, 'Alarmen staan in je Worker; controleer bij Instellingen je toegangscode en probeer het opnieuw.'); st.textContent = t; st.className = 'small plan-status palert-st loss'; b.disabled = false; toastErr(t); }
 });

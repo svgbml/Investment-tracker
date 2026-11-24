@@ -534,7 +534,12 @@ document.addEventListener('click', async (e) => {
   const say = (t, cls) => { if (st) { st.textContent = t; st.className = 'small plan-status dec-st ' + (cls || ''); } };
   const del = near(e, '[data-dec-del]');
   if (del) {
-    try { await savePrefs({ decisions: decList().filter((x) => x.id !== del.dataset.decDel) }); refresh('analyse'); }
+    const gone = decList().find((x) => x.id === del.dataset.decDel);
+    try {
+      await savePrefs({ decisions: decList().filter((x) => x.id !== del.dataset.decDel) });
+      refresh('analyse');
+      if (gone) toastUndo(T('Regel uit je beslisdagboek verwijderd.'), async () => { await savePrefs({ decisions: decList().filter((x) => x.id !== gone.id).concat([gone]) }); refresh('analyse'); });
+    }
     catch (err) { say('Verwijderen is mislukt: ' + err.message + '.', 'loss'); }
     return;
   }

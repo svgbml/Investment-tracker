@@ -411,11 +411,13 @@ document.addEventListener('click', async (e) => {
   } else if (b.dataset.ad === 'toggle') next = all.map((a) => (a.id === b.dataset.id ? Object.assign(a, { on: !a.on, hit: a.on ? a.hit : null }) : a));
   else if (b.dataset.ad === 'del') next = all.filter((a) => a.id !== b.dataset.id);
   b.disabled = true;
+  const gone = b.dataset.ad === 'del' ? all.find((a) => a.id === b.dataset.id) : null;
   try {
     await saveSettings({ priceAlerts: next });
     alarmPre = null;
     rerenderAll();
     renderAlarmDlg();
+    if (gone) alertUndo(gone, renderAlarmDlg);
   } catch (err) {
     say('Opslaan is mislukt: ' + err.message + '.', 'loss');
     b.disabled = false;

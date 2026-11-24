@@ -1398,16 +1398,16 @@ body.welcoming #mshell { padding-bottom: 0; }
   box-shadow: inset 0 -1px 0 var(--rule);
 }
 
-/* Melding na kopiëren (idee 8) */
-.toast {
+/* Melding na kopiëren (idee 8); alleen die direct in body, niet de meldingen in #toasts */
+body > .toast {
   position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); z-index: 130;
   max-width: calc(100vw - 32px); padding: 10px 16px; border-radius: 999px;
   background: var(--ink); color: var(--bg); font-size: 14px; font-weight: 600;
   transform: translateX(-50%); opacity: 1; transition: opacity .35s ease;
   pointer-events: none;
 }
-.toast.gone { opacity: 0; }
-@media (max-width: 700px) { .toast { bottom: calc(76px + env(safe-area-inset-bottom)); } }
+body > .toast.gone { opacity: 0; }
+@media (max-width: 700px) { body > .toast { bottom: calc(76px + env(safe-area-inset-bottom)); } }
 /* ---------- Overzicht: periode en vergelijkingslijn, dagsamenvatting, stijgers en dalers, mijlpalen, rustige modus ---------- */
 
 /* Vergelijkingslijn-keuze onder de periodekeuze van de grote grafiek */
@@ -1916,6 +1916,12 @@ body.skeleton footer.foot-page { visibility: hidden; }
 }
 .toast .x:hover { opacity: 1; background: rgba(255, 255, 255, .14); }
 .toast .x svg { width: 15px; height: 15px; }
+.toast .undo {
+  flex: none; margin: -4px 0; padding: 4px 10px; border: 0; border-radius: 8px; background: transparent;
+  color: inherit; font: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer;
+}
+.toast .undo:hover { background: color-mix(in srgb, currentColor 14%, transparent); }
+.toast .undo:disabled { opacity: .5; cursor: default; }
 .toast.out { opacity: 0; transform: translateY(8px); transition: opacity .2s, transform .2s; }
 :root[data-motion="off"] .toast { animation: none; }
 :root[data-motion="off"] .toast.out { transition: none; }

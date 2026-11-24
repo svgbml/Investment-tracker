@@ -252,6 +252,17 @@ function renderWatch() {
 // `next` is een lijst of een functie die de nieuwe lijst maakt uit de huidige.
 let watchQueue = Promise.resolve();
 let watchFetchTimer = null;
+// Symbolen van de volglijst halen, met Ongedaan maken: ze komen terug op hun oude plek
+function unwatchUndo(syms, statusEl, note) {
+  const before = watchSyms().slice(), gone = new Set(syms);
+  return setWatchlist((cur) => cur.filter((x) => !gone.has(x)), statusEl, note).then(() => {
+    toastUndo(note, () => setWatchlist((cur) => {
+      const keep = new Set(cur);
+      // De oude volgorde, plus wat er intussen bij kwam
+      return before.filter((x) => gone.has(x) || keep.has(x)).concat(cur.filter((x) => !before.includes(x))).slice(0, WATCH_MAX);
+    }, null, ''));
+  });
+}
 function setWatchlist(next, statusEl, note) {
   const say = (t, cls) => { if (statusEl) { statusEl.textContent = t; statusEl.className = 'small watch-status ' + (cls || 'muted'); } };
   const run = async () => {

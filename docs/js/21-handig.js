@@ -8,6 +8,10 @@
 // (gemaakt met node tools/changelog.mjs); hieronder staat alleen wat de gebruiker merkt.
 // Bij een nieuwe versie: zet de regels van die versie bovenaan, met VERSION uit js/01-basis.js als sleutel.
 const WHATS_NEW = {
+  v86: [
+    'Ongedaan maken: haal je een aandeel van je volglijst, verwijder je een koersalarm of een regel uit je beslisdagboek, dan staat er 8 seconden een knop Ongedaan maken in de melding. Die zet het terug op de oude plek.',
+    'Meldingen onderin zijn weer zo breed als bedoeld; lange meldingen braken eerder na elk woord af.',
+  ],
   v85: [
     'Veiliger: links in nieuws en deponeringen openen alleen nog als gewone webadressen, Code vergeten en het wissen van een vergrendeld apparaat halen ook de bewaarde gegevens weg, een deel-link met verborgen bedragen laat geen echte aantallen meer zien, en inloggen met je Trading 212-sleutel geeft alleen een eigen code voor dit apparaat.',
   ],
