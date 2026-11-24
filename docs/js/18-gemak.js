@@ -164,7 +164,8 @@ function renderAnalyse() {
 // ---------- Telefoon: lange pagina's (Analyse, Plannen) als tabbladen per onderdeel ----------
 const SEC_SHORT = { 'Inleg en doelen': 'Inleg', 'Wat als': 'Wat als', 'Dividend en belasting': 'Dividend', 'Kosten en aankopen': 'Kosten', 'Spreiding en rekeningen': 'Spreiding', 'Delen en exporteren': 'Delen',
   'Vooruit rekenen': 'Vooruit', 'Belasting, herbalanceren en rente': 'Belasting', 'Rendement': 'Rendement', 'Markt en onderzoek': 'Markt', 'Transacties en begrippen': 'Transacties', 'Doorkijk en kosten': 'Doorkijk',
-  'Kopen, verkopen en dagboek': 'Handel' };
+  'Kopen, verkopen en dagboek': 'Handel',
+  'Vooruitblik': 'Vooruit', 'Dividend en inkomen': 'Dividend', 'Belasting en jaaroverzicht': 'Belasting', 'Kosten, herbalanceren en rekeningen': 'Kosten' };
 const secPick = {};
 function secTabs(key) {
   const host = $(key === 'plan' ? 'm-plan-body' : 'm-analyse-body'), bar = $(key === 'plan' ? 'm-plan-tabs' : 'm-analyse-tabs');
@@ -180,7 +181,7 @@ function secTabs(key) {
   if (!groups.some((g) => g.title === cur)) cur = groups[0].title;
   secPick[key] = cur;
   bar.hidden = false;
-  bar.innerHTML = groups.map((g, i) => '<button type="button" data-sectab="' + esc(g.title) + '" aria-pressed="' + (g.title === cur) + '">' + (key === 'analyse' ? '<span class="no">' + String(i + 1).padStart(2, '0') + '</span> ' : '') + esc(SEC_SHORT[g.title] || g.title) + '</button>').join('');
+  bar.innerHTML = groups.map((g, i) => '<button type="button" data-sectab="' + esc(g.title) + '" aria-pressed="' + (g.title === cur) + '">' + (key === 'analyse' || key === 'plan' ? '<span class="no">' + String(i + 1).padStart(2, '0') + '</span> ' : '') + esc(SEC_SHORT[g.title] || g.title) + '</button>').join('');
   groups.forEach((g) => g.els.forEach((el) => { el.hidden = g.title !== cur; }));
   const on = /** @type {HTMLElement|null} */ (bar.querySelector('[aria-pressed="true"]'));
   if (on) bar.scrollLeft = Math.max(0, on.offsetLeft - 16);

@@ -290,25 +290,21 @@ function exportTile() {
 function renderPlan() {
   const host = mode === 'm' ? $('m-plan-body') : $('plan-body');
   if (!host) return;
+  // Kop met kerncijfers, geldagenda en hoofdstukbalk (js/32-plannen-rapport.js)
+  const K = typeof plHead === 'function' ? plHead() : null;
   // Componentenversie (js/plannen-preact.js) als die geladen is
-  if (window.PlanView && window.PlanView.ok) { window.PlanView.draw(host); secTabs('plan'); return; }
+  if (window.PlanView && window.PlanView.ok) { window.PlanView.draw(host); secTabs('plan'); if (typeof anNavTrack === 'function') anNavTrack(); return; }
   const focus = document.activeElement && host.contains(document.activeElement) ? document.activeElement.id || null : null;
-  const sec = (title, sub, tiles) => '<div class="section-head"><h2>' + esc(title) + '</h2>' + (sub ? '<p class="muted small">' + esc(sub) + '</p>' : '') + '</div><div class="plan-grid">' + tiles.filter(Boolean).join('') + '</div>';
-  host.innerHTML =
-    sec('Inleg en doelen', 'Streefverdeling, wat je met nieuwe inleg koopt en waar je naartoe groeit', [targetTile(), inlegTile(), forecastTile(), goalsTile(), depositTile(), milestoneTile()]) +
-    sec('Wat als', 'Je portefeuille bij tegenvallers en tegenover de index', [scenarioTile(), whatIfTile()]) +
-    sec('Dividend en belasting', 'Verwacht dividend, box 3 en het jaaroverzicht', [divCalendarTile(), box3Tile(), yearTile()]) +
-    sec('Kosten en aankopen', 'Wisselkosten, fondskosten en je aankoopdagboek', [costTile(), terTile(), journalTile()]) +
-    sec('Spreiding en rekeningen', 'Overlap met je fondsen en je andere rekeningen', [overlapTile(), exposureTile(), accountsTile()]) +
-    sec('Delen en exporteren', '', [weekShareTile(), exportTile()]) +
-    planExtraSections().map((x) => sec(x.title, x.sub, x.tiles)).join('') +
-    planExtraSections2().map((x) => sec(x.title, x.sub, x.tiles)).join('');
+  // Zes hoofdstukken (plChapters); de eerste tegels van de eerste twee zijn de streefverdeling, inleg en vooruitblik
+  const own = { target: targetTile, inleg: inlegTile, forecast: forecastTile };
+  host.innerHTML = plChapters().map((c, i) => plChapterHtml(c, i, c.own.map((k) => own[k]()), K)).join('');
   drawPlanExtra(host);
   drawPlanExtra2(host);
   drawForecast(host);
   drawWhatIf(host);
   drawWeekShare(host);
   secTabs('plan');
+  if (typeof anNavTrack === 'function') anNavTrack();
   if (focus && $(focus)) { const el = $(focus); el.focus(); const v = el.value; el.value = ''; el.value = v; }
 }
 

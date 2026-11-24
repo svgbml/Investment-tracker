@@ -182,7 +182,7 @@ function divForecast() {
     const inM = pays.filter((p) => p.t >= s && p.t < e);
     months.push({ t: s, v: sum(inM.map((p) => p.eur)), tks: [...new Set(inM.map((p) => p.tk))] });
   }
-  return { months, info: info.sort((a, b) => b.total - a.total), total: sum(months.map((m) => m.v)) };
+  return { months, info: info.sort((a, b) => b.total - a.total), total: sum(months.map((m) => m.v)), pays: pays.sort((a, b) => a.t - b.t) };
 }
 function divCalendarTile() {
   const F = divForecast();

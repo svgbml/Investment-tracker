@@ -825,3 +825,59 @@ body.fast-open #detail { overflow: hidden; }
   #m-stats .chart.an-chart { height: 150px; }
 }
 @media print { .an-open, .an-nav { display: none !important; } }
+
+/* =====================================================================================================
+ * Plannen als rapport met geldagenda (ontwerp 2026 stap 6, variant P-E; js/32-plannen-rapport.js). Kerncijfers,
+ * hoofdstukbalk, openingen en onderdelen delen de opmaak van "Analyse als jaarrapport" hierboven; dit blok voegt de
+ * geldagenda en de telefoonversie toe. Alleen op het scherm.
+ * ===================================================================================================== */
+@media screen {
+  #pl-head { display: contents; }
+  #pl-head > .bc-kpis, #m-pl-head > .bc-kpis { border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+  #plan-body > .an-ch { scroll-margin-top: 120px; }
+  /* Geldagenda: vier maanden naast elkaar, dagen met iets erop gekleurd */
+  .wrap.pl-agwrap { padding-top: 28px; padding-bottom: 28px; }
+  .pl-ag-h { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 20px; margin-bottom: 16px; }
+  .pl-ag-h h2 { margin-right: auto; font-size: 26px; letter-spacing: -.02em; }
+  .pl-leg { display: flex; gap: 14px; color: var(--ink-2); font-size: 13px; }
+  .pl-leg span { display: inline-flex; align-items: center; gap: 6px; }
+  .pl-day { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); font-size: 13px; }
+  .pl-day select { min-height: 34px; padding: 0 8px; border: 1px solid var(--rule); border-radius: 999px; background: var(--page); color: var(--ink); font: inherit; }
+  .pl-dot { display: inline-block; flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--ink-2); }
+  .pl-dot.inleg { background: var(--accent); }
+  .pl-dot.dividend { background: var(--gain); }
+  .pl-dot.belasting { background: var(--ink); }
+  .pl-months { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px 32px; }
+  .pl-m h3 { margin-bottom: 8px; font-size: 16px; }
+  .pl-m h3::first-letter { text-transform: uppercase; }
+  .pl-cal { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; text-align: center; font-size: 13px; font-variant-numeric: tabular-nums; }
+  .pl-cal .h { color: var(--ink-2); font-size: 11px; }
+  .pl-d { display: grid; place-items: center; aspect-ratio: 1; max-width: 34px; margin: 0 auto; width: 100%; border-radius: 9px; }
+  .pl-d.inleg { background: var(--accent); color: var(--on-accent); font-weight: 700; }
+  .pl-d.dividend { background: var(--gain); color: #FFFFFF; font-weight: 700; }
+  .pl-d.belasting { background: var(--ink); color: var(--page); font-weight: 700; }
+  :root[data-theme="dark"] .pl-d.dividend { color: var(--page); }
+  .pl-d.now { box-shadow: inset 0 0 0 2px var(--ink); font-weight: 700; }
+  .pl-ev { margin: 10px 0 0; padding: 0; list-style: none; font-size: 13px; }
+  .pl-ev li { display: flex; align-items: baseline; gap: 6px; padding: 2px 0; }
+  .pl-ev .pl-dot { transform: translateY(-1px); }
+  .pl-ag > .sub { margin-top: 14px; }
+  @media (max-width: 1100px) { .pl-months { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  /* Telefoon */
+  #m-pl-head .bc-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 0 16px; }
+  #m-pl-head .bc-k { padding: 12px 0 12px 14px; border-top: 1px solid var(--rule); }
+  #m-pl-head .bc-k:nth-child(odd) { padding-left: 0; border-left: 0; }
+  #m-pl-head .bc-k:nth-child(-n+2) { border-top: 0; }
+  #m-pl-head .bc-k .v { font-size: 21px; }
+  #m-pl-head .bc-k .sub { font-size: 12px; }
+  #m-pl-head .pl-agwrap { padding: 20px 16px 8px; }
+  #m-pl-head .pl-months { grid-template-columns: minmax(0, 1fr); }
+  #m-pl-head .pl-ag-h h2 { font-size: 22px; width: 100%; }
+  #m-plan .an-open { padding: 20px 0 22px; border-top-width: 2px; }
+  #m-plan .an-big { font-size: 52px; }
+  #m-plan .an-oh h2 { font-size: 24px; }
+  #m-plan .an-lead { font-size: 16px; }
+  #m-plan .an-figs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #m-plan .an-figs > div:nth-child(3) { padding-left: 0; border-left: 0; }
+  #m-plan .an-figs b { font-size: 18px; white-space: normal; }
+}

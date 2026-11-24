@@ -130,27 +130,30 @@ function ForecastTile() {
   </section>`;
 }
 
-// ---------- De hele pagina ----------
-function Section({ title, sub, children }) {
-  return html`<div class="section-head"><h2>${title}</h2>${sub ? html`<p class="muted small">${sub}</p>` : null}</div><div class="plan-grid">${children}</div>`;
-}
+// ---------- De hele pagina: zes hoofdstukken (plChapters in js/32-plannen-rapport.js) ----------
 const leg = (s) => (s ? html`<${Legacy} markup=${s} />` : null);
+function Chapter({ c, i, own, K }) {
+  const tiles = c.tiles().filter(Boolean);
+  const opener = typeof plOpener === 'function' ? plOpener(i, c, tiles.length + own.length, K) : '';
+  return html`<div class="dash-sec an-ch pl-ch" data-sec=${c.id} id=${c.id}>
+    <div class="section-head"><h2>${c.title}</h2><p class="muted small">${c.sub}</p></div>
+    <div style="display:contents" dangerouslySetInnerHTML=${{ __html: opener }}></div>
+    <div class="plan-grid">${own}${tiles.map(leg)}</div></div>`;
+}
 
 function PlanPage({ stamp }) {
   const [version, setVersion] = useState(0);
   const host = useRef(null);
   // Grafieken in de HTML-tegels opnieuw tekenen na elke weergave
   useEffect(() => { const root = host.current && host.current.parentElement; if (root) { drawWhatIf(root); drawWeekShare(root); drawPlanExtra(root); drawPlanExtra2(root); } });
+  const K = typeof plCore === 'function' ? plCore() : null;
+  const own = {
+    target: html`<${TargetTile} key="target" bump=${() => setVersion((n) => n + 1)} />`,
+    inleg: html`<${InlegTile} key="inleg" version=${version + ':' + stamp} />`,
+    forecast: html`<${ForecastTile} key="forecast" />`,
+  };
   return html`<div style="display:contents" ref=${host} data-preact="plan">
-    <${Section} title="Inleg en doelen" sub="Streefverdeling, wat je met nieuwe inleg koopt en waar je naartoe groeit">
-      <${TargetTile} bump=${() => setVersion((n) => n + 1)} /><${InlegTile} version=${version + ':' + stamp} /><${ForecastTile} />${leg(goalsTile())}${leg(depositTile())}${leg(milestoneTile())}
-    <//>
-    <${Section} title="Wat als" sub="Je portefeuille bij tegenvallers en tegenover de index">${leg(scenarioTile())}${leg(whatIfTile())}<//>
-    <${Section} title="Dividend en belasting" sub="Verwacht dividend, box 3 en het jaaroverzicht">${leg(divCalendarTile())}${leg(box3Tile())}${leg(yearTile())}<//>
-    <${Section} title="Kosten en aankopen" sub="Wisselkosten, fondskosten en je aankoopdagboek">${leg(costTile())}${leg(terTile())}${leg(journalTile())}<//>
-    <${Section} title="Spreiding en rekeningen" sub="Overlap met je fondsen en je andere rekeningen">${leg(overlapTile())}${leg(exposureTile())}${leg(accountsTile())}<//>
-    <${Section} title="Delen en exporteren">${leg(weekShareTile())}${leg(exportTile())}<//>
-    ${planExtraSections().concat(planExtraSections2()).map((x) => html`<${Section} key=${x.title} title=${x.title} sub=${x.sub}>${x.tiles.map(leg)}<//>`)}
+    ${plChapters().map((c, i) => html`<${Chapter} key=${c.id} c=${c} i=${i} own=${c.own.map((k) => own[k])} K=${K} />`)}
   </div>`;
 }
 
