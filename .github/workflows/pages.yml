@@ -20,12 +20,11 @@ jobs:
   check:
     uses: ./.github/workflows/checks.yml
 
-  deploy:
+  # Bouwen en publiceren in twee jobs (zoals het sjabloon van GitHub): in één job zocht de publicatie het
+  # zojuist geüploade pakket soms al op voordat GitHub het kende ("Found 0 artifact(s)").
+  build:
     needs: check
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -40,5 +39,13 @@ jobs:
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - id: deployment
         uses: actions/deploy-pages@v4
