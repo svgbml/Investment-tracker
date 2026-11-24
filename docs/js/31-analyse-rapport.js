@@ -160,20 +160,22 @@ function anHead(secs) {
   return K;
 }
 
-// Welk hoofdstuk is in beeld, en hoe ver ben je in het rapport (alleen op de computer)
+// Welk hoofdstuk is in beeld, en hoe ver ben je in het rapport (alleen op de computer; Analyse en Plannen)
+const AN_BODY = { stats: 'analyse-body', plan: 'plan-body' };
 let anNavRaf = 0;
 function anNavTrack() {
   if (anNavRaf) return;
   anNavRaf = requestAnimationFrame(() => {
     anNavRaf = 0;
-    const nav = document.querySelector('#page-stats .an-nav');
-    if (!nav || ui.page !== 'stats' || mode === 'm') return;
-    const secs = /** @type {HTMLElement[]} */ ([...document.querySelectorAll('#analyse-body > .dash-sec:not([hidden])')]);
+    const bid = AN_BODY[ui.page];
+    const nav = bid ? document.querySelector('#page-' + ui.page + ' .an-nav') : null;
+    if (!nav || mode === 'm') return;
+    const secs = /** @type {HTMLElement[]} */ ([...document.querySelectorAll('#' + bid + ' .an-ch:not([hidden])')]);
     const line = nav.getBoundingClientRect().bottom + 24;
     let cur = secs[0];
     secs.forEach((s) => { if (s.getBoundingClientRect().top <= line) cur = s; });
     nav.querySelectorAll('[data-an-ch]').forEach((a) => a.toggleAttribute('aria-current', !!cur && /** @type {HTMLElement} */ (a).dataset.anCh === cur.dataset.sec));
-    const body = $('analyse-body');
+    const body = $(bid);
     const r = body ? body.getBoundingClientRect() : null;
     const p = r && r.height > innerHeight ? Math.min(1, Math.max(0, (line - r.top) / (r.height - innerHeight + line))) : 0;
     const bar = /** @type {HTMLElement|null} */ (nav.querySelector('.an-prog'));
@@ -185,6 +187,6 @@ document.addEventListener('click', (e) => {
   const a = near(e, '[data-an-ch]');
   if (!a) return;
   e.preventDefault();
-  const sec = document.querySelector('#analyse-body > .dash-sec[data-sec="' + CSS.escape(a.dataset.anCh || '') + '"]');
+  const sec = document.querySelector('.an-ch[data-sec="' + CSS.escape(a.dataset.anCh || '') + '"]');
   if (sec) sec.scrollIntoView({ behavior: reduceMotion() ? 'auto' : 'smooth', block: 'start' });
 });

@@ -15,11 +15,11 @@
   <meta name="apple-mobile-web-app-title" content="Beleggen">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>Investeringstracker</title>
-  <script src="config.js?v=79"></script>
-  <script src="js/00-vroeg.js?v=79"></script>
+  <script src="config.js?v=80"></script>
+  <script src="js/00-vroeg.js?v=80"></script>
   <link rel="preload" href="fonts/figtree-latin.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="style.css?v=79">
-  <link rel="stylesheet" href="ontwerp.css?v=79">
+  <link rel="stylesheet" href="style.css?v=80">
+  <link rel="stylesheet" href="ontwerp.css?v=80">
 </head>
 <body data-page="home">
 
@@ -245,7 +245,11 @@
 
       <div id="page-plan" class="page" hidden>
         <div class="wrap">
-          <div class="list-head"><div><h1 id="plan-title">Plannen</h1><p class="muted">Streefverdeling, vooruitblik, werkelijke spreiding en export</p></div></div>
+          <div class="list-head an-top"><div><h1 id="plan-title">Plannen</h1><p class="muted">Eerst je geldagenda voor de komende maanden, daarna alles</p></div>
+            <div class="bc-hacts"><button type="button" class="btn dark" data-pl-ics>Geldagenda (.ics)</button></div></div>
+        </div>
+        <div id="pl-head" class="an-head"></div>
+        <div class="wrap an-wrap">
           <div id="plan-body"></div>
         </div>
       </div>
@@ -346,6 +350,11 @@
       </section>
 
       <section id="m-plan" class="m-view" hidden>
+        <div class="bc-mhead an-mhead">
+          <h2 class="bc-mtitle">Plannen</h2>
+          <p class="m-sub">Eerst je geldagenda voor de komende maanden, daarna alles</p>
+        </div>
+        <div id="m-pl-head" class="bc-kband an-head"></div>
         <div id="m-plan-tabs" class="m-ptabs sec-tabs" role="group" aria-label="Onderdeel" hidden></div>
         <div class="m-body"><div id="m-plan-body"></div></div>
       </section>
@@ -590,47 +599,48 @@
   <div id="print-area" aria-hidden="true"></div>
 
   <!-- De site: gewone scripts op volgorde (één gedeeld bereik), daarna de Preact-componenten als module -->
-  <script src="js/00-kern.js?v=79"></script>
-  <script src="js/01-basis.js?v=79"></script>
-  <script src="js/02-instellingen.js?v=79"></script>
-  <script src="js/03-model.js?v=79"></script>
-  <script src="js/04-grafieken.js?v=79"></script>
-  <script src="js/05-portefeuille.js?v=79"></script>
-  <script src="js/06-plannen.js?v=79"></script>
-  <script src="js/07-onderzoek.js?v=79"></script>
-  <script src="js/08-risico.js?v=79"></script>
-  <script src="js/09-weergaven.js?v=79"></script>
-  <script src="js/10-navigatie.js?v=79"></script>
-  <script src="js/11-uitbreidingen.js?v=79"></script>
-  <script src="js/12-nieuws.js?v=79"></script>
-  <script src="js/13-app.js?v=79"></script>
-  <script src="js/15-prestaties.js?v=79"></script>
-  <script src="js/15-ui.js?v=79"></script>
-  <script src="js/15-risico-analyse.js?v=79"></script>
-  <script src="js/15-toon.js?v=79"></script>
-  <script src="js/15-bronnen.js?v=79"></script>
-  <script src="js/16-analyse.js?v=79"></script>
-  <script src="js/17-markt.js?v=79"></script>
-  <script src="js/18-gemak.js?v=79"></script>
-  <script src="js/20-handel.js?v=79"></script>
-  <script src="js/21-toegankelijk.js?v=79"></script>
-  <script src="js/21-pwa.js?v=79"></script>
-  <script src="js/21-privacy.js?v=79"></script>
-  <script src="js/21-markt-extra.js?v=79"></script>
-  <script src="js/22-handel-extra.js?v=79"></script>
-  <script src="js/21-plannen2.js?v=79"></script>
-  <script src="js/21-nieuwsplus.js?v=79"></script>
-  <script src="js/24-nieuwskrant.js?v=79"></script>
-  <script src="js/26-posities.js?v=79"></script>
-  <script src="js/27-volglijst.js?v=79"></script>
-  <script src="js/28-tickerkaart.js?v=79"></script>
-  <script src="js/21-overzicht.js?v=79"></script>
-  <script src="js/21-handig.js?v=79"></script>
-  <script src="js/23-live.js?v=79"></script>
-  <script src="js/30-bedrijven.js?v=79"></script>
-  <script src="js/31-analyse-rapport.js?v=79"></script>
-  <script src="js/19-start.js?v=79"></script>
-  <script type="module" src="js/nieuws-preact.js?v=79"></script>
-  <script type="module" src="js/plannen-preact.js?v=79"></script>
+  <script src="js/00-kern.js?v=80"></script>
+  <script src="js/01-basis.js?v=80"></script>
+  <script src="js/02-instellingen.js?v=80"></script>
+  <script src="js/03-model.js?v=80"></script>
+  <script src="js/04-grafieken.js?v=80"></script>
+  <script src="js/05-portefeuille.js?v=80"></script>
+  <script src="js/06-plannen.js?v=80"></script>
+  <script src="js/07-onderzoek.js?v=80"></script>
+  <script src="js/08-risico.js?v=80"></script>
+  <script src="js/09-weergaven.js?v=80"></script>
+  <script src="js/10-navigatie.js?v=80"></script>
+  <script src="js/11-uitbreidingen.js?v=80"></script>
+  <script src="js/12-nieuws.js?v=80"></script>
+  <script src="js/13-app.js?v=80"></script>
+  <script src="js/15-prestaties.js?v=80"></script>
+  <script src="js/15-ui.js?v=80"></script>
+  <script src="js/15-risico-analyse.js?v=80"></script>
+  <script src="js/15-toon.js?v=80"></script>
+  <script src="js/15-bronnen.js?v=80"></script>
+  <script src="js/16-analyse.js?v=80"></script>
+  <script src="js/17-markt.js?v=80"></script>
+  <script src="js/18-gemak.js?v=80"></script>
+  <script src="js/20-handel.js?v=80"></script>
+  <script src="js/21-toegankelijk.js?v=80"></script>
+  <script src="js/21-pwa.js?v=80"></script>
+  <script src="js/21-privacy.js?v=80"></script>
+  <script src="js/21-markt-extra.js?v=80"></script>
+  <script src="js/22-handel-extra.js?v=80"></script>
+  <script src="js/21-plannen2.js?v=80"></script>
+  <script src="js/21-nieuwsplus.js?v=80"></script>
+  <script src="js/24-nieuwskrant.js?v=80"></script>
+  <script src="js/26-posities.js?v=80"></script>
+  <script src="js/27-volglijst.js?v=80"></script>
+  <script src="js/28-tickerkaart.js?v=80"></script>
+  <script src="js/21-overzicht.js?v=80"></script>
+  <script src="js/21-handig.js?v=80"></script>
+  <script src="js/23-live.js?v=80"></script>
+  <script src="js/30-bedrijven.js?v=80"></script>
+  <script src="js/31-analyse-rapport.js?v=80"></script>
+  <script src="js/32-plannen-rapport.js?v=80"></script>
+  <script src="js/19-start.js?v=80"></script>
+  <script type="module" src="js/nieuws-preact.js?v=80"></script>
+  <script type="module" src="js/plannen-preact.js?v=80"></script>
 </body>
 </html>

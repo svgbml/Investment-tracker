@@ -436,6 +436,7 @@ function makeDemoData() {
     goalPos: { NVDA: 'huis', MSFT: 'huis', AAPL: 'huis', PG: 'buffer', JNJ: 'buffer' },
     rebDone: {},
     realProj: false,
+    inlegDag: 25,
   };
   // Hoe vaak een bedrijfspagina is geopend (normaal per apparaat bijgehouden; hier een voorbeeld)
   const demoViews = {};
