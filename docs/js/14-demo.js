@@ -505,3 +505,47 @@ function makeDemoData() {
     days: { columns: ['date', 'ticker', 'open', 'close', 'low', 'high', 'avg', 'range', 'rangePct'], rows: days },
   }, extraDemo);
 }
+
+// ---------- Storingen in de demo (idee 58) ----------
+// ?demo&storing haalt willekeurig optionele bronnen weg, ?demo&storing=finnhub,fmp kiest zelf welke en
+// ?demo&storing=alle haalt ze allemaal weg. De bronstatus toont dan fouten en een paar limieten op rood.
+// Zo is te zien wat elke tegel zegt als een bron ontbreekt: uitleg, nooit NaN, undefined of een lege tegel.
+// tools/check-demo.mjs draait ook ?demo&storing=alle.
+const DEMO_STORING = {
+  fmp: (d) => { d.market = null; d.fin = {}; if (d.events) Object.assign(d.events, { earnings: [], dividends: [], lastEarnings: [] }); if (d.ext2) { delete d.ext2.earnHist; delete d.ext2.econ; } },
+  finnhub: (d) => { d.research = {}; d.newsFlash = []; d.marketNews = null; },
+  sec: (d) => { if (d.ext2) { delete d.ext2.filings; delete d.ext2.f13; } },
+  ecb: (d) => { d.fx = null; },
+  inflatie: (d) => { d.hicp = null; },
+  indexen: (d) => { d.idx = null; },
+  ishares: (d) => { d.etf = {}; },
+};
+const DEMO_STORING_NAAM = { fmp: 'Financial Modeling Prep', finnhub: 'Finnhub', sec: 'SEC EDGAR', ecb: 'ECB-wisselkoersen', inflatie: 'Eurostat (inflatie)', indexen: 'FRED (indexen)', ishares: 'iShares' };
+let demoStoringSet = new Set();
+function demoStoring(d, which) {
+  const all = Object.keys(DEMO_STORING);
+  const pick = !which ? all.filter(() => Math.random() < 0.5) : which === 'alle' ? all : which.split(',').map((x) => x.trim().toLowerCase()).filter((x) => DEMO_STORING[x]);
+  demoStoringSet = new Set(pick);
+  pick.forEach((k) => DEMO_STORING[k](d));
+  const has = d.features && d.features.has;
+  if (has) pick.forEach((k) => { if (k in has) has[k] = false; });
+  console.info('Voorbeeld met storing bij: ' + (pick.join(', ') || 'geen enkele bron'));
+  return d;
+}
+// Bronstatus (/api/status en /api/health in de demo) met de gekozen storingen erin
+function demoStoringStatus(kind, S) {
+  if (!demoStoringSet.size) return S;
+  const now = Date.now(), at = new Date(now - 40 * 60e3).toISOString();
+  const msg = (k) => 'Voorbeeld: ' + DEMO_STORING_NAAM[k] + ' gaf een fout (503)';
+  if (kind === 'status') {
+    S.errors = Object.fromEntries([...demoStoringSet].map((k) => [k, { msg: msg(k), at }]));
+    S.tickFails = 3;
+    return S;
+  }
+  S.sources = Object.assign({}, S.sources, Object.fromEntries([...demoStoringSet].map((k) => [k, { fails: 3, msg: msg(k), at, until: now + 55 * 60e3, next: new Date(now + 55 * 60e3).toISOString() }])));
+  S.errors = Object.fromEntries([...demoStoringSet].map((k) => [k, { msg: msg(k), at }]));
+  const B = S.budgets || {};
+  (B.cloudflare || []).forEach((b) => { if (b.src === 'd1_read') Object.assign(b, { used: 4.6e6, pct: 0.92 }); });
+  (B.sources || []).forEach((b) => { if (demoStoringSet.has(b.src) && b.limit) Object.assign(b, { used: b.limit, pct: 1 }); });
+  return S;
+}

@@ -3,6 +3,9 @@
 // op bureaublad- en telefoonformaat. Zo wordt een nieuwe functie zonder voorbeeldgegevens meteen gezien
 // (AGENTS.md: elke nieuwe functie heeft voorbeeldgegevens nodig).
 //
+// Daarna dezelfde controle met alle optionele bronnen weg (?demo&storing=alle): dan mag een tegel uitleggen dat er
+// iets ontbreekt, maar geen rekenfout tonen of leeg blijven.
+//
 // Draaien: node tools/check-demo.mjs
 //          node tools/check-demo.mjs --lijst    toont alle gevonden tegels per pagina
 import { serveDocs, playwright, PAGES, openSite, gotoPage, realErrors } from './lib-browser.mjs';
@@ -30,8 +33,12 @@ const browser = await chromium.launch({ args: ['--no-sandbox'] });
 let failed = 0, tiles = 0;
 const fail = (msg) => { failed++; console.log('  FOUT ' + msg); };
 
-for (const size of ['desktop', 'telefoon']) {
-  const { page, ctx, errors } = await openSite(browser, base, { size, theme: 'light' });
+// Twee rondes: de gewone demo en de demo waarin alle optionele bronnen ontbreken (?demo&storing=alle, idee 58).
+// Bij storing mag een tegel zeggen dat er iets mist, maar nooit NaN tonen of helemaal niets uitleggen.
+const RONDES = [{ query: '?demo', storing: false }, { query: '?demo&storing=alle', storing: true }];
+for (const ronde of RONDES) for (const size of ['desktop', 'telefoon']) {
+  const { page, ctx, errors } = await openSite(browser, base, { size, theme: 'light', query: ronde.query });
+  const naam = ronde.storing ? size + ' storing' : size;
   for (const p of PAGES) {
     const sel = await gotoPage(page, size, p);
     const collect = async () => {
@@ -55,18 +62,19 @@ for (const size of ['desktop', 'telefoon']) {
       (await collect()).forEach((f) => { if (!seen.has(f.kop + '|' + f.tekst)) found.push(f); });
     }
     tiles += found.length;
-    if (show) console.log('  ' + size + ' ' + p.key + ': ' + found.length + ' tegels — ' + found.map((f) => f.kop).join(' | '));
+    if (show) console.log('  ' + naam + ' ' + p.key + ': ' + found.length + ' tegels — ' + found.map((f) => f.kop).join(' | '));
     found.forEach((f) => {
       const ok = TOEGESTAAN.find((t) => f.kop.includes(t.bevat));
       const tekst = GEEN_PROBLEEM.reduce((t, re) => t.replace(re, ''), f.tekst);
-      const leeg = EMPTY.find((re) => re.test(tekst));
-      if (leeg && !ok) fail(size + '/' + p.key + ' tegel "' + f.kop + '": "' + (tekst.match(leeg) || [''])[0] + '…" (voorbeeldgegevens toevoegen in docs/js/14-demo.js)');
+      const leeg = !ronde.storing && EMPTY.find((re) => re.test(tekst));
+      if (ronde.storing && !ok && tekst.replace(f.kop, '').trim().length < 8) fail(naam + '/' + p.key + ' tegel "' + f.kop + '" legt niets uit als bronnen ontbreken');
+      if (leeg && !ok) fail(naam + '/' + p.key + ' tegel "' + f.kop + '": "' + (tekst.match(leeg) || [''])[0] + '…" (voorbeeldgegevens toevoegen in docs/js/14-demo.js)');
       const stuk = BROKEN.find((re) => re.test(f.tekst));
-      if (stuk) fail(size + '/' + p.key + ' tegel "' + f.kop + '": ' + f.tekst.match(stuk)[0] + ' in de tekst');
+      if (stuk) fail(naam + '/' + p.key + ' tegel "' + f.kop + '": ' + f.tekst.match(stuk)[0] + ' in de tekst');
     });
   }
   const errs = realErrors(errors);
-  errs.slice(0, 5).forEach((e) => fail(size + ' console: ' + e.text.split('\n')[0].slice(0, 200)));
+  errs.slice(0, 5).forEach((e) => fail(naam + ' console: ' + e.text.split('\n')[0].slice(0, 200)));
   await ctx.close();
 }
 await browser.close();

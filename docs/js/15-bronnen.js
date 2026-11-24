@@ -77,7 +77,7 @@ function demoHealth() {
 }
 
 async function loadHealth() {
-  if (demo || sharedView) { healthCache = demoHealth(); return healthCache; }
+  if (demo || sharedView) { healthCache = demo && typeof demoStoringStatus === 'function' ? demoStoringStatus('health', demoHealth()) : demoHealth(); return healthCache; }
   if (!isWorker() || !getToken()) throw new Error('de bronnenpagina komt van je eigen Cloudflare Worker');
   healthCache = (await workerCall('/api/health', { method: 'GET' })).health;
   return healthCache;

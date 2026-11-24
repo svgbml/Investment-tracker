@@ -749,6 +749,7 @@ async function load() {
     showSkeleton();
     try { await loadDemoScript(); } catch (err) { showError(foutTekst('De voorbeeldgegevens konden niet worden geladen', err, 'Vernieuw de pagina; blijft het misgaan, dan blokkeert een filter of adblocker het bestand js/14-demo.js.')); return; }
     data = makeDemoData();
+    if (startQuery.has('storing')) data = demoStoring(data, startQuery.get('storing'));   // idee 58
     await yieldNow();   // voorbeeldgegevens maken en tekenen zijn twee lange stukken: de browser mag ertussen
     render(); return;
   }

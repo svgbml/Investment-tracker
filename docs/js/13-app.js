@@ -720,7 +720,7 @@ function demoStatus() {
     keys: { T212_KEY: true, FMP_KEY: true, FINNHUB_KEY: true, SEC_CONTACT: true, ALPHAVANTAGE_KEY: false, TWELVEDATA_KEY: false, TIINGO_KEY: true, POLYGON_KEY: true, MARKETAUX_KEY: false, RESEND_KEY: false } };
 }
 async function loadStatus() {
-  if (demo) { statusCache = demoStatus(); return statusCache; }
+  if (demo) { statusCache = typeof demoStoringStatus === 'function' ? demoStoringStatus('status', demoStatus()) : demoStatus(); return statusCache; }
   if (!isWorker() || !getToken()) throw new Error('de status komt van je eigen Cloudflare Worker');
   statusCache = (await workerCall('/api/status', { method: 'GET' })).status;
   return statusCache;

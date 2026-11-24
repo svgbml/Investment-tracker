@@ -8,6 +8,9 @@
 // (gemaakt met node tools/changelog.mjs); hieronder staat alleen wat de gebruiker merkt.
 // Bij een nieuwe versie: zet de regels van die versie bovenaan, met VERSION uit js/01-basis.js als sleutel.
 const WHATS_NEW = {
+  v84: [
+    'De voorbeeldweergave kan nu ook storingen laten zien: met ?demo&storing vallen willekeurig bronnen weg, met ?demo&storing=finnhub,fmp kies je zelf welke en met ?demo&storing=alle vallen ze allemaal weg. De status toont dan de fouten en een paar limieten op rood.',
+  ],
   v83: [
     'Aankopen per keer: na het verkopen van al je stukken in een fractie bleef soms een afrondingsrest staan, waardoor de FIFO-kostprijs per stuk een vreemd bedrag kon tonen. Een volledig verkochte aankoop telt nu als helemaal weg.',
   ],
