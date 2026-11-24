@@ -329,7 +329,9 @@ function fastTvFrame(box, sym) {
   const loc = { en: 'en', de: 'de_DE', fr: 'fr' }[LANG] || 'nl_NL';
   let tz = 'Europe/Amsterdam';
   try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || tz; } catch (e) { /* standaard */ }
-  const cfg = { symbol: 'GETTEX:' + sym, interval: '1', timezone: tz, theme, style: '1', locale: loc, hide_side_toolbar: true, allow_symbol_change: false, width: '100%', height: '100%' };
+  // 5 minuten per kaars: op gettex worden veel aandelen en ETF's maar een paar keer per minuut verhandeld. Een kaars van
+  // 1 minuut met één trade heeft gelijke open-, slot-, hoogste en laagste koers en is dan alleen een streepje.
+  const cfg = { symbol: 'GETTEX:' + sym, interval: '5', timezone: tz, theme, style: '1', locale: loc, hide_side_toolbar: true, allow_symbol_change: false, width: '100%', height: '100%' };
   const f = document.createElement('iframe');
   f.src = TV_URL + '?locale=' + loc + '#' + encodeURIComponent(JSON.stringify(cfg));
   f.title = T('Live grafiek van gettex (TradingView)');
