@@ -40,6 +40,7 @@ function openSettings(showImport) {
   loadLinks();
   if (typeof renderPush === 'function') { renderPush(); renderShare(); }
   if (typeof renderPrivacy === 'function') renderPrivacy();
+  if (typeof renderChartNotes === 'function') renderChartNotes();
   $('dlg-settings').showModal();
   setOpenState(true);
   // Eén doorlopende pagina (ontwerp I-C): bovenaan zoeken en de onderdelen, daaronder alles onder elkaar

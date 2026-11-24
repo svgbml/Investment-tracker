@@ -149,6 +149,7 @@ function lineChart(host, sets, o) {
       const r = lay.getBoundingClientRect();
       const i = Math.max(0, Math.min(n - 1, Math.round(((e.clientX - r.left) / r.width) * (n - 1))));
       const x = X(i) / 10;
+      host.dataset.hoverT = String(main[i].t);   // voor aantekeningen (rechtsklik, js/21-overzicht.js)
       cur.hidden = false;
       cur.style.left = x + '%';
       let html = '<b>' + esc(o.tfmt ? o.tfmt(main[i].t) : '') + '</b>', yTop = null;
@@ -599,7 +600,7 @@ function drawWeekChart(root) {
 
 // Speldjes op de grote grafiek (alleen op de computer; de telefoon toont de kale lijn): het hoogste punt,
 // stortingen en je eigen aan- en verkopen in de gekozen periode. kind bepaalt de kleur (zie ontwerp.css).
-const HERO_PIN_KINDS = [['high', 'Hoogste punt'], ['dep', 'Storting'], ['buy', 'Jij kocht'], ['sell', 'Jij verkocht']];
+const HERO_PIN_KINDS = [['high', 'Hoogste punt'], ['dep', 'Storting'], ['buy', 'Jij kocht'], ['sell', 'Jij verkocht'], ['note', 'Aantekening']];
 function heroMarkers(pts, range) {
   const markers = [];
   if (pts.length > 2) {
@@ -620,6 +621,14 @@ function heroMarkers(pts, range) {
         else if (i !== mi) markers.push({ i, label, kind: x.side === 'SELL' ? 'sell' : 'buy' });
       });
     }
+  }
+  // Eigen aantekeningen (idee 21)
+  if (pts.length > 1 && typeof chartNoteMarkers === 'function') {
+    chartNoteMarkers(pts).forEach((n) => {
+      const i = nearestIdx(pts, n.t);
+      const same = markers.find((m) => m.i === i && m.kind === 'note');
+      if (same) same.label += ' · ' + n.label; else markers.push({ i, label: n.label, kind: 'note' });
+    });
   }
   return markers;
 }

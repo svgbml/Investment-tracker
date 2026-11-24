@@ -423,6 +423,12 @@ function makeDemoData() {
   // Voorbeeldvoorkeuren voor de extra onderdelen op Plannen (gebeurtenissen, spaargeld, potjes per doel)
   const yNow0 = new Date().getFullYear();
   const demoPrefs = {
+    // Aantekeningen in de grote grafiek (idee 21)
+    chartNotes: [
+      { id: 'dn1', day: dIn(-6).slice(0, 10), tekst: 'Voorbeeld: extra inleg na de daling' },
+      { id: 'dn2', day: dIn(-20).slice(0, 10), tekst: 'Voorbeeld: cijfers Nvidia, flink hoger' },
+      { id: 'dn3', day: dIn(-200).slice(0, 10), tekst: 'Voorbeeld: begonnen met maandelijks inleggen' },
+    ],
     lifeEvents: [
       { id: 'dev1', name: 'Eigen bijdrage huis', date: (yNow0 + 6) + '-06', amount: 8000, pause: 0 },
       { id: 'dev2', name: 'Studie: even geen inleg', date: (yNow0 + 2) + '-09', amount: 0, pause: 12 },

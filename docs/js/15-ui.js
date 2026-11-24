@@ -18,10 +18,24 @@
 const TOAST_MAX = 3;
 const toastTimers = new WeakMap();
 const TOAST_MS = { ok: 3600, err: 7000, '': 4200 };
+// Een open modaal venster (Instellingen, koersalarm) maakt de rest van de pagina onbereikbaar. Daarom staat de houder
+// van de meldingen dan in dat venster, en als popover in de bovenste laag, zodat hij zichtbaar en klikbaar blijft.
+// Gaat het venster dicht, dan gaat de houder terug naar de pagina. Zonder Popover-API blijft hij in de pagina.
+function toastLift(host) {
+  const modal = [...document.querySelectorAll('dialog[open]')].filter((d) => d.matches(':modal')).pop();
+  const parent = modal || document.body;
+  if (host.parentElement !== parent) parent.appendChild(host);
+  try { if (host.showPopover) { if (host.matches(':popover-open')) host.hidePopover(); host.showPopover(); } } catch (e) { /* oudere browser */ }
+}
+document.addEventListener('close', (e) => {
+  const host = $('toasts');
+  if (host && e.target instanceof HTMLDialogElement && e.target.contains(host)) toastLift(host);
+}, true);
 function toast(text, kind) {
   const host = $('toasts');
   const msg = String(text == null ? '' : text).trim();
   if (!host || !msg) return null;
+  toastLift(host);
   const k = kind === 'ok' || kind === 'err' ? kind : '';
   // Zelfde melding nog zichtbaar: alleen de tijd opnieuw starten (geen stapel dezelfde regels)
   const same = [...host.children].find((el) => /** @type {HTMLElement} */ (el).dataset.msg === msg);

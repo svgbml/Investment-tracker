@@ -272,6 +272,7 @@ button.ds-c:hover b { color: var(--accent); }
   #hero-chart .marker.mk-dep { --pin: var(--ink-2); }
   #hero-chart .marker.mk-buy { --pin: var(--gain); }
   #hero-chart .marker.mk-sell { --pin: var(--loss); }
+  #hero-chart .marker.mk-note { --pin: var(--ink); }
   :root[data-motion="on"] #hero-chart svg.reveal ~ .marker::before { animation: pinPop .4s .6s var(--spring) backwards; }
   :root[data-motion="on"] #hero-chart svg.reveal ~ .marker i { animation: fadeIn .4s .7s ease backwards; }
   @keyframes pinPop { from { opacity: 0; transform: scale(.4); } }
@@ -281,6 +282,7 @@ button.ds-c:hover b { color: var(--accent); }
   .hero-legend .mk-dep i { border-color: var(--ink-2); }
   .hero-legend .mk-buy i { border-color: var(--gain); }
   .hero-legend .mk-sell i { border-color: var(--loss); }
+  .hero-legend .mk-note i { border-color: var(--ink); }
   #page-home #hero-legend { grid-area: 3 / 2; padding: 8px 0 0; }
   #page-home #hero-legend:empty { display: none; }
 

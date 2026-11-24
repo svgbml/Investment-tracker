@@ -8,6 +8,10 @@
 // (gemaakt met node tools/changelog.mjs); hieronder staat alleen wat de gebruiker merkt.
 // Bij een nieuwe versie: zet de regels van die versie bovenaan, met VERSION uit js/01-basis.js als sleutel.
 const WHATS_NEW = {
+  v89: [
+    'Aantekeningen in de grafiek: klik met rechts (of druk lang) op de grote grafiek om bij een dag een korte aantekening te zetten. Op de computer staan ze als speldje op de lijn; bij Instellingen, Weergave pas je ze aan of verwijder je ze.',
+    'Meldingen met Ongedaan maken staan nu ook boven een open venster zoals Instellingen, zodat de knop daar te gebruiken is.',
+  ],
   v88: [
     'De koersen op je volglijst lopen nu mee: zolang Bedrijven open is en de Amerikaanse beurs open is, haalt de site elke minuut de koers van hooguit 15 volgaandelen op, en zo bij een langere lijst om de beurt allemaal. Dit vraagt een gratis Finnhub-sleutel; zonder die sleutel blijft het de koers van één keer per dag.',
   ],

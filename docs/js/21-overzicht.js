@@ -451,3 +451,87 @@ function renderHomeExtra(p) {
   if (sum) { sum.innerHTML = daySumHtml(); sum.setAttribute('aria-label', dayLineText()); }
   if ($(p + 'home-extra')) fill(p + 'home-extra', homeExtraTiles());
 }
+
+// ---------- Aantekeningen in de grote grafiek (idee 21) ----------
+// prefs.chartNotes = [{ id, day: 'JJJJ-MM-DD', tekst }], hoogstens 100 van 80 tekens (prefs mag 40 kB zijn).
+// Toevoegen met een rechtsklik (of lang drukken) op de grote grafiek, of bij Instellingen > Weergave. Op de computer
+// staan ze als speldje op de grafiek; de telefoon toont de kale lijn.
+const NOTE_MAX = 100, NOTE_LEN = 80;
+const chartNotes = () => (Array.isArray(userPrefs().chartNotes) ? userPrefs().chartNotes : [])
+  .filter((n) => n && /^\d{4}-\d{2}-\d{2}$/.test(String(n.day)) && n.tekst);
+const noteDayT = (day) => { const [y, m, d] = String(day).split('-').map(Number); return new Date(y, m - 1, d, 12).getTime(); };
+const noteIso = (t) => { const d = new Date(t); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+function chartNoteMarkers(pts) {
+  const t0 = dayStart(pts[0].t), t1 = dayStart(pts[pts.length - 1].t) + DAY;
+  return chartNotes().map((n) => ({ t: noteDayT(n.day), label: String(n.tekst) }))
+    .filter((n) => n.t >= t0 && n.t < t1).sort((a, b) => a.t - b.t).slice(-12);
+}
+async function saveChartNotes(list) {
+  await savePrefs({ chartNotes: list.slice(-NOTE_MAX) });
+  refresh('home');
+  renderChartNotes();
+}
+let noteEditId = null;
+function openNoteDlg(day, id) {
+  const dlg = /** @type {HTMLDialogElement|null} */ ($('dlg-note'));
+  if (!dlg || sharedView || !M) return;
+  const n = id ? chartNotes().find((x) => x.id === id) : null;
+  noteEditId = n ? n.id : null;
+  /** @type {HTMLInputElement} */ ($('note-day')).value = n ? n.day : day;
+  /** @type {HTMLInputElement} */ ($('note-txt')).value = n ? n.tekst : '';
+  $('note-st').textContent = '';
+  $('note-del').hidden = !n;
+  $('dlg-note-title').textContent = T(n ? 'Aantekening wijzigen' : 'Aantekening toevoegen');
+  if (!dlg.open) dlg.showModal();
+  $('note-txt').focus();
+}
+function renderChartNotes() {
+  const box = $('chart-notes');
+  if (!box) return;
+  const L = chartNotes().slice().sort((a, b) => String(b.day).localeCompare(String(a.day)));
+  const when = (day) => fD.format(noteDayT(day)) + ' ' + String(day).slice(0, 4);
+  box.innerHTML = String(tpl`${L.length ? tpl`<ul class="note-list">${L.map((n) => tpl`<li><span class="note-d">${when(n.day)}</span><span class="note-t">${n.tekst}</span><button type="button" class="btn ghost" data-note-edit="${n.id}">${T('Wijzigen')}</button></li>`)}</ul>`
+    : tpl`<p class="muted small">Er staan geen aantekeningen in je grafiek.</p>`}<button type="button" class="btn ghost" data-note-new${L.length >= NOTE_MAX ? raw(' disabled') : ''}>${T('Aantekening toevoegen')}</button>`);
+}
+// Rechtsklik of lang drukken op de grote grafiek: aantekening bij de dag die je aanwijst
+document.addEventListener('contextmenu', (e) => {
+  const host = /** @type {HTMLElement|null} */ (e.target && e.target.closest ? e.target.closest('#hero-chart, #m-hero-chart') : null);
+  if (!host || sharedView || !M) return;
+  const t = Number(host.dataset.hoverT);
+  if (!t) return;
+  e.preventDefault();
+  openNoteDlg(noteIso(t));
+});
+document.addEventListener('click', (e) => {
+  const ed = near(e, '[data-note-edit]');
+  if (ed) { openNoteDlg(null, ed.dataset.noteEdit); return; }
+  if (near(e, '[data-note-new]')) { openNoteDlg(noteIso(M && M.lastT ? M.lastT : Date.now())); return; }
+  if (near(e, '[data-note-close]')) { /** @type {HTMLDialogElement} */ ($('dlg-note')).close(); return; }
+  if (near(e, '#note-del') && noteEditId) {
+    const gone = chartNotes().find((x) => x.id === noteEditId);
+    if (!gone) return;
+    /** @type {HTMLDialogElement} */ ($('dlg-note')).close();
+    saveChartNotes(chartNotes().filter((x) => x.id !== gone.id))
+      .then(() => toastUndo(T('Aantekening verwijderd.'), () => saveChartNotes(chartNotes().filter((x) => x.id !== gone.id).concat([gone]))))
+      .catch((err) => toastErr(foutTekst('De aantekening kon niet worden verwijderd', err, 'Probeer het opnieuw.')));
+  }
+});
+document.addEventListener('submit', async (e) => {
+  const f = e.target && e.target.closest ? e.target.closest('#form-note') : null;
+  if (!f) return;
+  e.preventDefault();
+  const st = $('note-st');
+  const day = /** @type {HTMLInputElement} */ ($('note-day')).value;
+  const tekst = /** @type {HTMLInputElement} */ ($('note-txt')).value.replace(/\s+/g, ' ').trim().slice(0, NOTE_LEN);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) { st.textContent = 'Kies een dag.'; st.className = 'small plan-status loss'; return; }
+  if (!tekst) { st.textContent = 'Typ een korte tekst.'; st.className = 'small plan-status loss'; return; }
+  const list = chartNotes();
+  if (!noteEditId && list.length >= NOTE_MAX) { st.textContent = 'Hoogstens ' + NOTE_MAX + ' aantekeningen.'; st.className = 'small plan-status loss'; return; }
+  const next = noteEditId ? list.map((x) => (x.id === noteEditId ? { id: x.id, day, tekst } : x))
+    : list.concat([{ id: Math.random().toString(36).slice(2, 10), day, tekst }]);
+  try {
+    await saveChartNotes(next);
+    /** @type {HTMLDialogElement} */ ($('dlg-note')).close();
+    toastOk(T('Aantekening bewaard.'));
+  } catch (err) { st.textContent = foutTekst('De aantekening kon niet worden bewaard', err, 'Probeer het opnieuw.'); st.className = 'small plan-status loss'; }
+});

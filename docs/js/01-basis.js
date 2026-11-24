@@ -22,7 +22,7 @@ const DAY = 864e5;
 // Taal: Nederlands (standaard), Engels, Duits of Frans; getallen en datums volgen de gekozen taal
 const LANG = (() => { try { const l = localStorage.getItem('tracker.lang'); return ['en', 'de', 'fr'].includes(l) ? l : 'nl'; } catch (e) { return 'nl'; } })();
 const LOCALE = { en: 'en-GB', de: 'de-DE', fr: 'fr-FR' }[LANG] || 'nl-NL';
-const VERSION = 'v88';
+const VERSION = 'v89';
 const nf = (o) => new Intl.NumberFormat(LOCALE, o);
 // Getallen: per apparaat te kiezen bij Instellingen > Weergave (zie js/15-ui.js).
 // numFmtKort: bedragen vanaf duizend afgekort (€ 12,3K) in plaats van volledig (€ 12.345,60).
