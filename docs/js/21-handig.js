@@ -8,6 +8,10 @@
 // (gemaakt met node tools/changelog.mjs); hieronder staat alleen wat de gebruiker merkt.
 // Bij een nieuwe versie: zet de regels van die versie bovenaan, met VERSION uit js/01-basis.js als sleutel.
 const WHATS_NEW = {
+  v75: [
+    'Nieuw uiterlijk, stap 4: Nieuws als ochtendkrant. Bovenaan de stemming, een strook met kerncijfers en het belangrijkste bericht met de koers van dat aandeel en de berichten als stipjes erop.',
+    'Ernaast wat je hebt gemist, daaronder officieel nieuws, geruchten, marktnieuws en kwartaalcijfers in vier kolommen. Alle berichten, de stemmingskaart, analisten en insiders staan in secties met de titel links.',
+  ],
   v74: [
     'Nieuw uiterlijk, stap 2: Overzicht. De grote waarde staat nu over een grafiek die de hele breedte vult, met speldjes voor het hoogste punt, stortingen en je eigen aan- en verkopen (op de computer).',
     'Onder de grafiek een strook met je kerncijfers. Elke sectie heeft links haar titel en rechts de inhoud; meldingen staan op één vaste plek en stijgers en dalers staan als twee lijstjes onder Vandaag.',

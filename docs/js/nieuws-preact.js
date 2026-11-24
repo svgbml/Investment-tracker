@@ -261,6 +261,15 @@ function OpinionTile({ stamp }) {
 }
 
 const NEWS_SEGS = [['news', 'Nieuws'], ['an', 'Analisten'], ['ins', 'Insiders']];
+// Sectie met de titel links en de inhoud rechts (zelfde opmaak als nkSec in js/24-nieuwskrant.js)
+function Sec({ id, title, sub, children }) {
+  return html`<section class="nk-sec" id=${'nk-' + id}><div class="nk-sh"><h2>${title}</h2>${sub ? html`<p class="muted small">${sub}</p>` : null}</div><div class="nk-sb">${children}</div></section>`;
+}
+// Voorpagina als ochtendkrant: stemmingsbalk, kerncijfers, hoofdbericht, gemist en vier kolommen
+function Front({ stamp }) {
+  const F = useMemo(() => nkFrontParts(), [stamp, muteKey()]);
+  return html`<${Legacy} markup=${F.bar + F.kpis} /><div class="nk-front"><${Legacy} markup=${F.lead + F.missed} /></div><${Legacy} markup=${F.cols} />`;
+}
 function NewsPage({ stamp }) {
   // stamp verandert bij nieuwe gegevens, zodat de lijsten opnieuw worden opgebouwd
   const items = useMemo(() => newsItems(), [stamp, muteKey()]);
@@ -269,21 +278,27 @@ function NewsPage({ stamp }) {
   const [sel, setSel] = useState(null);
   const [seg, setSeg] = useState(xs.newsSeg || 'news');
   const pickSeg = (k) => { xs.newsSeg = k; setSeg(k); };
-  const map = html`<${MoodMap} pts=${pts} sel=${sel} onPick=${setSel} />`;
+  // Een stip op de kaart kiezen filtert de lijst; op de computer schuift de lijst dan in beeld
+  const pick = (tk) => { setSel(tk); if (tk && mode !== 'm') nkGo(document.getElementById('nk-all')); };
+  const map = html`<${MoodMap} pts=${pts} sel=${sel} onPick=${pick} />`;
   const list = html`<${NewsList} items=${items} tk=${sel} onClear=${() => setSel(null)} />`;
   if (mode === 'm') {
     return html`<div class="m-ptabs news-tabs" role="group" aria-label="Onderdeel">${NEWS_SEGS.map(([k, l]) => html`<button type="button" key=${k} aria-pressed=${String(seg === k)} onClick=${() => pickSeg(k)}>${l}</button>`)}</div>
-      ${seg === 'news' ? html`<div class="grid wide">${map}${list}<${Legacy} markup=${officialTile()} /><${Legacy} markup=${missedTile()} /><${Legacy} markup=${newsToolsTile()} /></div>` : null}
+      ${seg === 'news' ? html`<${Front} stamp=${stamp} />
+        <${Sec} id="all" title="Alle berichten" sub="Per aandeel, volglijst of de markt, nieuwste eerst"><div class="grid wide">${list}</div><//>
+        <${Sec} id="map" title="Stemmingskaart" sub="Analisten tegenover het nieuws, tik op een stip"><div class="grid wide">${map}</div><//>
+        <${Sec} id="flash" title="Officieel en geruchten" sub="Persberichten, deponeringen en niet bevestigde berichten"><div class="grid wide"><${Legacy} markup=${officialTile()} /></div><//>
+        <${Sec} id="set" title="Nieuws instellen" sub="Bronnen, aandelen en woorden dempen"><div class="grid wide"><${Legacy} markup=${newsToolsTile()} /></div><//>` : null}
       ${seg === 'an' ? html`<div class="grid wide"><${Legacy} markup=${suggestTile()} /><${AnalystTable} rows=${rows} /><${OpinionTile} stamp=${stamp} /><${Legacy} markup=${earnSeasonTile()} /><${Legacy} markup=${analystScoreTile()} /><${Legacy} markup=${reliabilityTile()} /></div>` : null}
       ${seg === 'ins' ? html`<div class="grid wide"><${Legacy} markup=${insiderTile()} /></div>` : null}`;
   }
-  return html`
-    <div class="grid wide">${list}${map}</div>
-    <div class="grid wide" style="margin-top:16px"><${Legacy} markup=${officialTile()} /><${Legacy} markup=${missedTile()} /><${Legacy} markup=${suggestTile()} /><${Legacy} markup=${newsToolsTile()} /></div>
-    <div class="section-head"><h2>Analisten</h2><p class="muted small">Aanbevelingen, koersdoelen en hoe betrouwbaar ze zijn</p></div>
-    <div class="grid wide"><${AnalystTable} rows=${rows} /><${Legacy} markup=${reliabilityTile()} /><${OpinionTile} stamp=${stamp} /><${Legacy} markup=${earnSeasonTile()} /><${Legacy} markup=${analystScoreTile()} /></div>
-    <div class="section-head"><h2>Insiders</h2><p class="muted small">Kopen en verkopen bestuurders zelf?</p></div>
-    <div class="grid wide"><${Legacy} markup=${insiderTile()} /></div>`;
+  return html`<${Front} stamp=${stamp} />
+    <${Sec} id="all" title="Alle berichten" sub="Per aandeel, volglijst of de markt, nieuwste eerst"><div class="grid wide">${list}</div><//>
+    <${Sec} id="map" title="Stemmingskaart" sub="Analisten tegenover het nieuws, klik op een stip om de berichten van dat aandeel te zien"><div class="grid wide">${map}</div><//>
+    <${Sec} id="flash" title="Officieel en geruchten" sub="Persberichten, deponeringen en niet bevestigde berichten"><div class="grid wide"><${Legacy} markup=${officialTile()} /></div><//>
+    <${Sec} id="an" title="Analisten" sub="Aanbevelingen, koersdoelen en hoe betrouwbaar ze zijn"><div class="grid wide"><${Legacy} markup=${suggestTile()} /><${AnalystTable} rows=${rows} /><${Legacy} markup=${reliabilityTile()} /><${OpinionTile} stamp=${stamp} /><${Legacy} markup=${earnSeasonTile()} /><${Legacy} markup=${analystScoreTile()} /></div><//>
+    <${Sec} id="ins" title="Insiders" sub="Kopen en verkopen bestuurders zelf?"><div class="grid wide"><${Legacy} markup=${insiderTile()} /></div><//>
+    <${Sec} id="set" title="Nieuws instellen" sub="Bronnen, aandelen en woorden dempen, en de ochtendmelding"><div class="grid wide"><${Legacy} markup=${newsToolsTile()} /></div><//>`;
 }
 
 let stampN = 0, lastData = null;

@@ -321,7 +321,6 @@ function missedModel() {
   return { since, first: !missedFrom, moves, tot, news, anal, divs, alerts, n };
 }
 
-// Compacte tegel op de nieuwspagina, met een knop naar de hele pagina
 // ---------- Officieel en geruchten ----------
 // Van de Worker (data.newsFlash): persberichten, geruchten en belangrijk nieuws over je aandelen en volglijst, de
 // laatste 7 dagen. Daarbij de deponeringen 8-K en 6-K bij de SEC (data.ext2.filings), want die zijn altijd officieel.
@@ -360,26 +359,6 @@ function officialTile() {
     <p class="small muted" style="margin:2px 0 6px">${c.official + ' officieel, ' + c.rumour + ' geruchten' + (all.filter(fresh).length ? ', ' + all.filter(fresh).length + ' breaking' : '') + ' in de laatste twee weken'}</p>
     ${list.length ? tpl`<div class="news">${list.map(item)}</div>` : tpl`<p class="muted">${f === 'rumour' ? 'Geen geruchten over je aandelen gevonden.' : f === 'official' ? 'Geen officiële berichten gevonden.' : 'Nog niets gevonden.'}${FEAT().has.finnhub || demo ? '' : ' Met een gratis Finnhub-sleutel kijkt de Worker elke 10 minuten naar het nieuws van je aandelen.'}</p>`}
     <p class="sub" style="margin-top:8px">Officieel: persberichten van het bedrijf zelf (via Business Wire, PR Newswire, GlobeNewswire en dergelijke) en deponeringen bij de SEC (8-K, 6-K). Gerucht: een bericht dat zich baseert op niet genoemde bronnen ("reportedly", "people familiar", "in talks"); dat is niet bevestigd en kan onjuist zijn. Breaking: over bestuur, overnames, onderzoeken en dergelijke, van het afgelopen etmaal. De herkenning gaat op woorden in de kop en de bron, dus lees bij twijfel het bericht zelf. De Worker kijkt elke 10 minuten bij een paar van je aandelen om de beurt; een melding bij breaking nieuws stel je in bij Instellingen, Meldingen. Geen beleggingsadvies.</p></section>`);
-}
-
-function missedTile() {
-  const X = missedModel();
-  const bits = [];
-  if (X.news.length) bits.push(X.news.length + (X.news.length === 1 ? ' nieuwsbericht' : ' nieuwsberichten'));
-  if (X.anal.length) bits.push(X.anal.length + (X.anal.length === 1 ? ' analistenwijziging' : ' analistenwijzigingen'));
-  if (X.divs.length) bits.push(X.divs.length + ' dividend' + (X.divs.length === 1 ? '' : 'en'));
-  const big = X.moves.filter((m) => Math.abs(m.pct) >= 0.03).slice(0, 3);
-  return '<section class="tile pad missed-tile"><h3>Wat heb ik gemist?</h3>' +
-    '<p class="small muted" style="margin:2px 0 8px">' + esc(X.first ? 'Eerste keer op dit apparaat: hieronder de laatste week.' : 'Sinds je vorige bezoek, ' + fDT.format(X.since) + '.') + '</p>' +
-    (bits.length || big.length
-      ? kvList([
-        ['Nieuws en analisten', bits.length ? bits.join(', ') : 'niets nieuws'],
-        ['Je beleggingen samen', isNum(X.tot) ? spct1(X.tot) : 'nog niet te meten', tone(X.tot)],
-        ['Grootste bewegingen', big.length ? big.map((m) => m.tk + ' ' + spct1(m.pct)).join(', ') : 'geen beweging boven 3%'],
-      ])
-      : '<p class="muted">Niets nieuws sinds je vorige bezoek.</p>') +
-    '<p style="margin-top:10px"><a class="btn ghost" href="#gemist">Alles bekijken</a></p>' +
-    '<p class="sub" style="margin-top:8px">Het tijdstip van je vorige bezoek staat alleen op dit apparaat, niet in je Worker.</p></section>';
 }
 
 function renderMissedView() {

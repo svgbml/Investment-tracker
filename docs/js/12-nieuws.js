@@ -242,10 +242,13 @@ function renderNews() {
   if (window.NewsView && window.NewsView.ok && !off) { window.NewsView.draw(host); return; }
   if (window.NewsView && window.NewsView.ok) window.NewsView.clear(host);
   if (off) { host.innerHTML = '<div class="grid wide">' + offTile('Nieuws en analisten', 'Zet Finnhub aan (gratis sleutel) bij Koppelingen voor nieuws per aandeel, marktnieuws, analisten en insiderhandel.', 'FINNHUB_KEY') + '</div>'; return; }
-  host.innerHTML = '<div class="grid wide">' + newsListTile() + officialTile() + missedTile() + '</div>' +
-    '<div class="grid wide" style="margin-top:16px">' + suggestTile() + newsToolsTile() + '</div>' +
-    '<div class="section-head"><h2>Analisten</h2><p class="muted small">Aanbevelingen, koersdoelen en hoe betrouwbaar ze zijn</p></div><div class="grid wide">' + analystTableTile() + reliabilityTile() + opinionTile() + earnSeasonTile() + analystScoreTile() + '</div>' +
-    '<div class="section-head"><h2>Insiders</h2><p class="muted small">Kopen en verkopen bestuurders zelf?</p></div><div class="grid wide">' + insiderTile() + '</div>';
+  const F2 = nkFrontParts();
+  host.innerHTML = F2.bar + F2.kpis + '<div class="nk-front">' + F2.lead + F2.missed + '</div>' + F2.cols +
+    nkSec('all', 'Alle berichten', 'Per aandeel, volglijst of de markt, nieuwste eerst', '<div class="grid wide">' + newsListTile() + '</div>') +
+    nkSec('flash', 'Officieel en geruchten', 'Persberichten, deponeringen en niet bevestigde berichten', '<div class="grid wide">' + officialTile() + '</div>') +
+    nkSec('an', 'Analisten', 'Aanbevelingen, koersdoelen en hoe betrouwbaar ze zijn', '<div class="grid wide">' + suggestTile() + analystTableTile() + reliabilityTile() + opinionTile() + earnSeasonTile() + analystScoreTile() + '</div>') +
+    nkSec('ins', 'Insiders', 'Kopen en verkopen bestuurders zelf?', '<div class="grid wide">' + insiderTile() + '</div>') +
+    nkSec('set', 'Nieuws instellen', 'Bronnen, aandelen en woorden dempen, en de ochtendmelding', '<div class="grid wide">' + newsToolsTile() + '</div>');
 }
 
 // ---------- Volglijst: suggesties om te volgen ----------
