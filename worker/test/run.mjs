@@ -2402,5 +2402,33 @@ await test('nieuws: alleen https-links worden bewaard, geen javascript: of data:
   assert.deepEqual(fresh.map((x) => x.url), ['https://voorbeeld.nl/1']);
 });
 
+await test('volglijst vaker: koers van Finnhub, een minuut in het geheugen, alleen symbolen van de volglijst', async () => {
+  const e = Object.assign({}, env, { FINNHUB_KEY: 'fh-test' });
+  await req('/api/settings', { method: 'POST', body: { watchlist: ['ASML', 'LMT', 'KO'] } });
+  WM._test.wqClear();
+  let n = 0;
+  routes = [[/finnhub\.io\/api\/v1\/quote\?symbol=(\w+)/, (u) => { n++; const sym = /symbol=(\w+)/.exec(u)[1]; return reply(sym === 'ASML' ? { c: 0, dp: null, t: 0 } : { c: 100 + n, dp: 1.5, t: 1795557240 }); }]];
+  const a = await jsonOf(await req('/api/watchquotes?syms=LMT,KO,ASML,NVDA,LMT,../x', { env: e }));
+  assert.ok(a.ok);
+  assert.deepEqual(Object.keys(a.quotes).sort(), ['ASML', 'KO', 'LMT'], 'alleen de volglijst, zonder dubbele');
+  assert.equal(n, 3, 'één verzoek per symbool');
+  assert.equal(a.quotes.LMT.dp, 1.5);
+  assert.equal(a.quotes.ASML.c, 0, 'onbekend bij Finnhub: koers 0, de site slaat het daarna over');
+  await req('/api/watchquotes?syms=LMT,KO', { env: e });
+  assert.equal(n, 3, 'binnen een minuut uit het geheugen');
+  // Limiet: stoppen en de bron op pauze, de rest uit het geheugen
+  WM._test.wqClear();
+  routes = [[/finnhub\.io/, reply({ error: 'limit' }, 429)]];
+  calls = [];
+  const b = await jsonOf(await req('/api/watchquotes?syms=LMT,KO', { env: e }));
+  assert.ok(b.limited && !Object.keys(b.quotes).length);
+  assert.equal(calls.filter((c) => /finnhub/.test(c.url)).length, 1, 'na een 429 geen verzoeken meer');
+  // Zonder sleutel: niets ophalen, wel uitleg
+  const c = await jsonOf(await req('/api/watchquotes?syms=LMT'));
+  assert.ok(c.why && !Object.keys(c.quotes).length);
+  setKv('src_health', '{}');
+  routes = [];
+});
+
 console.log((failed ? failed + ' fout, ' : '') + passed + ' geslaagd');
 process.exit(failed ? 1 : 0);

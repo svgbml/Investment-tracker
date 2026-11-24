@@ -341,6 +341,9 @@ const WORKER = {
         try { return json(Object.assign({ ok: true }, await liveCheck(env, url.searchParams.get('tk'))), 200, cors); }
         catch (e) { return json({ ok: false, error: String(e && e.message || e) }, 400, cors); }
       }
+      if (url.pathname === '/api/watchquotes' && request.method === 'GET') {
+        return json(Object.assign({ ok: true }, await watchQuotes(env, url.searchParams.get('syms'))), 200, cors);
+      }
       if (url.pathname === '/api/quotes' && request.method === 'GET') {
         try { return json(Object.assign({ ok: true }, await liveQuotes(env, url.searchParams.get('fast'), url.searchParams.has('us'))), 200, cors); }
         catch (e) { return json({ ok: false, error: String(e && e.message || e) }, 400, cors); }
@@ -3859,7 +3862,7 @@ function isDst(localIso) {
 export const _test = { parts, isLive, marketHours, shortTicker, isoLocal, isDst, hourStart, dayOf, newsHistTask, storeNews, noteOpinionDay, figiRecord, gdeltName, usTicker, heldStocks,
   tradingDay, usTradingDay, shiftDay, weekdayOf, srcPause, srcFail, srcOk, srcState, srcHistState, checkPositions, splitRatio,
   planResearch, uniqTasks, dbWatch, testKey, r2Backup, r2Info, r2Preview, healthInfo, budgetInfo, buildData, bumpMarket, ensureMarketTables, ensureIndexes, countingDb, flushCalls, srcFail, searchCompanies, checkPriceAlerts, saveMode, buildAllowed, seriesRows, todayState, seriesFull, newsKind, newsBreaking, flashMerge, newsWatch, marketDataCached, marketData, invalidateSeries, cfTrend, setBig, getBig, invalidateOrders,
-  housekeeping, usSym, QUOTES, kvMemoClear: () => { kvMemo = new WeakMap(); }, sicSector, parseForm4, quarterlyEps, polyNewsItems, altTask, eodBackup, planMarket };
+  housekeeping, watchQuotes, wqClear: () => WQ.clear(), usSym, QUOTES, kvMemoClear: () => { kvMemo = new WeakMap(); }, sicSector, parseForm4, quarterlyEps, polyNewsItems, altTask, eodBackup, planMarket };
 
 
 // =====================================================================
@@ -5410,6 +5413,36 @@ async function liveCheck(env, tk) {
 // fast=<ticker>: ook de Finnhub-sleutel en het Amerikaanse symbool, zodat de browser zelf de trades kan volgen
 // (alleen voor aandelen die in dollar op een Amerikaanse beurs noteren; anders wijken de koersen van elkaar af).
 // us: ook de Finnhub-sleutel en de Amerikaanse symbolen van alle posities, zodat de site die per trade kan volgen (eens per half uur)
+// ---------- Volglijst vaker bijwerken ----------
+// De site vraagt zolang Bedrijven open is en de Amerikaanse beurs open is elke minuut de koers van hooguit WQ_MAX
+// volgaandelen (rondgaand door de lijst). Finnhub /quote, alleen in het geheugen van deze Worker en een minuut
+// bewaard: geen rij in D1 en hoogstens WQ_MAX Finnhub-verzoeken per aanroep. Alleen symbolen op je volglijst.
+const WQ = new Map();
+const WQ_MS = 60e3, WQ_MAX = 15;
+async function watchQuotes(env, symsIn) {
+  if (!env.FINNHUB_KEY) return { quotes: {}, why: 'Met een gratis Finnhub-sleutel komt de koers van je volglijst elke minuut binnen.' };
+  const s = await getSettings(env);
+  const wl = new Set((Array.isArray(s.watchlist) ? s.watchlist : []).map((x) => String(x).toUpperCase()));
+  const syms = [...new Set(String(symsIn || '').split(',').map((x) => x.trim().toUpperCase()))]
+    .filter((x) => /^[A-Z0-9.\-]{1,12}$/.test(x) && wl.has(x)).slice(0, WQ_MAX);
+  const now = Date.now(), quotes = {};
+  let limited = await srcDown(env, 'finnhub');
+  for (const sym of syms) {
+    let q = WQ.get(sym);
+    if ((!q || now - q.t >= WQ_MS) && !limited) {
+      const r = await getJson(FINNHUB_BASE + '/quote?symbol=' + encodeURIComponent(sym) + '&token=' + encodeURIComponent(env.FINNHUB_KEY));
+      if (r.status === 429) { limited = true; await srcFail(env, 'finnhub', 'Finnhub-limiet (volglijst)', true); }
+      else if (r.ok && r.body) {
+        // c = koers, dp = verandering vandaag in procenten, t = tijd van de koers (seconden); 0 = Finnhub kent het symbool niet
+        q = { t: now, c: numOrNull(r.body.c), dp: numOrNull(r.body.dp), at: numOrNull(r.body.t) ? r.body.t * 1000 : null };
+        WQ.set(sym, q);
+      }
+    }
+    if (q) quotes[sym] = q;
+  }
+  return { quotes, limited };
+}
+
 async function liveQuotes(env, fast, us) {
   if (!env.T212_KEY || !env.T212_SECRET) throw new Error('De Trading 212-sleutel is nog niet ingesteld.');
   if (fast != null && !/^[A-Za-z0-9.\-]{1,20}$/.test(String(fast))) throw new Error('Ongeldige ticker.');

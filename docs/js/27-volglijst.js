@@ -151,6 +151,58 @@ function renderWatchImport() {
 // De weergave 'watch' opnieuw vastleggen: de volglijst zoals altijd, plus het invoerblok
 defineView('watch', () => { renderWatch(); renderWatchImport(); });
 
+// ---------- Volglijst vaker bijwerken ----------
+// Zolang Bedrijven open en in beeld is en de Amerikaanse beurs open is, vraagt de site elke minuut de koers van
+// hooguit 15 volgaandelen, rondgaand door de lijst (/api/watchquotes, Finnhub). Bij 15 aandelen of minder is dat elke
+// minuut allemaal, bij 60 elk aandeel om de vier minuten. De koers ligt over het profiel (dat de Worker één keer per
+// handelsdag ververst) tot de volgende keer laden. Zonder Finnhub-sleutel of buiten beurstijd: niets.
+const WATCH_LIVE_MS = 60e3, WATCH_LIVE_N = 15;
+const watchLive = { map: new Map(), off: 0, timer: 0, none: new Set() };
+const nyParts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false });
+function usMarketOpen(t) {
+  const o = {};
+  nyParts.formatToParts(new Date(t || Date.now())).forEach((x) => { o[x.type] = x.value; });
+  const hm = (Number(o.hour) % 24) * 60 + Number(o.minute);
+  return !['Sat', 'Sun'].includes(o.weekday) && hm >= 9 * 60 + 30 && hm <= 16 * 60 + 5;
+}
+function watchLiveOver(sym, p) {
+  const q = watchLive.map.get(sym);
+  if (!q || !(q.c > 0)) return p;
+  return Object.assign({}, p, { price: q.c }, isNum(q.dp) ? { change: q.dp } : {}, { liveAt: q.at || q.t });
+}
+// Voorbeeld: kleine koersstapjes op de profielen, zodat bezoekers zonder sleutel de volglijst zien bewegen
+function demoWatchQuotes(syms) {
+  const out = {};
+  syms.forEach((sym) => {
+    const p = data.market && data.market.profiles && data.market.profiles[sym];
+    if (!p || !(p.price > 0)) return;
+    const prev = watchLive.map.get(sym), c = (prev ? prev.c : p.price) * (1 + (Math.random() - 0.5) * 0.004);
+    const pc = p.price / (1 + (isNum(p.change) ? p.change : 0) / 100);
+    out[sym] = { t: Date.now(), c: Math.round(c * 100) / 100, dp: (c / pc - 1) * 100, at: Date.now() };
+  });
+  return out;
+}
+async function watchLiveTick() {
+  clearTimeout(watchLive.timer);
+  watchLive.timer = setTimeout(watchLiveTick, WATCH_LIVE_MS);
+  if (document.hidden || ui.page !== 'list' || sharedView || !M || !M.mk || !M.mk.ok) return;
+  if (!demo && (!isWorker() || !getToken() || !FEAT().has.finnhub || !usMarketOpen())) return;
+  const all = watchSyms().filter((x) => !watchLive.none.has(x));
+  if (!all.length) return;
+  const n = Math.min(WATCH_LIVE_N, all.length), start = watchLive.off % all.length;
+  const pick = all.slice(start, start + n).concat(all.slice(0, Math.max(0, start + n - all.length)));
+  watchLive.off = start + n;
+  try {
+    const q = demo ? demoWatchQuotes(pick) : (await workerCall('/api/watchquotes?syms=' + encodeURIComponent(pick.join(',')), { method: 'GET' })).quotes || {};
+    Object.entries(q).forEach(([sym, v]) => { if (v && v.c > 0) watchLive.map.set(sym, v); else watchLive.none.add(sym); });
+    if (Object.keys(q).length) { refresh('watch'); refresh('list'); }
+  } catch (e) { /* volgende minuut opnieuw */ }
+}
+// Meteen een ronde als Bedrijven opengaat of de pagina weer in beeld komt
+document.addEventListener('visibilitychange', () => { if (!document.hidden && ui.page === 'list') watchLiveTick(); });
+window.addEventListener('hashchange', () => { if (ui.page === 'list') setTimeout(watchLiveTick, 300); });
+watchLive.timer = setTimeout(watchLiveTick, 5000);
+
 document.addEventListener('click', async (e) => {
   const b = near(e, '[data-wi]');
   if (!b) return;

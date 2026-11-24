@@ -8,6 +8,9 @@
 // (gemaakt met node tools/changelog.mjs); hieronder staat alleen wat de gebruiker merkt.
 // Bij een nieuwe versie: zet de regels van die versie bovenaan, met VERSION uit js/01-basis.js als sleutel.
 const WHATS_NEW = {
+  v88: [
+    'De koersen op je volglijst lopen nu mee: zolang Bedrijven open is en de Amerikaanse beurs open is, haalt de site elke minuut de koers van hooguit 15 volgaandelen op, en zo bij een langere lijst om de beurt allemaal. Dit vraagt een gratis Finnhub-sleutel; zonder die sleutel blijft het de koers van één keer per dag.',
+  ],
   v87: [
     'Op deze dag: onder de dagsamenvatting op het overzicht staat hoe je portefeuille het op deze datum een en twee jaar geleden deed. Viel die dag in het weekend, dan de handelsdag ervoor. Pas als je een jaar meet, verschijnt de regel.',
   ],

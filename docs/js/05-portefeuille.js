@@ -288,7 +288,8 @@ function deriveMarket(mk, m) {
   const X = { ok: !!(mk && mk.profiles && Object.keys(mk.profiles).length), updated: mk && mk.updated };
   if (!X.ok) return X;
   X.sym = (tk) => (mk.symbols && mk.symbols[tk]) || tk;
-  X.prof = (sym) => mk.profiles[sym] || null;
+  // Met de koers van de volglijst die de site elke minuut ophaalt (js/27-volglijst.js), als die nieuwer is
+  X.prof = (sym) => { const p = mk.profiles[sym] || null; return p && typeof watchLiveOver === 'function' ? watchLiveOver(sym, p) : p; };
   X.profOf = (tk) => X.prof(X.sym(tk));
   X.peersOf = (tk) => (mk.peers && mk.peers[tk]) || [];
   X.heldBySym = new Map(Object.entries(mk.symbols || {}).map(([tk, sym]) => [sym, tk]));
