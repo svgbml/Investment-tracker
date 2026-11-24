@@ -8,9 +8,12 @@
 // (gemaakt met node tools/changelog.mjs); hieronder staat alleen wat de gebruiker merkt.
 // Bij een nieuwe versie: zet de regels van die versie bovenaan, met VERSION uit js/01-basis.js als sleutel.
 const WHATS_NEW = {
-  v78: [
+  v79: [
     'Nieuw uiterlijk, stap 6: Plannen begint met een geldagenda voor de komende vier maanden: je inlegdag, verwacht en aangekondigd dividend en de belastingdata. Met één knop zet je de komende twaalf maanden als .ics-bestand in je eigen agenda.',
     'Daarboven je kerncijfers (inleg, doelen, dividend en wat er te doen is) en daaronder zes hoofdstukken met een balk die blijft staan; Inleg en doelen en Vooruitblik openen met de kern in één zin en vier cijfers.',
+  ],
+  v78: [
+    'Analyse: ook de hoofdstukken Doorkijk, Markt, Kopen en verkopen en Transacties openen nu met de kern in één zin, vier cijfers en een grafiek: de verdeling over sectoren, de S&P 500 van het laatste halfjaar en staafjes per maand.',
   ],
   v77: [
     'Nieuw uiterlijk, stap 5: Analyse als jaarrapport. Bovenaan je kerncijfers in één strook en een balk met de vijf hoofdstukken die blijft staan terwijl je scrolt, met een streep die laat zien hoe ver je bent.',
