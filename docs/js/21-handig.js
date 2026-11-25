@@ -8,6 +8,9 @@
 // (gemaakt met node tools/changelog.mjs); hieronder staat alleen wat de gebruiker merkt.
 // Bij een nieuwe versie: zet de regels van die versie bovenaan, met VERSION uit js/01-basis.js als sleutel.
 const WHATS_NEW = {
+  v97: [
+    'Concentratie door de tijd: in Analyse, bij Doorkijk, zie je per maand hoeveel van je beleggingen in de vijf grootste posities zat, met de HHI en het effectieve aantal posities. Dit is de eerste van een reeks terugblikken die je geschiedenis per dag per aandeel gebruiken.',
+  ],
   v96: [
     'Uurpunten bij inzoomen: zoom je op de grote grafiek in tot een paar weken, dan zie je weer het verloop per uur, ook van maanden geleden. Uurregels ouder dan 60 dagen bewaart de Worker daarvoor per maand in je R2-opslag (als die gekoppeld is).',
   ],

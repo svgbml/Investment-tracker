@@ -344,7 +344,7 @@ const PAGE_VIEWS = { home: ['home', 'home-rest'], list: ['list', 'watch', 'valua
 // Scripts die alleen één pagina nodig heeft, laden pas als je die pagina opent (niet bij het starten). Ze staan
 // niet in index.html, wel in de cachelijst van sw.js, zodat ze ook zonder verbinding werken.
 // Sleutel: de weergave die erop wacht; waarde: de scripts.
-const VIEW_SCRIPTS = { plan: ['js/29-plannen-extra.js'] };
+const VIEW_SCRIPTS = { plan: ['js/29-plannen-extra.js'], analyse: ['js/33-geschiedenis.js'] };
 const viewScriptsOk = new Set();
 const viewScriptsBusy = new Map();
 function loadViewScripts(n) {

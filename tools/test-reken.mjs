@@ -5,7 +5,7 @@
 //
 // Wat getest wordt:
 //   XIRR, TWR, drawdown, risicoklasse (srri), samenhang (correlatie), kwantiel,
-//   Monte Carlo (mcSimulate), box 3, eigenschappen met 500 willekeurige gevallen (XIRR, TWR, FIFO) en de opmaakhulpjes eur, seur, spct, spct1, money, PCT0, P1, esc en tpl.
+//   Monte Carlo (mcSimulate), box 3, het geschiedenismodel (histModel), eigenschappen met 500 willekeurige gevallen (XIRR, TWR, FIFO) en de opmaakhulpjes eur, seur, spct, spct1, money, PCT0, P1, esc en tpl.
 //
 // Draaien: node tools/test-reken.mjs
 //          node tools/test-reken.mjs --alles    ook de geslaagde tests tonen
@@ -16,6 +16,9 @@ const { chromium } = playwright();
 const { base, close } = await serveDocs();
 const browser = await chromium.launch({ args: ['--no-sandbox'] });
 const { page, ctx, errors } = await openSite(browser, base, { size: 'desktop', theme: 'light' });
+
+// Het geschiedenismodel laadt lui (alleen Analyse heeft het nodig): eerst inladen
+await page.evaluate(() => loadViewScripts('analyse'));
 
 const results = await page.evaluate(() => {
   const out = [];
@@ -255,6 +258,35 @@ const results = await page.evaluate(() => {
       return true;
     });
   } finally { M = echtM; }
+
+  // ================= Geschiedenismodel (bouwsteen fase 3) =================
+  {
+    const H = histModel();
+    if (H && H.t.length) {
+      const totMap = new Map((M.days.get(TOTAL) || []).map((d) => [d.t, d.close]));
+      let wBad = null, vBad = null;
+      H.t.forEach((t, k) => {
+        if (!(H.total[k] > 0)) return;
+        const ws = H.tk.reduce((a, tk) => a + (histWeight(H, tk, k) || 0), 0);
+        if (Math.abs(ws - 1) > 1e-9 && !wBad) wBad = new Date(t).toISOString().slice(0, 10) + ': ' + ws;
+        const tv = totMap.get(t);
+        if (isNum(tv) && Math.abs(tv - H.total[k]) > 0.05 * H.tk.length && !vBad) vBad = new Date(t).toISOString().slice(0, 10) + ': posities ' + H.total[k] + ', totaal ' + tv;
+      });
+      OK('geschiedenis: gewichten tellen elke dag op tot 100%', !wBad, wBad || 'elke dag 1');
+      OK('geschiedenis: waarde per dag gelijk aan de totaalreeks', !vBad, vBad || 'gelijk');
+      OK('geschiedenis: geen NaN', H.total.every((x) => isNum(x)), 'getallen');
+    } else SKIP('geschiedenismodel', 'geen dagstanden per positie in de voorbeeldgegevens');
+    // Klein geval met de hand: twee aankopen en een verkoop
+    const D = 864e5, d0 = Date.UTC(2026, 0, 5);
+    const G = histCompute({ pos: { A: [[d0, 100], [d0 + D, 110], [d0 + 2 * D, 60]], B: [[d0 + D, 90], [d0 + 2 * D, 140]] },
+      ord: [[d0 + 3600e3, 'A', 'BUY', 2, 100], [d0 + D + 3600e3, 'B', 'BUY', 1, 90], [d0 + 2 * D + 3600e3, 'A', 'SELL', 1, 55]], dayMs: D });
+    T('geschiedenis: dagen', G.t.length, 3);
+    T('geschiedenis: totaal per dag', JSON.stringify(G.total), JSON.stringify([100, 200, 200]));
+    T('geschiedenis: aantal A na de verkoop', G.q.A[2], 1);
+    T('geschiedenis: inleg A na de verkoop (100 − 55)', G.i.A[2], 45);
+    T('geschiedenis: B nog niet in bezit op dag 1', G.v.B[0], null);
+    T('geschiedenis: gewicht B op dag 3', histWeight(G, 'B', 2), 0.7, 1e-12);
+  }
 
   // ================= Opmaak van getallen =================
   // Deze hulpjes staan in docs/js/01-basis.js (eur, seur, spct, spct1, P1, P2, N2, NI),
