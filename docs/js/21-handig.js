@@ -8,6 +8,9 @@
 // (gemaakt met node tools/changelog.mjs); hieronder staat alleen wat de gebruiker merkt.
 // Bij een nieuwe versie: zet de regels van die versie bovenaan, met VERSION uit js/01-basis.js als sleutel.
 const WHATS_NEW = {
+  v95: [
+    'Boekhouding nakijken: één keer per week telt de tracker de aantallen per aandeel op uit al je orders (ook uit de CSV-import) en vergelijkt die met de laatste meting. Verschillen staan op de statuspagina; ontbreken oude orders, dan staat er dat je de CSV-export kunt inlezen.',
+  ],
   v94: [
     'Geld dat stilstaat: op de pagina Accountwaarde zie je sinds wanneer er minstens € 100 vrij staat, hoeveel de hele tijd vrij stond en hoeveel rente je daarover kreeg (uit de CSV-import van Trading 212).',
   ],

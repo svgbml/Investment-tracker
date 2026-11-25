@@ -337,7 +337,7 @@ EN_RE.push([/^Nog (\d+) koppen: scrol verder\.$/, 'Another $1 headlines: keep sc
 EN_RE.push([/^Alleen (.+)$/, 'Only $1'], [/^Posities (\d+)$/, 'Positions $1'], [/^Volglijst (\d+)$/, 'Watchlist $1']);
 // Kruimelpad, getalweergave, meldingen en de startchecklist
 Object.assign(EN, {
-  'Kruimelpad': 'Breadcrumb', '\u2039 Overzicht': '\u2039 Overview', '\u2039 Bedrijven': '\u2039 Companies', 'Melding sluiten': 'Close message', 'Ongedaan maken': 'Undo', 'Op deze dag': 'On this day', 'Aantekening': 'Note', 'Aantekening toevoegen': 'Add note', 'Aantekening wijzigen': 'Edit note', 'Aantekening bewaard.': 'Note saved.', 'Aantekening verwijderd.': 'Note deleted.', 'Aantekeningen in de grafiek': 'Notes in the chart', 'Wijzigen': 'Edit', 'Kiezen': 'Select', 'Geld dat stilstaat': 'Idle cash', 'Druk op een toets…': 'Press a key…', 'Geen toets': 'No key', 'Standaardtoetsen': 'Default keys', 'Aandelen kiezen': 'Select stocks', 'Alles kiezen': 'Select all', 'Niets kiezen': 'Select none', 'gekozen': 'selected', 'Met de gekozen aandelen': 'With the selected stocks', 'Label': 'Label', 'Label geven': 'Add label', 'daling van': 'drop of', 'stijging van': 'rise of', 'Alarm zetten': 'Set alert', 'Van volglijst halen': 'Remove from watchlist', 'Typ eerst een label.': 'Type a label first.', 'Kies een percentage tussen 1 en 90.': 'Pick a percentage between 1 and 90.', 'Voor deze aandelen is nog geen koers bekend.': 'No price is known yet for these stocks.', 'Teruggezet.': 'Restored.', 'Koersalarm verwijderd.': 'Price alert deleted.', 'Regel uit je beslisdagboek verwijderd.': 'Entry removed from your decision log.',
+  'Kruimelpad': 'Breadcrumb', '\u2039 Overzicht': '\u2039 Overview', '\u2039 Bedrijven': '\u2039 Companies', 'Melding sluiten': 'Close message', 'Ongedaan maken': 'Undo', 'Op deze dag': 'On this day', 'Aantekening': 'Note', 'Aantekening toevoegen': 'Add note', 'Aantekening wijzigen': 'Edit note', 'Aantekening bewaard.': 'Note saved.', 'Aantekening verwijderd.': 'Note deleted.', 'Aantekeningen in de grafiek': 'Notes in the chart', 'Wijzigen': 'Edit', 'Kiezen': 'Select', 'Geld dat stilstaat': 'Idle cash', 'Boekhouding': 'Bookkeeping check', 'Druk op een toets…': 'Press a key…', 'Geen toets': 'No key', 'Standaardtoetsen': 'Default keys', 'Aandelen kiezen': 'Select stocks', 'Alles kiezen': 'Select all', 'Niets kiezen': 'Select none', 'gekozen': 'selected', 'Met de gekozen aandelen': 'With the selected stocks', 'Label': 'Label', 'Label geven': 'Add label', 'daling van': 'drop of', 'stijging van': 'rise of', 'Alarm zetten': 'Set alert', 'Van volglijst halen': 'Remove from watchlist', 'Typ eerst een label.': 'Type a label first.', 'Kies een percentage tussen 1 en 90.': 'Pick a percentage between 1 and 90.', 'Voor deze aandelen is nog geen koers bekend.': 'No price is known yet for these stocks.', 'Teruggezet.': 'Restored.', 'Koersalarm verwijderd.': 'Price alert deleted.', 'Regel uit je beslisdagboek verwijderd.': 'Entry removed from your decision log.',
   'Getallen': 'Numbers', 'Grote bedragen afkorten (\u20ac 12,3K)': 'Abbreviate large amounts (\u20ac 12.3K)',
   'Decimalen bij bedragen en procenten': 'Decimals for amounts and percentages',
   'geen (\u20ac 12)': 'none (\u20ac 12)', '\u00e9\u00e9n (\u20ac 12,3)': 'one (\u20ac 12.3)', 'twee (\u20ac 12,34)': 'two (\u20ac 12.34)',
@@ -714,7 +714,8 @@ let statusCache = null;
 function demoStatus() {
   return { now: new Date().toISOString(), lastMeasurement: M && M.lastT ? new Date(M.lastT).toISOString() : null, live: true, lastCron: new Date().toISOString(), lastError: null, tickFails: 0,
     lastWeek: M && M.lastWeek ? new Date(M.lastWeek.t).toISOString().slice(0, 10) : null, ordersSynced: new Date().toISOString().slice(0, 10), marketPlanned: new Date().toISOString().slice(0, 10),
-    queue: 12, fmpCalls: { n: 84 }, avCalls: { n: 6 }, errors: {}, health: { fmp: { backup: 'Finnhub', backupAt: new Date().toISOString() } },
+    queue: 12, fmpCalls: { n: 84 }, avCalls: { n: 6 }, errors: {},
+    ledger: { at: new Date(Date.now() - 2 * 864e5).toISOString(), n: 25, ok: 24, csv: false, orders: 31, items: [{ tk: 'BRKB', held: 1.2, orders: 0.4, diff: 0.8, why: 'orders_missing' }] }, health: { fmp: { backup: 'Finnhub', backupAt: new Date().toISOString() } },
     rows: { intraday: 3960, hours: 6420, days: 980, weeks: 13, orders: 31 }, sizes: { data_core: 41200, data_extra: 188000, data_series: 712000 }, devices: 2,
     companies: '{"n":10412,"updated":"' + new Date().toISOString().slice(0, 10) + '","source":"SEC"}',
     keys: { T212_KEY: true, FMP_KEY: true, FINNHUB_KEY: true, SEC_CONTACT: true, ALPHAVANTAGE_KEY: false, TWELVEDATA_KEY: false, TIINGO_KEY: true, POLYGON_KEY: true, MARKETAUX_KEY: false, RESEND_KEY: false } };
@@ -765,10 +766,21 @@ function renderStatusView() {
     ['Orders', NI.format(S.rows.orders || 0)],
     ['Overzicht voor de site', kb(S.sizes.data_core) + ' + ' + kb(S.sizes.data_extra) + ' + ' + kb(S.sizes.data_series)],
   ]) + '<p class="sub" style="margin-top:8px">Na drie dagen worden metingen per 10 minuten uurregels; elke maand ruimt de Worker uurregels ouder dan 180 dagen op (de dagregels blijven). Een reservekopie maak je bij Instellingen.</p></section>';
+  const L = S.ledger;
+  const ledger = '<section class="tile pad ledger"><h3>' + esc(T('Boekhouding')) + '</h3>' + (!L
+    ? '<p class="sub">Eén keer per week telt de Worker de aantallen per aandeel op uit al je orders en vergelijkt die met de laatste meting. De eerste controle volgt na het ophalen van de orders.</p>'
+    : kvList([
+      ['Nagekeken', fDT.format(new Date(L.at)) + ', ' + NI.format(L.orders || 0) + ' orders'],
+      ['Klopt', L.ok + ' van ' + L.n + ' posities', L.ok === L.n ? 'gain' : ''],
+    ].concat((L.items || []).map((x) => [x.tk, x.why === 'orders_missing'
+      ? 'orders van vóór de koppeling ontbreken (' + N4.format(x.orders) + ' van ' + N4.format(x.held) + ' stuks gevonden)' + (L.csv ? '' : '; lees de CSV-export van Trading 212 in')
+      : x.why === 'not_held' ? 'volgens de orders nog ' + N4.format(x.orders) + ' stuks, maar niet in de laatste meting'
+        : 'verschil ' + (x.diff > 0 ? '+' : '') + N4.format(x.diff) + ' stuks (meting ' + N4.format(x.held) + ', orders ' + N4.format(x.orders) + ')', x.why === 'orders_missing' ? '' : 'loss']))) +
+      '<p class="sub" style="margin-top:8px">Kleine verschillen door afronding van fracties tellen niet mee. Splitsingen en nieuwe tickers zijn verrekend.</p>') + '</section>';
   const keys = '<section class="tile pad"><h3>Koppelingen</h3>' + kvList(Object.entries(S.keys || {}).map(([k, v]) => [k.replace(/_KEY|_CONTACT/g, '').replace('T212', 'Trading 212').replace('_', ' '), v ? 'ingesteld' : 'niet ingesteld', v ? 'gain' : ''])) + '</section>';
   const head = pseudoHead('Status van je tracker', ok ? 'Alles werkt' : stale ? 'Geen nieuwe metingen' : 'Er gaat iets mis', ok ? 'Laatste meting ' + ago(S.lastMeasurement) + '.' : 'Bekijk hieronder de laatste fout. Een melding volgt na drie mislukte metingen.', ok ? 'gain' : 'loss');
   const extra = statusExtraRows(S).concat(typeof bronnenRows === 'function' ? bronnenRows(S) : []);
-  return pseudoPage('Status', head, [[meas, src], [db, keys]].concat(extra), [meas, src, db, keys].concat(...extra));
+  return pseudoPage('Status', head, [[meas, src], [db, keys], [ledger]].concat(extra), [meas, src, db, keys, ledger].concat(...extra));
 }
 document.addEventListener('click', (e) => {
   const b = e.target.closest && e.target.closest('[data-goto-status]');

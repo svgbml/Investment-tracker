@@ -2509,5 +2509,41 @@ await test('geld dat stilstaat: sinds wanneer minstens 100 euro vrij staat en de
   }
 });
 
+await test('boekhouding nakijken: aantallen uit de orders tegen de laatste meting, met splitsing, naamswijziging en ontbrekende orders (idee 47)', async () => {
+  const T = WM._test;
+  const D2 = new D1();
+  for (const { sql } of DB.db.prepare("SELECT sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY type DESC").all()) D2.db.exec(sql);
+  const e2 = Object.assign({}, env, { DB: D2 });
+  const ts = Date.parse('2026-11-20T10:00:00Z');
+  const ins = D2.db.prepare('INSERT INTO intraday (ts, ticker, name, value, unrealized, price, qty) VALUES (?,?,?,?,?,?,?)');
+  [['AAPL', 2], ['VUAG', 5], ['NVDA', 1.5], ['META', 1], ['KO', 3]].forEach(([tk, q]) => ins.run(ts, tk, tk, 100, 0, 10, q));
+  ins.run(ts, 'TOTAAL', 'Totaal', 500, 0, 5, null);
+  const o = D2.db.prepare('INSERT INTO orders (id, ts, ticker, name, side, qty, price, currency, fx_rate, net, realised, fee_fx, fee_other, kind) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+  const ord = (id, day, tk, side, q) => o.run(id, Date.parse(day + 'T12:00:00Z'), tk, tk, side, q, 10, 'USD', 1, 10, null, 0, 0, 'TRADE');
+  ord('a1', '2026-01-05', 'AAPL', 'BUY', 1.2); ord('a2', '2026-02-05', 'AAPL', 'BUY', 1); ord('a3', '2026-03-05', 'AAPL', 'SELL', 0.2);
+  ord('v1', '2025-06-01', 'VUAG', 'BUY', 3);              // positie sinds januari 2025: oudere orders ontbreken
+  ord('n1', '2026-01-05', 'NVDA', 'BUY', 0.15);           // daarna 10 op 1 gesplitst
+  ord('f1', '2026-01-05', 'FB', 'BUY', 1);                // heet nu META
+  ord('k1', '2026-01-05', 'KO', 'BUY', 2.5);              // echt verschil
+  ord('m1', '2026-01-05', 'MSFT', 'BUY', 1);              // volgens de orders in bezit, niet gemeten
+  D2.db.prepare('INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)').run('pos_extra', JSON.stringify({ VUAG: { since: '2025-01-10T09:00:00Z' }, KO: { since: '2026-01-05T09:00:00Z' } }));
+  D2.db.prepare('INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)').run('corp_actions', JSON.stringify([
+    { kind: 'split', ticker: 'NVDA', ratio: 10, day: '2026-06-10' }, { kind: 'naam', from: 'FB', to: 'META', day: '2026-03-01' }]));
+  WM._test.kvMemoClear();
+  const msg = await T.ledgerCheck(e2, true);
+  assert.match(msg, /3 van 5 posities/);
+  const L = JSON.parse(D2.db.prepare("SELECT value FROM kv WHERE key = 'ledger_check'").get().value);
+  const by = Object.fromEntries(L.items.map((x) => [x.tk, x]));
+  assert.deepEqual(Object.keys(by).sort(), ['KO', 'MSFT', 'VUAG']);
+  assert.equal(by.VUAG.why, 'orders_missing');
+  assert.equal(by.KO.why, 'diff');
+  assert.equal(by.KO.diff, 0.5);
+  assert.equal(by.MSFT.why, 'not_held');
+  assert.equal(L.csv, false);
+  // Binnen een week niet opnieuw
+  assert.equal(await T.ledgerCheck(e2, false), '');
+  WM._test.kvMemoClear();
+});
+
 console.log((failed ? failed + ' fout, ' : '') + passed + ' geslaagd');
 process.exit(failed ? 1 : 0);

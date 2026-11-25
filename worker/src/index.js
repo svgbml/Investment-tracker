@@ -1962,8 +1962,70 @@ async function syncOrders(env) {
   if (stmts.length) await invalidateOrders(env);
   if (full) await setKv(env, 'orders_full', '1');
   await setKv(env, 'orders_synced', parts(new Date()).day);
+  let ledger = '';
+  try { ledger = await ledgerCheck(env, false); } catch (e) { console.error('boekhouding', e); }
   await saveDataCache(env, await buildData(env));
-  return `Orders: ${stmts.length} uitvoeringen bijgewerkt (${pages} pagina's).`;
+  return `Orders: ${stmts.length} uitvoeringen bijgewerkt (${pages} pagina's).` + (ledger ? ' ' + ledger : '');
+}
+
+// Alle orders als rijen [tijd, ticker, naam, kant, aantal, koers, munt, wisselkoers, netto, gerealiseerd, kosten fx,
+// overige kosten, soort]. De orders veranderen hooguit eens per dag (syncOrders) of bij een import; tot dan uit de cache.
+async function ordersCached(env) {
+  const ver = (await getKv(env, 'orders_ver')) || '';
+  let c = null;
+  try { c = JSON.parse((await getBig(env, 'orders_cache')) || 'null'); } catch (e) { c = null; }
+  if (c && c.ver === ver && Array.isArray(c.rows)) return c.rows;
+  const { results } = await env.DB.prepare('SELECT ts, ticker, name, side, qty, price, currency, fx_rate, net, realised, fee_fx, fee_other, kind FROM orders ORDER BY ts').all();
+  const rows = results.map((r) => [isoLocal(r.ts), r.ticker, r.name, r.side, r.qty, r.price, r.currency, r.fx_rate, r.net, r.realised, r.fee_fx, r.fee_other, r.kind]);
+  try { await setBig(env, 'orders_cache', JSON.stringify({ ver, rows })); } catch (e) { console.error('orderscache', e); }
+  return rows;
+}
+
+// ---------- Boekhouding nakijken (idee 47) ----------
+// Eén keer per week, na het ophalen van de orders: de aantallen per aandeel opnieuw optellen uit alle orders (ook uit
+// de CSV-import) en vergelijken met de laatste meting. Splitsingen en nieuwe tickers uit corp_actions tellen mee.
+// Ontbreken de orders van vóór de koppeling (de eerste order is later dan de aankoopdatum van de positie), dan zegt
+// de controle dat in plaats van een verschil te melden. Het resultaat staat in kv 'ledger_check'.
+const LEDGER_TOL = 0.0005, LEDGER_DAYS = 7;
+async function ledgerCheck(env, force) {
+  let prev = null;
+  try { prev = JSON.parse((await getKv(env, 'ledger_check')) || 'null'); } catch (e) { prev = null; }
+  if (!force && prev && prev.at && Date.now() - Date.parse(prev.at) < LEDGER_DAYS * 864e5 - 3600e3) return '';
+  const held = await lastRows(env);
+  if (!held || !held.length) return '';
+  const rows = await ordersCached(env);
+  let log = [], extra = {};
+  try { log = JSON.parse((await getKv(env, 'corp_actions')) || '[]'); } catch (e) { log = []; }
+  try { extra = JSON.parse((await getKv(env, 'pos_extra')) || '{}'); } catch (e) { extra = {}; }
+  const csv = await env.DB.prepare("SELECT COUNT(*) AS n FROM orders WHERE id >= 'csv:' AND id < 'csv;'").first().catch(() => null);
+  // Nieuwe tickers volgen (een naamswijziging kan op een eerdere volgen)
+  const ren = new Map(log.filter((a) => a.kind === 'naam' && a.from && a.to).map((a) => [a.from, a.to]));
+  const now = (tk) => { let t = tk; for (let i = 0; i < 5 && ren.has(t); i++) t = ren.get(t); return t; };
+  const splits = log.filter((a) => a.kind === 'split' && a.ticker && a.ratio > 0);
+  const sum = new Map(), first = new Map();
+  rows.forEach((o) => {
+    const kind = o[12];
+    if (kind && kind !== 'TRADE') return;
+    const tk = now(o[1]), day = String(o[0]).slice(0, 10);
+    let q = Number(o[4]) || 0;
+    splits.forEach((sp) => { if (sp.ticker === tk && sp.day > day) q *= sp.ratio; });
+    sum.set(tk, (sum.get(tk) || 0) + (o[3] === 'SELL' ? -q : q));
+    if (!first.has(tk) || day < first.get(tk)) first.set(tk, day);
+  });
+  const items = [];
+  held.forEach((h) => {
+    const want = Number(h.qty) || 0, got = sum.get(h.ticker) || 0, diff = want - got;
+    if (Math.abs(diff) <= Math.max(LEDGER_TOL, want * 1e-5)) return;
+    const since = extra[h.ticker] && extra[h.ticker].since ? String(extra[h.ticker].since).slice(0, 10) : null;
+    const missing = !first.has(h.ticker) || (since && first.get(h.ticker) > since);
+    items.push({ tk: h.ticker, held: want, orders: Math.round(got * 1e6) / 1e6, diff: Math.round(diff * 1e6) / 1e6, why: missing ? 'orders_missing' : 'diff' });
+  });
+  // Volgens de orders nog in bezit, maar niet in de laatste meting
+  const heldSet = new Set(held.map((h) => h.ticker));
+  sum.forEach((q, tk) => { if (!heldSet.has(tk) && q > LEDGER_TOL) items.push({ tk, held: 0, orders: Math.round(q * 1e6) / 1e6, diff: -Math.round(q * 1e6) / 1e6, why: 'not_held' }); });
+  const res = { at: new Date().toISOString(), n: held.length, ok: held.length - items.filter((x) => x.why !== 'not_held').length, csv: !!(csv && csv.n), orders: rows.length, items: items.slice(0, 40) };
+  await setKv(env, 'ledger_check', JSON.stringify(res));
+  return 'Boekhouding nagekeken: ' + res.ok + ' van ' + res.n + ' posities kloppen met de orders.';
 }
 
 // ---------- Instellingen van de website (streefverdeling, inleg, doel) ----------
@@ -2150,18 +2212,7 @@ async function extraData(env) {
     Object.keys(out.posExtra).forEach((tk) => { const f = fs[tk]; if (f && !f.none) out.posExtra[tk].figi = { us: f.us || null, de: f.de || null, fund: !!f.fund, type: f.type || null, ex: f.ex || [] }; });
   } catch (e) { /* geen OpenFIGI-gegevens */ }
   out.settings = await getSettings(env);
-  if ((await getKv(env, 'orders_schema')) === '1') {
-    // De orders veranderen hooguit eens per dag (syncOrders) of bij een import; tot dan uit de cache
-    const ver = (await getKv(env, 'orders_ver')) || '';
-    let c = null;
-    try { c = JSON.parse((await getBig(env, 'orders_cache')) || 'null'); } catch (e) { c = null; }
-    if (c && c.ver === ver && Array.isArray(c.rows)) out.orders = c.rows;
-    else {
-      const { results } = await env.DB.prepare('SELECT ts, ticker, name, side, qty, price, currency, fx_rate, net, realised, fee_fx, fee_other, kind FROM orders ORDER BY ts').all();
-      out.orders = results.map((r) => [isoLocal(r.ts), r.ticker, r.name, r.side, r.qty, r.price, r.currency, r.fx_rate, r.net, r.realised, r.fee_fx, r.fee_other, r.kind]);
-      try { await setBig(env, 'orders_cache', JSON.stringify({ ver, rows: out.orders })); } catch (e) { console.error('orderscache', e); }
-    }
-  }
+  if ((await getKv(env, 'orders_schema')) === '1') out.orders = await ordersCached(env);
   out.research = {}; out.fin = {}; out.fx = null; out.hicp = null;
   // Deponeringen, 13F, economische agenda, pies en kwartaalcijferdata
   out.ext2 = {};
@@ -3903,7 +3954,7 @@ function isDst(localIso) {
 export const _test = { parts, isLive, marketHours, shortTicker, isoLocal, isDst, hourStart, dayOf, newsHistTask, storeNews, noteOpinionDay, figiRecord, gdeltName, usTicker, heldStocks,
   tradingDay, usTradingDay, shiftDay, weekdayOf, srcPause, srcFail, srcOk, srcState, srcHistState, checkPositions, splitRatio,
   planResearch, uniqTasks, dbWatch, testKey, r2Backup, r2Info, r2Preview, healthInfo, budgetInfo, buildData, bumpMarket, ensureMarketTables, ensureIndexes, countingDb, flushCalls, srcFail, searchCompanies, checkPriceAlerts, saveMode, buildAllowed, seriesRows, todayState, seriesFull, newsKind, newsBreaking, flashMerge, newsWatch, marketDataCached, marketData, invalidateSeries, cfTrend, setBig, getBig, invalidateOrders,
-  housekeeping, lastRows, watchQuotes, wqClear: () => WQ.clear(), usSym, QUOTES, kvMemoClear: () => { kvMemo = new WeakMap(); }, sicSector, parseForm4, quarterlyEps, polyNewsItems, altTask, eodBackup, planMarket };
+  housekeeping, lastRows, ledgerCheck, watchQuotes, wqClear: () => WQ.clear(), usSym, QUOTES, kvMemoClear: () => { kvMemo = new WeakMap(); }, sicSector, parseForm4, quarterlyEps, polyNewsItems, altTask, eodBackup, planMarket };
 
 
 // =====================================================================
@@ -4591,6 +4642,7 @@ async function statusInfo(env, raw) {
     now: isoLocal(Date.now()), lastMeasurement: last && last.ts ? isoLocal(last.ts) : null, live: isLive(new Date()),
     lastCron: await getKv(env, 'last_cron'), lastError: await getKv(env, 'last_error'), tickFails: Number((await getKv(env, 'tick_fail')) || 0),
     lastWeek: await getKv(env, 'last_week_snapshot'), ordersSynced: await getKv(env, 'orders_synced'), marketPlanned: await getKv(env, 'mkt_planned'),
+    ledger: await (async () => { try { return JSON.parse((await getKv(env, 'ledger_check')) || 'null'); } catch (e) { return null; } })(),
     queue: q.length, fmpCalls, avCalls, errors: JSON.parse((await getKv(env, 'ext_errors')) || '{}'), health: await srcState(env),
     rows: await (async () => { const d = await dbWatch(env, false); const t = (d && d.tables) || {}; const n = (k) => (t[k] ? t[k].rows : null);
       return { intraday: n('intraday'), hours: n('hours'), days: n('days'), weeks: n('weeks'), orders: n('orders') }; })(),
