@@ -181,3 +181,67 @@ function holdTile() {
     ['Kosten in die periode', eur(H.fees) + (H.fees > 0 && H.bought + H.sold > 0 ? ' (' + P2.format(H.fees / (H.bought + H.sold)) + ' van wat je wisselde)' : '')],
   ]) + '<p class="sub" style="margin-top:8px">Gewogen naar het ingelegde bedrag; verkopen halen de oudste aankopen eerst weg (FIFO). Een terugblik op je eigen gedrag, geen oordeel.</p></section>';
 }
+
+// ---------- Verdeling door de tijd (idee 12) ----------
+// Per maand (de laatste dag met standen) je beleggingen naar sector, land of munt, als balk van 100%. Een aandeel
+// zonder profiel valt onder "Onbekend", zodat elke balk optelt tot 100%. Met een tabel en een zin voor wie de
+// balken niet ziet. In Analyse, hoofdstuk Doorkijk. De keuze sector, land of munt geldt per apparaat.
+const DIST_BY = [['sector', 'Sector'], ['country', 'Land'], ['cur', 'Munt']];
+const LS_DIST_BY = 'tracker.distBy';
+let distBy = (() => { try { const k = localStorage.getItem(LS_DIST_BY); return DIST_BY.some((x) => x[0] === k) ? k : 'sector'; } catch (e) { return 'sector'; } })();
+function distKeyOf(tk, by) {
+  const tx = (M.tx && M.tx.byTk.get(tk)) || [];
+  const c = M.byTk.get(tk) || { tk, name: (tx[0] && tx[0].name) || tk };
+  if (by === 'sector') return listSectorOf(c);
+  const p = M.mk && M.mk.ok ? M.mk.profOf(tk) : null;
+  if (by === 'country') { const k = p && p.country; return k ? (POS_COUNTRY_NL[k] || k) : isFundC(c) ? 'Fondsen' : 'Onbekend'; }
+  const cur = c.cur || (p && p.currency);
+  return cur || 'Onbekend';
+}
+function distMonths(H, by) {
+  const key = new Map(H.tk.map((tk) => [tk, distKeyOf(tk, by)]));
+  const rows = [];
+  H.t.forEach((t, k) => {
+    if (!(H.total[k] > 0)) return;
+    const ym = new Date(t).getFullYear() * 12 + new Date(t).getMonth();
+    const g = {};
+    H.tk.forEach((tk) => { const w = histWeight(H, tk, k); if (w) g[key.get(tk)] = (g[key.get(tk)] || 0) + w; });
+    const row = { t, ym, g };
+    if (rows.length && rows[rows.length - 1].ym === ym) rows[rows.length - 1] = row; else rows.push(row);
+  });
+  const last = rows.length ? rows[rows.length - 1].g : {};
+  // Volgorde en kleur naar het gewicht nu; meer dan acht groepen: de rest als "Overig"
+  const all = new Set();
+  rows.forEach((r) => Object.keys(r.g).forEach((x) => all.add(x)));
+  const order = [...all].sort((a, b) => Number(a === 'Onbekend') - Number(b === 'Onbekend') || (last[b] || 0) - (last[a] || 0));
+  const groups = order.slice(0, 8).concat(order.length > 8 ? ['Overig'] : []);
+  if (order.length > 8) rows.forEach((r) => { r.g.Overig = order.slice(8).reduce((a, x) => a + (r.g[x] || 0), 0); });
+  return { rows: rows.slice(-24), groups };
+}
+function distTile() {
+  const H = histModel();
+  const head = '<section class="tile pad dist-time"><h3>' + esc(T('Verdeling door de tijd')) + '</h3>' +
+    '<div class="seg light" role="group" aria-label="' + esc(T('Verdeling naar')) + '">' + DIST_BY.map(([k, l]) =>
+      '<button type="button" data-dist-by="' + k + '" aria-pressed="' + (k === distBy) + '">' + esc(T(l)) + '</button>').join('') + '</div>';
+  if (!H) return head + '<p class="sub">Bezig met uitrekenen…</p></section>';
+  const D = distMonths(H, distBy);
+  if (D.rows.length < 2) return head + '<p class="sub" style="margin-top:10px">Zodra je posities twee maanden meet, staat hier per maand hoe je beleggingen verdeeld waren.</p></section>';
+  const col = (gname, i) => (gname === 'Onbekend' || gname === 'Overig' ? '#C9CED6' : SECTOR_COLORS[i % SECTOR_COLORS.length]);
+  const mon = (t) => fMonLong.format(t) + ' ' + new Date(t).getFullYear();
+  const top = (r) => D.groups.filter((gname) => r.g[gname] > 0).sort((a, b) => r.g[b] - r.g[a]).slice(0, 3).map((gname) => gname + ' ' + PCT0.format(r.g[gname])).join(', ');
+  const first = D.rows[0], now = D.rows[D.rows.length - 1];
+  const bars = D.rows.map((r) => '<div class="dist-row"><span class="dist-m">' + esc(fMonYr.format(r.t)) + '</span><span class="dist-bar" role="img" aria-label="' + esc(mon(r.t) + ': ' + top(r)) + '">' +
+    D.groups.map((gname, i) => (r.g[gname] > 0.0005 ? '<i style="width:' + (r.g[gname] * 100).toFixed(2) + '%;background:' + col(gname, i) + '" title="' + esc(gname + ' ' + P1.format(r.g[gname])) + '"></i>' : '')).join('') + '</span></div>').join('');
+  const legend = '<div class="dist-leg">' + D.groups.map((gname, i) => '<span><i style="background:' + col(gname, i) + '"></i>' + esc(gname) + '</span>').join('') + '</div>';
+  const table = '<details class="dist-tbl"><summary>' + esc(T('Tabel')) + '</summary><div class="tbl-wrap"><table><thead><tr><th>Maand</th>' + D.groups.map((gname) => '<th class="num">' + esc(gname) + '</th>').join('') + '</tr></thead><tbody>' +
+    D.rows.map((r) => '<tr><td>' + esc(mon(r.t)) + '</td>' + D.groups.map((gname) => '<td class="num">' + esc(r.g[gname] ? P1.format(r.g[gname]) : '–') + '</td>').join('') + '</tr>').join('') + '</tbody></table></div></details>';
+  return head + '<p class="sub" style="margin-top:10px">' + esc('Nu: ' + top(now) + '. In ' + mon(first.t) + ': ' + top(first) + '.') + '</p>' + bars + legend + table +
+    '<p class="sub" style="margin-top:8px">Sector en land komen uit de bedrijfsprofielen; zonder profiel telt een aandeel als onbekend. Een terugblik, geen advies.</p></section>';
+}
+document.addEventListener('click', (e) => {
+  const b = near(e, '[data-dist-by]');
+  if (!b) return;
+  distBy = DIST_BY.some((x) => x[0] === b.dataset.distBy) ? b.dataset.distBy : 'sector';
+  try { localStorage.setItem(LS_DIST_BY, distBy); } catch (err) { /* niet erg */ }
+  refresh('analyse');
+});

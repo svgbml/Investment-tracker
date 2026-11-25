@@ -1552,6 +1552,15 @@ html[data-motion="off"] .mile-dots { display: none; }
 /* Koersalarm vanaf een rij: eigen dialoog */
 .dlg-alarm { width: min(460px, calc(100% - 32px)); padding: 20px; }
 .dlg-alarm-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 4px; }
+/* Verdeling door de tijd (idee 12) */
+.dist-row { display: grid; grid-template-columns: 64px 1fr; align-items: center; gap: 10px; margin: 4px 0; }
+.dist-m { font-size: 12px; color: var(--ink-2); }
+.dist-bar { display: flex; height: 14px; border-radius: 4px; overflow: hidden; background: var(--rule); }
+.dist-bar i { display: block; height: 100%; }
+.dist-leg { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 10px 0 6px; font-size: 12.5px; color: var(--ink-2); }
+.dist-leg span { display: inline-flex; align-items: center; gap: 6px; }
+.dist-leg i { width: 10px; height: 10px; border-radius: 2px; }
+.dist-tbl summary { cursor: pointer; font-size: 13px; color: var(--accent); }
 /* Eigen sneltoetsen (idee 38) */
 .key-list { list-style: none; margin: 6px 0 8px; padding: 0; border-top: 1px solid var(--rule); }
 .key-list li { display: flex; align-items: center; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--rule); }

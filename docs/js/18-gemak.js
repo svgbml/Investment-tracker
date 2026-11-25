@@ -138,7 +138,7 @@ function renderAnalyse() {
   /** @type {[string, string, string, () => string[]][]} */
   const SECS = [
     ['an-ret', 'Rendement', 'Wat je echt verdiende, tegenover een maatstaf, en met welk risico', () => { const X = AX(); return [returnsTile(), benchTile(), ratiosTile(), drawdownTile(), X[0], X[1], contribTile(), X[2], concTile(), periodCmpTile(), yearHeatTile(), realUnrealTile(), fxFeeTile(), X[3], piesTile(), wrappedTile()]; }],
-    ['an-exp', 'Doorkijk en kosten', 'Waar je geld werkelijk in zit, en wat het omwisselen kost', () => [typeof lookAllTile === 'function' ? lookAllTile() : '', typeof concTimeTile === 'function' ? concTimeTile() : '', typeof fxCalcTile === 'function' ? fxCalcTile() : '']],
+    ['an-exp', 'Doorkijk en kosten', 'Waar je geld werkelijk in zit, en wat het omwisselen kost', () => [typeof lookAllTile === 'function' ? lookAllTile() : '', typeof concTimeTile === 'function' ? concTimeTile() : '', typeof distTile === 'function' ? distTile() : '', typeof fxCalcTile === 'function' ? fxCalcTile() : '']],
     ['an-mkt', 'Markt en onderzoek', 'Indexen, rentes, agenda, en wat insiders en grote beleggers doen', () => [mkOverviewTile(), econTile(), heatmapTile(), sectorRotTile(), insiderClusterTile(), earningsMoveTile(), filingsTile(), screenerTile(), etfFinderTile(), f13Tile()]],
     ['an-trade', 'Kopen, verkopen en dagboek', 'Oefenen, beveiliging, vragen voor je verkoopt en wat je besloot', () => [paperTile(), orderSafetyTile(), sellCheckTile(), orderHistoryTile(), typeof holdTile === 'function' ? holdTile() : '', decJournalTile(), decYearTile()]],
     ['an-tx', 'Transacties en begrippen', 'Alles wat er op je rekening gebeurde, en uitleg van de termen', () => [openOrdersTile(), ledgerTile(), glossaryTile()]],
