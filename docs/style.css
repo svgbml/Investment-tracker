@@ -1552,6 +1552,11 @@ html[data-motion="off"] .mile-dots { display: none; }
 /* Koersalarm vanaf een rij: eigen dialoog */
 .dlg-alarm { width: min(460px, calc(100% - 32px)); padding: 20px; }
 .dlg-alarm-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 4px; }
+/* Eigen sneltoetsen (idee 38) */
+.key-list { list-style: none; margin: 6px 0 8px; padding: 0; border-top: 1px solid var(--rule); }
+.key-list li { display: flex; align-items: center; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--rule); }
+.key-list .key-l { flex: 1; min-width: 0; }
+.key-list .key-b { min-width: 120px; justify-content: center; }
 /* Aantekeningen in de grafiek (idee 21) */
 .note-form .plan-inputs { display: grid; gap: 10px; margin: 10px 0 12px; }
 .note-form .plan-inputs label { display: grid; gap: 4px; }

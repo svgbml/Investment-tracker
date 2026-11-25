@@ -8,6 +8,9 @@
 // (gemaakt met node tools/changelog.mjs); hieronder staat alleen wat de gebruiker merkt.
 // Bij een nieuwe versie: zet de regels van die versie bovenaan, met VERSION uit js/01-basis.js als sleutel.
 const WHATS_NEW = {
+  v92: [
+    'Eigen sneltoetsen: bij Instellingen, Weergave kies je per actie een eigen toets, ook voor vernieuwen, het thema en een aantekening. Een toets die al in gebruik is of die de browser nodig heeft, weigert de site met uitleg.',
+  ],
   v91: [
     'Weergave in de link: de indeling, sortering, filter en zoekterm van Bedrijven en de periode van de grote grafiek staan nu in het adres (bijvoorbeeld #bedrijven?groep=sector&sort=waarde). Bewaar of deel zo een weergave; wie de link opent, ziet dezelfde indeling.',
   ],

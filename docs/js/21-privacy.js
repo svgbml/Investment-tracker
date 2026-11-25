@@ -84,6 +84,8 @@ const SET_INDEX = [
   ['account', 'Toegangscode en adres van je Worker', 'token code worker adres url inloggen vergeten'],
   ['view', 'Thema, animaties en taal', 'thema licht donker amoled zwart automatisch beweging animaties taal engels duits frans'],
   ['view', 'Accentkleur', 'accent accentkleur kleur blauw groen paars oranje eigen kleur', 'accent-pick'],
+  ['view', 'Sneltoetsen', 'sneltoets toets toetsenbord kortere weg shortcut', 'key-prefs-h'],
+  ['view', 'Aantekeningen in de grafiek', 'aantekening notitie grafiek speldje', 'chart-notes-h'],
   ['view', 'Leesbaarheid en hulp', 'compact grotere tekst kleurenblind rondleiding sneltoetsen'],
   ['push', 'Meldingen op dit apparaat', 'push melding koersbeweging kwartaalcijfers insiders afwijking drempel'],
   ['push', 'Stille uren en bundelen', 'stil nachtrust slapen rustig dagbundel samenvatting uur', 'quiet-box'],

@@ -311,7 +311,86 @@ dashWrap(document.querySelector('#m-home .m-body'), 'm-home');
 dashWrap(document.querySelector('#m-stats .m-body'), 'm-stats');
 
 // ---------- Snel zoeken (Ctrl+K) en sneltoetsen ----------
-const PAGE_KEYS = { o: 'home', b: 'list', n: 'news', a: 'stats', p: 'plan' };
+// Sneltoetsen (idee 38): één lijst met een standaardtoets per actie. Een eigen keuze geldt per apparaat
+// (localStorage tracker.keys). 'g o' betekent: eerst g, dan o. Ctrl+K blijft vast.
+const LS_KEYS = 'tracker.keys';
+const goPage = (pg) => () => { location.hash = '#' + pageHash(pg); };
+const KEY_ACTIONS = [
+  { id: 'zoek', label: 'snel zoeken', def: '/', run: () => openCmd() },
+  { id: 'hulp', label: 'deze lijst', def: '?', run: () => showKeys() },
+  { id: 'verberg', label: 'bedragen verbergen of tonen', def: 'h', run: () => { const b = $$('.btn-hide')[0]; if (b) b.click(); } },
+  { id: 'overzicht', label: 'Overzicht', def: 'g o', run: goPage('home') },
+  { id: 'bedrijven', label: 'Bedrijven', def: 'g b', run: goPage('list') },
+  { id: 'nieuws', label: 'Nieuws', def: 'g n', run: goPage('news') },
+  { id: 'analyse', label: 'Analyse', def: 'g a', run: goPage('stats') },
+  { id: 'plannen', label: 'Plannen', def: 'g p', run: goPage('plan') },
+  { id: 'status', label: 'Status', def: 'g s', run: () => { location.hash = '#status'; } },
+  { id: 'instellingen', label: 'Instellingen', def: 'g i', run: () => openSettings(false) },
+  { id: 'vernieuw', label: 'gegevens vernieuwen', def: '', run: () => load() },
+  { id: 'thema', label: 'licht of donker thema', def: '', run: () => { const dk = document.documentElement.dataset.theme === 'dark'; try { localStorage.setItem('tracker.theme', dk ? 'light' : 'dark'); } catch (e) { /* niet erg */ } applyTheme(); if (typeof themeChanged === 'function') themeChanged(); } },
+  { id: 'aantekening', label: 'aantekening toevoegen', def: '', run: () => { if (typeof openNoteDlg === 'function') openNoteDlg(noteIso(M && M.lastT ? M.lastT : Date.now())); } },
+];
+// Toetsen die een eigen toets niet mag zijn: de browser of de site heeft ze nodig
+const KEY_NEVER = new Set(['g', 'tab', 'enter', 'escape', ' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'backspace', 'delete', 'home', 'end', 'pageup', 'pagedown', 'f5', 'f11', 'f12', 'contextmenu']);
+const keyNorm = (k) => { const s = String(k || ''); return s.length === 1 ? s.toLowerCase() : s.toLowerCase().replace(/^spacebar$/, ' '); };
+function keyOwn() { try { const o = JSON.parse(localStorage.getItem(LS_KEYS) || '{}'); return o && typeof o === 'object' ? o : {}; } catch (e) { return {}; } }
+function keyOf(id) { const own = keyOwn(); const a = KEY_ACTIONS.find((x) => x.id === id); return Object.prototype.hasOwnProperty.call(own, id) ? String(own[id] || '') : a ? a.def : ''; }
+const keyLabel = (k) => (k ? k.replace(/^g (.)$/, 'g dan $1') : '–');
+// Mag deze toets voor deze actie? Geeft een uitleg terug als het niet mag, anders ''
+function keyRefuse(id, ev) {
+  if (ev.ctrlKey || ev.metaKey || ev.altKey) return 'Combinaties met Ctrl, Alt of Cmd gebruikt de browser zelf (zoals Ctrl+W of Ctrl+T). Kies één toets.';
+  const k = keyNorm(ev.key);
+  if (!k || ev.key === 'Shift' || ev.key === 'Control' || ev.key === 'Alt' || ev.key === 'Meta' || ev.key === 'CapsLock') return 'Kies een letter, cijfer of teken.';
+  if (KEY_NEVER.has(k) || /^f\d+$/.test(k)) return (k === 'g' ? 'De g start de tweestapstoetsen (g dan o).' : 'Deze toets heeft de browser of de site nodig.') + ' Kies een andere.';
+  if (k.length !== 1) return 'Kies een letter, cijfer of teken.';
+  const other = KEY_ACTIONS.find((x) => x.id !== id && keyOf(x.id) === k);
+  if (other) return 'Deze toets hoort al bij ' + other.label + '. Kies een andere, of geef eerst die actie een andere toets.';
+  return '';
+}
+function keySet(id, key) {
+  const own = keyOwn();
+  const a = KEY_ACTIONS.find((x) => x.id === id);
+  if (a && key === a.def) delete own[id]; else own[id] = key;
+  try { if (Object.keys(own).length) localStorage.setItem(LS_KEYS, JSON.stringify(own)); else localStorage.removeItem(LS_KEYS); } catch (e) { /* niet erg */ }
+}
+// Bij Instellingen > Weergave: per actie de toets, klik om een andere te kiezen
+let keyCapture = null;
+function renderKeyPrefs() {
+  const box = $('key-prefs');
+  if (!box) return;
+  const own = keyOwn();
+  box.innerHTML = String(tpl`<ul class="key-list">${KEY_ACTIONS.map((a) => tpl`<li><span class="key-l">${a.label.charAt(0).toUpperCase() + a.label.slice(1)}</span>
+      <button type="button" class="btn ghost key-b" data-key-pick="${a.id}" aria-label="${'Toets voor ' + a.label + ': ' + keyLabel(keyOf(a.id)) + '. Klik om te wijzigen'}">${keyCapture === a.id ? T('Druk op een toets…') : raw('<kbd>' + esc(keyLabel(keyOf(a.id))) + '</kbd>')}</button>
+      ${keyOf(a.id) ? tpl`<button type="button" class="linklike small" data-key-clear="${a.id}">${T('Geen toets')}</button>` : ''}</li>`)}</ul>
+    <p class="small key-st" role="status" aria-live="polite"></p>
+    ${Object.keys(own).length ? tpl`<button type="button" class="btn ghost" data-key-reset>${T('Standaardtoetsen')}</button>` : ''}`);
+}
+const keySay = (t, cls) => { const st = document.querySelector('#key-prefs .key-st'); if (st) { st.textContent = t; st.className = 'small key-st ' + (cls || ''); } };
+document.addEventListener('click', (e) => {
+  const b = near(e, '[data-key-pick]');
+  if (b) { keyCapture = keyCapture === b.dataset.keyPick ? null : b.dataset.keyPick; renderKeyPrefs(); const nb = /** @type {HTMLElement|null} */ (document.querySelector('[data-key-pick="' + b.dataset.keyPick + '"]')); if (nb) nb.focus(); if (keyCapture) keySay('Druk op de toets die je wilt gebruiken. Escape om te stoppen.'); return; }
+  const c = near(e, '[data-key-clear]');
+  if (c) { keySet(c.dataset.keyClear, ''); keyCapture = null; renderKeyPrefs(); keySay('Toets weggehaald.', 'gain'); return; }
+  if (near(e, '[data-key-reset]')) { try { localStorage.removeItem(LS_KEYS); } catch (err) { /* niet erg */ } keyCapture = null; renderKeyPrefs(); keySay('De standaardtoetsen staan weer.', 'gain'); }
+});
+document.addEventListener('keydown', (e) => {
+  if (!keyCapture) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const id = keyCapture;
+  if (e.key === 'Escape') { keyCapture = null; renderKeyPrefs(); keySay('Niets gewijzigd.'); }
+  else {
+    if (['Shift', 'Control', 'Alt', 'Meta', 'CapsLock'].includes(e.key)) return;   // wacht op de echte toets
+    const why = keyRefuse(id, e);
+    if (why) { keySay(why, 'loss'); return; }
+    keySet(id, keyNorm(e.key));
+    keyCapture = null;
+    renderKeyPrefs();
+    keySay('Bewaard: ' + keyNorm(e.key) + '.', 'gain');
+  }
+  const nb = /** @type {HTMLElement|null} */ (document.querySelector('[data-key-pick="' + id + '"]'));
+  if (nb) nb.focus();
+}, true);
 function cmdItems() {
   const go = (h) => () => { location.hash = h; };
   const items = [
@@ -382,9 +461,10 @@ function closeCmd() { if (cmdEl) { cmdEl.remove(); cmdEl = null; } }
 function showKeys() {
   const d = document.createElement('div');
   d.className = 'overlay-dlg';
+  const rows = [['Ctrl+K', 'snel zoeken']].concat(KEY_ACTIONS.filter((a) => keyOf(a.id)).map((a) => [keyLabel(keyOf(a.id)), a.label]), [['Esc', 'sluiten of terug']]);
   d.innerHTML = '<div class="dlg-card" role="dialog" aria-modal="true" aria-label="Sneltoetsen"><h3>Sneltoetsen</h3><dl class="kv">' +
-    [['Ctrl+K of /', 'snel zoeken'], ['g dan o', 'Overzicht'], ['g dan b', 'Bedrijven'], ['g dan n', 'Nieuws'], ['g dan a', 'Analyse'], ['g dan p', 'Plannen'], ['g dan s', 'Status'], ['g dan i', 'Instellingen'], ['h', 'bedragen verbergen of tonen'], ['?', 'deze lijst'], ['Esc', 'sluiten of terug']]
-      .map(([k, v]) => '<div><dt><kbd>' + esc(k) + '</kbd></dt><dd>' + esc(v) + '</dd></div>').join('') + '</dl><div class="dlg-actions"><button type="button" class="btn primary">Sluiten</button></div></div>';
+    rows.map(([k, v]) => '<div><dt><kbd>' + esc(k) + '</kbd></dt><dd>' + esc(v) + '</dd></div>').join('') + '</dl>' +
+    '<p class="muted small">Eigen toetsen kies je bij Instellingen, Weergave.</p><div class="dlg-actions"><button type="button" class="btn primary">Sluiten</button></div></div>';
   document.body.appendChild(d);
   const close = () => d.remove();
   d.addEventListener('click', (e) => { if (e.target === d || e.target.closest('button')) close(); });
@@ -392,19 +472,22 @@ function showKeys() {
 }
 let gWait = 0;
 document.addEventListener('keydown', (e) => {
+  if (keyCapture) return;   // bij Weergave wordt net een toets gekozen
   const typing = e.target.closest && e.target.closest('input, textarea, select, [contenteditable="true"]');
   if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); if (cmdEl) closeCmd(); else openCmd(); return; }
   if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
-  if (e.key === '/') { e.preventDefault(); openCmd(); return; }
-  if (e.key === '?') { showKeys(); return; }
-  if (e.key === 'h') { const b = $$('.btn-hide')[0]; if (b) b.click(); return; }
-  if (e.key === 'g') { gWait = Date.now(); return; }
+  const k = keyNorm(e.key);
+  if (!k) return;
+  // Tweede toets na g (g dan o …)
   if (gWait && Date.now() - gWait < 1200) {
     gWait = 0;
-    if (PAGE_KEYS[e.key]) location.hash = '#' + pageHash(PAGE_KEYS[e.key]);
-    else if (e.key === 's') location.hash = '#status';
-    else if (e.key === 'i') openSettings(false);
+    const a = KEY_ACTIONS.find((x) => keyOf(x.id) === 'g ' + k);
+    if (a) { e.preventDefault(); a.run(); }
+    return;
   }
+  const a = KEY_ACTIONS.find((x) => keyOf(x.id) === k);
+  if (a) { e.preventDefault(); a.run(); return; }
+  if (k === 'g' && KEY_ACTIONS.some((x) => (keyOf(x.id) || '').startsWith('g '))) gWait = Date.now();
 });
 
 // ---------- Telefoon: omlaag trekken om te vernieuwen, vegen tussen pagina's ----------
