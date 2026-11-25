@@ -8,6 +8,9 @@
 // (gemaakt met node tools/changelog.mjs); hieronder staat alleen wat de gebruiker merkt.
 // Bij een nieuwe versie: zet de regels van die versie bovenaan, met VERSION uit js/01-basis.js als sleutel.
 const WHATS_NEW = {
+  v96: [
+    'Uurpunten bij inzoomen: zoom je op de grote grafiek in tot een paar weken, dan zie je weer het verloop per uur, ook van maanden geleden. Uurregels ouder dan 60 dagen bewaart de Worker daarvoor per maand in je R2-opslag (als die gekoppeld is).',
+  ],
   v95: [
     'Boekhouding nakijken: één keer per week telt de tracker de aantallen per aandeel op uit al je orders (ook uit de CSV-import) en vergelijkt die met de laatste meting. Verschillen staan op de statuspagina; ontbreken oude orders, dan staat er dat je de CSV-export kunt inlezen.',
   ],

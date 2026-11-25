@@ -341,6 +341,10 @@ const WORKER = {
         try { return json(Object.assign({ ok: true }, await liveCheck(env, url.searchParams.get('tk'))), 200, cors); }
         catch (e) { return json({ ok: false, error: String(e && e.message || e) }, 400, cors); }
       }
+      if (url.pathname === '/api/uren' && request.method === 'GET') {
+        try { return json(Object.assign({ ok: true }, await hoursArchive(env, url.searchParams.get('maand'), url.searchParams.get('tk'))), 200, cors); }
+        catch (e) { return json({ ok: false, error: String(e && e.message || e) }, 400, cors); }
+      }
       if (url.pathname === '/api/watchquotes' && request.method === 'GET') {
         return json(Object.assign({ ok: true }, await watchQuotes(env, url.searchParams.get('syms'))), 200, cors);
       }
@@ -1424,13 +1428,57 @@ async function cleanupOld(env, now) {
   const day = (n) => new Date(now.getTime() - n * 864e5).toISOString().slice(0, 10);
   const out = [];
   const run = async (sql, arg, what) => { try { const r = await env.DB.prepare(sql).bind(arg).run(); const n = r.meta && r.meta.changes; if (n) out.push(n + ' ' + what); } catch (e) { /* tabel bestaat (nog) niet */ } };
-  await run('DELETE FROM hours WHERE hour < ?', now.getTime() - KEEP_HOURS_DAYS * 864e5, 'uurregels');
+  // Eerst naar R2 (idee 49); lukt dat niet, dan blijven de uurregels nog een dag staan
+  const hourCut = now.getTime() - KEEP_HOURS_DAYS * 864e5;
+  let archived = true;
+  try { const n = await archiveHours(env, hourCut); if (n) out.push(n + ' uurregels naar R2'); }
+  catch (e) { archived = false; console.error('uren naar R2', e); await noteExtError(env, 'r2', 'Uurregels konden niet naar R2: ' + String(e && e.message || e)); }
+  if (archived) await run('DELETE FROM hours WHERE hour < ?', hourCut, 'uurregels');
   await invalidateRecent(env);
   await run('DELETE FROM ext_prices WHERE day < ?', day(KEEP_EXT_DAYS), 'koersen');
   await bumpMarket(env, []);   // de marktcache laat oude dagen zelf al weg
   await run('DELETE FROM ext_perf WHERE day < ?', day(KEEP_EXT_DAYS), 'sectordagen');
   await setKv(env, 'cleanup_day', today);
   return out.length ? 'Opgeruimd: ' + out.join(', ') + '.' : '';
+}
+
+// ---------- Uurregels bewaren in R2 (idee 49) ----------
+// Voordat cleanupOld uurregels ouder dan KEEP_HOURS_DAYS weghaalt, gaan ze per maand naar R2 (uren/JJJJ-MM.json),
+// samengevoegd met wat er al stond. /api/uren?maand=JJJJ-MM&tk= geeft een maand terug; de site haalt zo uurpunten op
+// als je in de grote grafiek inzoomt op een oudere periode. Zonder R2-binding (BACKUP) verandert er niets.
+const HOUR_COLS = ['hour', 'ticker', 'open', 'close', 'low', 'high', 'avg'];
+async function archiveHours(env, before) {
+  if (!env.BACKUP) return 0;
+  const { results } = await env.DB.prepare('SELECT hour, ticker, open, close, low, high, avg FROM hours WHERE hour < ? ORDER BY hour').bind(before).all();
+  if (!results.length) return 0;
+  const byMonth = new Map();
+  results.forEach((x) => {
+    const at = isoLocal(x.hour), m = at.slice(0, 7);
+    if (!byMonth.has(m)) byMonth.set(m, []);
+    byMonth.get(m).push([at, x.ticker, x.open, x.close, x.low, x.high, x.avg]);
+  });
+  for (const [m, rows] of byMonth) {
+    const key = 'uren/' + m + '.json';
+    let old = [];
+    const o = await env.BACKUP.get(key);
+    if (o) { try { old = JSON.parse(await o.text()).rows || []; } catch (e) { old = []; } }
+    const map = new Map(old.map((x) => [x[0] + '|' + x[1], x]));
+    rows.forEach((x) => map.set(x[0] + '|' + x[1], x));
+    const all = [...map.values()].sort((a, b) => (a[0] === b[0] ? String(a[1]).localeCompare(String(b[1])) : a[0] < b[0] ? -1 : 1));
+    await env.BACKUP.put(key, JSON.stringify({ month: m, columns: HOUR_COLS, rows: all }), { httpMetadata: { contentType: 'application/json' } });
+  }
+  return results.length;
+}
+async function hoursArchive(env, maand, tk) {
+  if (!env.BACKUP) return { on: false, rows: [] };
+  if (!/^\d{4}-\d{2}$/.test(String(maand || ''))) throw new Error('Ongeldige maand; gebruik JJJJ-MM.');
+  const o = await env.BACKUP.get('uren/' + maand + '.json');
+  if (!o) return { on: true, month: maand, columns: HOUR_COLS, rows: [] };
+  let d = {};
+  try { d = JSON.parse(await o.text()); } catch (e) { d = {}; }
+  const t = tk ? String(tk).toUpperCase().slice(0, 20) : null;
+  const rows = Array.isArray(d.rows) ? d.rows : [];
+  return { on: true, month: maand, columns: HOUR_COLS, rows: t ? rows.filter((x) => x[1] === t) : rows };
 }
 
 async function batchChunks(env, stmts) {
@@ -3954,7 +4002,7 @@ function isDst(localIso) {
 export const _test = { parts, isLive, marketHours, shortTicker, isoLocal, isDst, hourStart, dayOf, newsHistTask, storeNews, noteOpinionDay, figiRecord, gdeltName, usTicker, heldStocks,
   tradingDay, usTradingDay, shiftDay, weekdayOf, srcPause, srcFail, srcOk, srcState, srcHistState, checkPositions, splitRatio,
   planResearch, uniqTasks, dbWatch, testKey, r2Backup, r2Info, r2Preview, healthInfo, budgetInfo, buildData, bumpMarket, ensureMarketTables, ensureIndexes, countingDb, flushCalls, srcFail, searchCompanies, checkPriceAlerts, saveMode, buildAllowed, seriesRows, todayState, seriesFull, newsKind, newsBreaking, flashMerge, newsWatch, marketDataCached, marketData, invalidateSeries, cfTrend, setBig, getBig, invalidateOrders,
-  housekeeping, lastRows, ledgerCheck, watchQuotes, wqClear: () => WQ.clear(), usSym, QUOTES, kvMemoClear: () => { kvMemo = new WeakMap(); }, sicSector, parseForm4, quarterlyEps, polyNewsItems, altTask, eodBackup, planMarket };
+  housekeeping, lastRows, ledgerCheck, archiveHours, cleanupOld, watchQuotes, wqClear: () => WQ.clear(), usSym, QUOTES, kvMemoClear: () => { kvMemo = new WeakMap(); }, sicSector, parseForm4, quarterlyEps, polyNewsItems, altTask, eodBackup, planMarket };
 
 
 // =====================================================================

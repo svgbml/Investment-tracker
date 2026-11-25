@@ -2545,5 +2545,47 @@ await test('boekhouding nakijken: aantallen uit de orders tegen de laatste metin
   WM._test.kvMemoClear();
 });
 
+await test('uurregels bewaren in R2: per maand samengevoegd vóór het opruimen, terug te halen via /api/uren (idee 49)', async () => {
+  const T = WM._test;
+  const D2 = new D1();
+  for (const { sql } of DB.db.prepare("SELECT sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY type DESC").all()) D2.db.exec(sql);
+  const store = new Map();
+  let failPut = false;
+  const bucket = {
+    get: async (k) => (store.has(k) ? { text: async () => store.get(k) } : null),
+    put: async (k, v) => { if (failPut) throw new Error('R2 weigert'); store.set(k, String(v)); },
+    list: async () => ({ objects: [] }), delete: async (k) => { store.delete(k); },
+  };
+  const e2 = Object.assign({}, env, { DB: D2, BACKUP: bucket });
+  const now = new Date('2026-11-24T05:00:00Z');
+  const ins = D2.db.prepare('INSERT OR REPLACE INTO hours (hour, ticker, name, open, close, low, high, avg, n, close_price) VALUES (?,?,?,?,?,?,?,?,?,?)');
+  const h = (iso, tk, v) => ins.run(Date.parse(iso), tk, tk, v, v, v, v, v, 6, null);
+  h('2026-08-30T10:00:00Z', 'TOTAAL', 100); h('2026-08-30T10:00:00Z', 'AAPL', 40); h('2026-09-02T10:00:00Z', 'TOTAAL', 101);
+  h('2026-11-20T10:00:00Z', 'TOTAAL', 150);   // recent: blijft in D1
+  const hours = () => D2.db.prepare('SELECT COUNT(*) AS n FROM hours').get().n;
+  const clean = async () => { D2.db.prepare("INSERT OR REPLACE INTO kv (key, value) VALUES ('cleanup_day', '')").run(); WM._test.kvMemoClear(); return T.cleanupOld(e2, now); };
+  // Lukt het schrijven naar R2 niet, dan blijven de uurregels staan
+  failPut = true;
+  await clean();
+  assert.equal(hours(), 4, 'niets weggehaald zonder kopie in R2');
+  failPut = false;
+  await clean();
+  assert.equal(hours(), 1, 'na de kopie weggehaald');
+  assert.deepEqual([...store.keys()].sort(), ['uren/2026-08.json', 'uren/2026-09.json']);
+  // Volgende ronde: samenvoegen met wat er al staat
+  h('2026-09-03T10:00:00Z', 'TOTAAL', 102);
+  await clean();
+  assert.equal(JSON.parse(store.get('uren/2026-09.json')).rows.length, 2, 'samengevoegd');
+  // Terughalen: alleen het totaal, en een ongeldige maand geweigerd
+  const r = await jsonOf(await req('/api/uren?maand=2026-08&tk=TOTAAL', { env: e2 }));
+  assert.ok(r.on && r.rows.length === 1 && r.rows[0][1] === 'TOTAAL' && r.rows[0][3] === 100);
+  assert.equal((await req('/api/uren?maand=../x', { env: e2 })).status, 400);
+  assert.equal((await jsonOf(await req('/api/uren?maand=2025-01', { env: e2 }))).rows.length, 0, 'lege maand');
+  // Zonder R2: uit, en het opruimen werkt zoals vroeger
+  const off = await jsonOf(await req('/api/uren?maand=2026-08'));
+  assert.equal(off.on, false);
+  WM._test.kvMemoClear();
+});
+
 console.log((failed ? failed + ' fout, ' : '') + passed + ' geslaagd');
 process.exit(failed ? 1 : 0);

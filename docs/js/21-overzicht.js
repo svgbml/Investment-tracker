@@ -535,3 +535,47 @@ document.addEventListener('submit', async (e) => {
     toastOk(T('Aantekening bewaard.'));
   } catch (err) { st.textContent = foutTekst('De aantekening kon niet worden bewaard', err, 'Probeer het opnieuw.'); st.className = 'small plan-status loss'; }
 });
+
+// ---------- Uurpunten bij inzoomen (idee 49) ----------
+// Zoom je op de grote grafiek in tot een venster van hooguit 45 dagen, dan toont hij uurpunten. De laatste 60 dagen
+// staan al op het apparaat (M.hours); oudere maanden haalt de site één keer op uit R2 (/api/uren, alleen het totaal).
+const hourArch = new Map();   // 'JJJJ-MM' -> punten, of 'bezig' / 'geen'
+const archMonth = (t) => { const d = new Date(t); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); };
+function heroFine(a, b, p) {
+  const hrs = (M && M.hours && M.hours.get(TOTAL)) || [];
+  const first = hrs.length ? hrs[0].t : Infinity;
+  const local = hrs.filter((x) => x.t >= a && x.t <= b).map((x) => ({ t: x.t, v: x.v }));
+  let arch = [];
+  if (a < first) {
+    const months = [];
+    for (let d = new Date(new Date(a).getFullYear(), new Date(a).getMonth(), 1); d.getTime() <= Math.min(b, first); d.setMonth(d.getMonth() + 1)) months.push(archMonth(d.getTime()));
+    months.forEach((m) => { const h = hourArch.get(m); if (Array.isArray(h)) arch = arch.concat(h); else if (!h) hourArchLoad(m, p); });
+  }
+  return arch.filter((x) => x.t >= a && x.t <= b && x.t < first).concat(local).sort((x, y) => x.t - y.t);
+}
+async function hourArchLoad(m, p) {
+  hourArch.set(m, 'bezig');
+  try {
+    let pts = [];
+    if (demo) pts = demoHourArch(m);
+    else if (isWorker() && getToken() && !sharedView) {
+      const r = await workerCall('/api/uren?maand=' + m + '&tk=' + encodeURIComponent(TOTAL), { method: 'GET' });
+      pts = (r.rows || []).map((x) => ({ t: new Date(x[0]).getTime(), v: x[3] })).filter((x) => isNum(x.t) && isNum(x.v));
+    }
+    hourArch.set(m, pts.length ? pts : 'geen');
+    // Na de lopende tekenbeurt opnieuw tekenen (in de demo komen de punten meteen, midden in die beurt)
+    if (pts.length) setTimeout(() => drawHero(p, false), 0);
+  } catch (e) { hourArch.set(m, 'geen'); }
+}
+// Voorbeeld: uurpunten verzonnen uit de dagstanden van die maand, zodat inzoomen ook zonder Worker iets laat zien
+function demoHourArch(m) {
+  const dys = ((M && M.days && M.days.get(TOTAL)) || []).filter((d) => archMonth(d.t) === m);
+  const out = [];
+  dys.forEach((d) => {
+    for (let h = 0; h < 15; h++) {
+      const f = h / 14, t = new Date(d.t); t.setHours(8 + h, 0, 0, 0);
+      out.push({ t: t.getTime(), v: Math.round((d.open + (d.close - d.open) * f + Math.sin(h * 1.7 + d.t / 864e5) * (d.high - d.low) * 0.3) * 100) / 100 });
+    }
+  });
+  return out;
+}

@@ -76,9 +76,15 @@ function lineChart(host, sets, o) {
     if (z && sets[0] && sets[0].pts.length) {
       const full = sets[0].pts;
       const cut = sets.map((s) => Object.assign({}, s, { pts: s.pts.filter((p) => p.t >= z[0] && p.t <= z[1]) }));
-      if (cut[0].pts.length >= 3) {
+      const zMarkers = () => (o.markers || []).map((mk) => (mk.i != null ? { t: full[mk.i] && full[mk.i].t, label: mk.label, kind: mk.kind } : mk)).filter((mk) => mk.t >= z[0] && mk.t <= z[1]);
+      // Fijnere punten voor een kort venster (o.fine, bijvoorbeeld uurpunten uit R2; idee 49): dan alleen de hoofdlijn
+      const fine = o.fine && z[1] - z[0] <= 45 * DAY ? o.fine(z[0], z[1]) : null;
+      if (fine && fine.length >= 3) {
+        sets = [Object.assign({}, sets[0], { pts: fine })];
+        o = Object.assign({}, o, { markers: zMarkers(), tfmt: o.fineTfmt || o.tfmt });
+      } else if (cut[0].pts.length >= 3) {
         sets = cut;
-        o = Object.assign({}, o, { markers: (o.markers || []).map((mk) => (mk.i != null ? { t: full[mk.i] && full[mk.i].t, label: mk.label, kind: mk.kind } : mk)).filter((mk) => mk.t >= z[0] && mk.t <= z[1]) });
+        o = Object.assign({}, o, { markers: zMarkers() });
       } else host._zoom = null;
     }
   }
@@ -658,6 +664,7 @@ function drawHero(p, animate) {
   // Op de computer staat de waarde over de grafiek heen: de lijn blijft in het onderste deel
   lineChart($(p + 'hero-chart'), /** @type {any[]} */ ([{ pts, color: C.accent, width: 2.5, label: 'Jouw beleggingen', fill: true }]).concat(cmp.sets), {
     animate, markers: pins, xl: $(p + 'hero-x'), xfmt: xFmt(r, pts), tfmt: tFmt(r, pts), top: p ? undefined : 0.44,
+    fine: (a, b) => heroFine(a, b, p), fineTfmt: (t) => fDT.format(t),
     empty: 'Nog te weinig metingen voor deze periode. De tracker meet op werkdagen de hele dag, elke 10 minuten.',
   });
   // Zei de lijn iets anders dan de waarde zelf, dan staat erbij dat aan- en verkopen eruit zijn gehaald
