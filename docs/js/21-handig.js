@@ -8,6 +8,9 @@
 // (gemaakt met node tools/changelog.mjs); hieronder staat alleen wat de gebruiker merkt.
 // Bij een nieuwe versie: zet de regels van die versie bovenaan, met VERSION uit js/01-basis.js als sleutel.
 const WHATS_NEW = {
+  v94: [
+    'Geld dat stilstaat: op de pagina Accountwaarde zie je sinds wanneer er minstens € 100 vrij staat, hoeveel de hele tijd vrij stond en hoeveel rente je daarover kreeg (uit de CSV-import van Trading 212).',
+  ],
   v93: [
     'Zuiniger meten: een positie die sinds de vorige meting niet veranderde, krijgt geen nieuwe regel meer in de database (elk uur wel één). Dat scheelt vooral ’s nachts veel geschreven rijen van het gratis Cloudflare-plan. De grafieken lopen gewoon door.',
   ],

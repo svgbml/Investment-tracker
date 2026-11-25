@@ -522,8 +522,10 @@ function makeDemoData() {
     [44, 'AMZN', 'rumour', false, 'Reuters', 'Voorbeeld: Amazon overweegt naar verluidt de verkoop van een dochterbedrijf'],
     [70, 'TSLA', null, true, 'Reuters', 'Voorbeeld: toezichthouder opent onderzoek naar Tesla'],
   ].map(([h, tk, kind, breaking, source, headline], k) => Object.assign({ t: now.getTime() - Number(h) * HOUR, tk, source, headline: headline + ' (geen echt nieuws)', url: '#flash-' + k }, kind ? { kind } : {}, breaking ? { breaking } : {}));
+  // Geld dat stilstaat (idee 6): het vrije saldo van de laatste week, al zeven weken minstens € 100
+  const cashNow = weeks.length ? { cash: weeks[weeks.length - 1].cash, at: iso(now), idle: { since: dIn(-47) + 'T09:10:00', low: r2(weeks[weeks.length - 1].cash * 0.9) } } : null;
   return Object.assign({
-    ok: true, generated: iso(now), currency: 'EUR', weeks, positionsDate: iso(now), positions, today, events, market, marketNews, newsFlash, demoNotes, demoAccounts, demoPrefs, demoViews, demoPriv,
+    ok: true, generated: iso(now), currency: 'EUR', weeks, cashNow, positionsDate: iso(now), positions, today, events, market, marketNews, newsFlash, demoNotes, demoAccounts, demoPrefs, demoViews, demoPriv,
     orders: { columns: ['time', 'ticker', 'name', 'side', 'qty', 'price', 'currency', 'fxRate', 'net', 'realised', 'feeFx', 'feeOther', 'kind'], rows: orders },
     posExtra, etf, peil: peilDemo, settings: {}, demoTrade,
     intraday: { columns: ['time', 'ticker', 'value', 'qty'], rows: intraday },

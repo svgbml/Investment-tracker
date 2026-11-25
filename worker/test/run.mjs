@@ -2473,5 +2473,41 @@ await test('geen dubbele metingen: onveranderd alleen het totaal, elk uur alles,
   }
 });
 
+await test('geld dat stilstaat: sinds wanneer minstens 100 euro vrij staat en de laagste stand (idee 6)', async () => {
+  const T = WM._test;
+  const round = async (t, cash) => {
+    routes = [[/t212\.test\/api\/v0\/equity\/positions/, reply(T212_POS)], [/t212\.test\/api\/v0\/equity\/account\/summary/, reply({ currency: 'EUR', cash: { availableToTrade: cash, inPies: 0, reservedForOrders: 0 } })]];
+    setKv('hk_hour', String(T.hourStart(t)));
+    const pending = [];
+    await W.scheduled({ cron: '*/10 * * * *', scheduledTime: t }, env, { waitUntil: (p) => { pending.push(p); } });
+    await Promise.all(pending);
+    return JSON.parse(kv('cash_now'));
+  };
+  const t1 = Date.parse('2031-03-05T10:00:00Z');
+  try {
+    let c = await round(t1, 80);
+    assert.equal(c.cash, 80);
+    assert.ok(!c.idle, 'onder 100 euro: niets');
+    c = await round(t1 + 600e3, 150);
+    assert.ok(c.idle && c.idle.low === 150, 'boven 100 euro: begin van de periode');
+    const since = c.idle.since;
+    c = await round(t1 + 1200e3, 120);
+    assert.equal(c.idle.since, since, 'zelfde periode');
+    assert.equal(c.idle.low, 120, 'laagste stand sindsdien');
+    c = await round(t1 + 1800e3, 300);
+    assert.equal(c.idle.low, 120);
+    c = await round(t1 + 2400e3, 40);
+    assert.ok(!c.idle, 'weer onder 100 euro: periode voorbij');
+    const d = await jsonOf(await req('/api/data?part=core&split=1'));
+    assert.equal(d.cashNow.cash, 40);
+  } finally {
+    DB.db.prepare('DELETE FROM intraday WHERE ts >= ?').run(t1);
+    setKv('meas_last', '');
+    setKv('cash_now', JSON.stringify({ cash: 80, at: '2026-11-18T12:00:00' }));
+    await T.invalidateSeries(env);
+    routes = [];
+  }
+});
+
 console.log((failed ? failed + ' fout, ' : '') + passed + ' geslaagd');
 process.exit(failed ? 1 : 0);

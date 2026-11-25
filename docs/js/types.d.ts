@@ -188,7 +188,7 @@ interface ContractCore {
   positions: ContractPosition[];
   positionsDate: string | null;
   today: ContractToday[];
-  cashNow: { cash: number; at: string; [k: string]: unknown } | null;
+  cashNow: { cash: number; at: string; idle?: { since: string; low: number }; [k: string]: unknown } | null;
   posExtra: { [ticker: string]: ContractOpen };
   settings: ContractOpen;
   features: { flags: { [k: string]: boolean }; has: { [k: string]: boolean } };

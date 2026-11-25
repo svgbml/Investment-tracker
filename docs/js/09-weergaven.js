@@ -520,7 +520,7 @@ function renderAccount() {
     ['Grootste positie', sorted[0] ? sorted[0].tk + ', ' + pctOf(sorted[0].value) : '–'],
   ]);
 
-  const secTile = (M.mk.ok ? sectorTiles()[0] : '') + accountsSummaryTile();
+  const secTile = (M.mk.ok ? sectorTiles()[0] : '') + accountsSummaryTile() + idleCashTile();
   const tiles = [
     '<section class="tile pad"><h3>Verdeling over posities</h3>' + donut(slices, eur(total), 'accountwaarde', 'Verdeling van je accountwaarde over posities en vrij saldo') + legend + '</section>',
     '<section class="tile pad"><h3>Soort belegging</h3>' + donut(kinds.filter((k) => k.v > 0), pctOf(etf), 'in fondsen', 'Verdeling over fondsen, losse aandelen en vrij saldo') + kindLegend +
@@ -539,6 +539,33 @@ function renderAccount() {
   return '<div class="band" style="padding-bottom:24px">' + crumbNav('Accountwaarde') + '<div class="d-top"><button type="button" class="btn dark" data-act="back">← Terug</button></div>' +
     '<div class="hero-head"><div>' + head + '</div></div></div>' +
     '<div class="wrap"><div class="grid wide">' + tiles.slice(0, 2).join('') + secTile + '</div><div class="grid wide" style="margin-top:16px">' + tiles[2] + tiles[3] + realisedTile() + '</div></div>';
+}
+
+// Geld dat stilstaat (idee 6): sinds wanneer er minstens € 100 vrij staat, de laagste stand in die periode en de
+// rente die je daarover kreeg (uit de CSV-import van Trading 212). Een overzicht, geen aansporing om te beleggen.
+function idleCashTile() {
+  const cn = data.cashNow;
+  if (!cn || !isNum(cn.cash)) return '';
+  const I = cn.idle;
+  let body;
+  if (!I || !I.since) {
+    body = '<p class="sub">' + esc(cn.cash < 100
+      ? 'Je vrije saldo is ' + eur(cn.cash) + ', minder dan € 100. Hier staat niets stil.'
+      : 'Sinds wanneer dit saldo vrij staat, houdt de tracker vanaf de volgende meting bij.') + '</p>';
+  } else {
+    const t0 = new Date(I.since).getTime(), t1 = cn.at ? new Date(cn.at).getTime() : Date.now();
+    const days = Math.max(0, Math.round((t1 - t0) / DAY));
+    const d0 = String(I.since).slice(0, 10);
+    const ints = ((data.ext2 && data.ext2.interest) || []).filter((x) => x && String(x.date) >= d0 && isNum(Number(x.amount)));
+    const rente = sum(ints.map((x) => Number(x.amount)));
+    body = kvList([
+      ['Vrij saldo nu', eur(cn.cash)],
+      ['Minstens € 100 sinds', fD.format(t0) + ' ' + d0.slice(0, 4) + ' (' + days + (days === 1 ? ' dag' : ' dagen') + ')'],
+      ['Stond de hele tijd vrij', isNum(I.low) ? eur(I.low) : '–'],
+      ['Rente in die periode', ints.length ? eur(rente) : (data.ext2 && data.ext2.interest ? eur(0) : 'komt uit de CSV-import')],
+    ]) + '<p class="sub" style="margin-top:8px">Alleen een overzicht van wat er vrij staat. Of je geld vrij wilt houden, bijvoorbeeld als buffer, is jouw keuze.</p>';
+  }
+  return '<section class="tile pad idle-cash"><h3>' + esc(T('Geld dat stilstaat')) + '</h3>' + body + '</section>';
 }
 
 // ---------- Uitklapweergaven: risico, resultaat, stortingen ----------

@@ -1108,7 +1108,12 @@ async function tick(env, now, force) {
       try {
         const sum = await t212(env, '/api/v0/equity/account/summary');
         const cash = num(sum.cash && sum.cash.availableToTrade) + num(sum.cash && sum.cash.inPies) + num(sum.cash && sum.cash.reservedForOrders);
-        await setKv(env, 'cash_now', JSON.stringify({ cash: r2(cash), at: isoLocal(ts) }));
+        // Geld dat stilstaat (idee 6): sinds wanneer staat er minstens CASH_IDLE_MIN vrij, en wat was de laagste stand
+        // sindsdien (dat bedrag stond de hele tijd stil). Gaat mee in dezelfde kv-regel, dus geen extra schrijfactie.
+        const prevCash = await cashNowOf(env), c = r2(cash);
+        const was = prevCash && prevCash.idle && prevCash.idle.since ? prevCash.idle : null;
+        const idle = c >= CASH_IDLE_MIN ? (was ? { since: was.since, low: Math.min(Number(was.low) || c, c) } : { since: isoLocal(ts), low: c }) : null;
+        await setKv(env, 'cash_now', JSON.stringify(Object.assign({ cash: c, at: isoLocal(ts) }, idle ? { idle } : {})));
       } catch (e) { console.error('saldo', e); }
       try { const m = await alertMoves(env, rows, now); if (m) msgs.push(m); } catch (e) { console.error('meldingen', e); }
       try { const m = await checkPriceAlerts(env, rows, now); if (m) msgs.push(m); } catch (e) { console.error('koersalarm', e); }
@@ -1432,7 +1437,8 @@ async function batchChunks(env, stmts) {
   for (let i = 0; i < stmts.length; i += 50) await env.DB.batch(stmts.slice(i, i + 50));
 }
 
-// Laatst gemeten vrij saldo (bij elke meting bijgewerkt)
+// Laatst gemeten vrij saldo (bij elke meting bijgewerkt), met idle: sinds wanneer het minstens CASH_IDLE_MIN is
+const CASH_IDLE_MIN = 100;
 async function cashNowOf(env) {
   try { const c = JSON.parse((await getKv(env, 'cash_now')) || 'null'); return c && isFinite(Number(c.cash)) ? c : null; } catch (e) { return null; }
 }
