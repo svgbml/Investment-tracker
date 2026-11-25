@@ -12,6 +12,7 @@ const GLOSS = {
   vol: ['Beweeglijkheid (volatiliteit)', 'Hoe sterk de waarde van dag tot dag schommelt, omgerekend naar een jaar. 15% betekent: in twee van de drie jaren ligt het rendement ongeveer binnen 15 procentpunt van het gemiddelde.'],
   sharpe: ['Sharpe-ratio', 'Rendement boven de risicovrije rente, gedeeld door de beweeglijkheid. Hoger is beter: meer rendement per eenheid risico. Boven 1 is goed.'],
   hhi: ['HHI (Herfindahl-index)', 'De som van de kwadraten van alle gewichten. Eén positie geeft 1, tien even grote posities geven 0,1. Hoe lager, hoe meer je geld gespreid is. 1 gedeeld door de HHI is het effectieve aantal posities.'],
+  omloop: ['Omloop (turnover)', 'Hoeveel je in een jaar wisselt: het kleinste van wat je kocht en wat je verkocht, gedeeld door de gemiddelde waarde van je beleggingen. 100% betekent dat je in een jaar ongeveer alles een keer verving.'],
   sortino: ['Sortino-ratio', 'Zoals de Sharpe-ratio, maar alleen dalingen tellen als risico. Stijgingen zijn immers geen probleem.'],
   calmar: ['Calmar-ratio', 'Rendement per jaar gedeeld door de grootste daling. Laat zien hoeveel rendement je kreeg voor de pijn van de diepste dip.'],
   beta: ['Beta', 'Hoe sterk je beleggingen meebewegen met de markt. Beta 1,2: als de S&P 500 1% stijgt, stijg jij gemiddeld 1,2%.'],
@@ -139,7 +140,7 @@ function renderAnalyse() {
     ['an-ret', 'Rendement', 'Wat je echt verdiende, tegenover een maatstaf, en met welk risico', () => { const X = AX(); return [returnsTile(), benchTile(), ratiosTile(), drawdownTile(), X[0], X[1], contribTile(), X[2], concTile(), periodCmpTile(), yearHeatTile(), realUnrealTile(), fxFeeTile(), X[3], piesTile(), wrappedTile()]; }],
     ['an-exp', 'Doorkijk en kosten', 'Waar je geld werkelijk in zit, en wat het omwisselen kost', () => [typeof lookAllTile === 'function' ? lookAllTile() : '', typeof concTimeTile === 'function' ? concTimeTile() : '', typeof fxCalcTile === 'function' ? fxCalcTile() : '']],
     ['an-mkt', 'Markt en onderzoek', 'Indexen, rentes, agenda, en wat insiders en grote beleggers doen', () => [mkOverviewTile(), econTile(), heatmapTile(), sectorRotTile(), insiderClusterTile(), earningsMoveTile(), filingsTile(), screenerTile(), etfFinderTile(), f13Tile()]],
-    ['an-trade', 'Kopen, verkopen en dagboek', 'Oefenen, beveiliging, vragen voor je verkoopt en wat je besloot', () => [paperTile(), orderSafetyTile(), sellCheckTile(), orderHistoryTile(), decJournalTile(), decYearTile()]],
+    ['an-trade', 'Kopen, verkopen en dagboek', 'Oefenen, beveiliging, vragen voor je verkoopt en wat je besloot', () => [paperTile(), orderSafetyTile(), sellCheckTile(), orderHistoryTile(), typeof holdTile === 'function' ? holdTile() : '', decJournalTile(), decYearTile()]],
     ['an-tx', 'Transacties en begrippen', 'Alles wat er op je rekening gebeurde, en uitleg van de termen', () => [openOrdersTile(), ledgerTile(), glossaryTile()]],
   ];
   const lazy = mode === 'm' && !analyseAll;

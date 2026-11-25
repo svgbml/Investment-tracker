@@ -132,3 +132,52 @@ function drawConcTime(root) {
     { pts: C2.map((x) => ({ t: x.t, v: x.hhi })), color: C.ink2, dash: true, width: 2, label: 'HHI', fmt: (v) => N2.format(v) },
   ], { top: 0.22, bottom: 0.08, zoom: false, xl: root.querySelector('[data-x="conc-time"]'), xcount: 3, xfmt: (t) => fMonYr.format(t), tfmt: (t) => fMonLong.format(t) + ' ' + new Date(t).getFullYear() });
 }
+
+// ---------- Houdduur en omloop (idee 14) ----------
+// Uit de orders, met FIFO-loten per aandeel: hoe lang verkochte stukken in bezit waren en hoe oud wat je nu hebt is
+// (beide gewogen naar het ingelegde bedrag), de omzet over de laatste twaalf maanden (het kleinste van gekocht en
+// verkocht, gedeeld door de gemiddelde waarde) en de kosten die daarbij hoorden.
+function holdModel() {
+  const trades = (M.tx && M.tx.trades) || [];
+  if (!trades.length) return null;
+  const lots = new Map();
+  let soldW = 0, soldWD = 0;
+  trades.forEach((x) => {
+    if (!isNum(x.qty) || !(x.qty > 0)) return;
+    if (!lots.has(x.tk)) lots.set(x.tk, []);
+    const L = lots.get(x.tk);
+    if (x.side === 'BUY') { L.push({ t: x.t, q: x.qty, per: (isNum(x.net) ? x.net : 0) / x.qty }); return; }
+    let q = x.qty;
+    while (q > 1e-9 && L.length) {
+      const o = L[0], take = Math.min(o.q, q), w = take * o.per;
+      soldW += w; soldWD += w * (x.t - o.t) / DAY;
+      o.q -= take; q -= take;
+      if (o.q <= 1e-9) L.shift();
+    }
+  });
+  const end = M.lastT || Date.now();
+  let openW = 0, openWD = 0;
+  lots.forEach((L, tk) => { if (!M.byTk.has(tk)) return; L.forEach((o) => { const w = o.q * o.per; openW += w; openWD += w * (end - o.t) / DAY; }); });
+  const from = end - 365 * DAY;
+  const yr = trades.filter((x) => x.t >= from);
+  const bought = sum(yr.filter((x) => x.side === 'BUY').map((x) => x.net || 0));
+  const sold = sum(yr.filter((x) => x.side === 'SELL').map((x) => x.net || 0));
+  const fees = sum(((M.tx && M.tx.list) || []).filter((x) => x.t >= from).map((x) => (x.feeFx || 0) + (x.feeOther || 0)));
+  const vals = seriesOf(TOTAL).daily.filter((d) => d.t >= from && isNum(d.close)).map((d) => d.close);
+  const avg = vals.length ? sum(vals) / vals.length : null;
+  return { soldDays: soldW > 0 ? soldWD / soldW : null, openDays: openW > 0 ? openWD / openW : null, soldW, bought, sold, fees,
+    turnover: isNum(avg) && avg > 0 ? Math.min(bought, sold) / avg : null, avg, months: Math.min(12, Math.max(1, Math.round((end - Math.max(from, trades[0].t)) / (30.44 * DAY)))) };
+}
+const daysText = (d) => (d >= 730 ? N1.format(d / 365) + ' jaar' : d >= 60 ? NI.format(d / 30.44) + ' maanden' : NI.format(d) + (Math.round(d) === 1 ? ' dag' : ' dagen'));
+function holdTile() {
+  const H = holdModel();
+  const head = '<section class="tile pad hold-tile"><h3>' + esc(T('Houdduur en omloop')) + '</h3>';
+  if (!H) return head + '<p class="sub">Zodra je orders zijn opgehaald (of je de CSV-export hebt ingelezen), staat hier hoe lang je aandelen gemiddeld houdt en hoeveel je wisselt.</p></section>';
+  return head + rawKv([
+    ['Verkochte stukken gemiddeld in bezit', isNum(H.soldDays) ? daysText(H.soldDays) : 'je hebt nog niets verkocht'],
+    ['Wat je nu hebt, gemiddeld gekocht', isNum(H.openDays) ? daysText(H.openDays) + ' geleden' : '–'],
+    [trm('Omloop', 'omloop') + ' (laatste ' + H.months + (H.months === 1 ? ' maand' : ' maanden') + ')', isNum(H.turnover) ? PCT0.format(H.turnover) + ' van de gemiddelde waarde' : '–'],
+    ['Gekocht en verkocht in die periode', eur(H.bought) + ' en ' + eur(H.sold)],
+    ['Kosten in die periode', eur(H.fees) + (H.fees > 0 && H.bought + H.sold > 0 ? ' (' + P2.format(H.fees / (H.bought + H.sold)) + ' van wat je wisselde)' : '')],
+  ]) + '<p class="sub" style="margin-top:8px">Gewogen naar het ingelegde bedrag; verkopen halen de oudste aankopen eerst weg (FIFO). Een terugblik op je eigen gedrag, geen oordeel.</p></section>';
+}

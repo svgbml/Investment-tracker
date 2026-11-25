@@ -8,6 +8,9 @@
 // (gemaakt met node tools/changelog.mjs); hieronder staat alleen wat de gebruiker merkt.
 // Bij een nieuwe versie: zet de regels van die versie bovenaan, met VERSION uit js/01-basis.js als sleutel.
 const WHATS_NEW = {
+  v98: [
+    'Houdduur en omloop: in Analyse, bij Kopen en verkopen, zie je hoe lang je verkochte aandelen gemiddeld in bezit had, hoe oud je huidige aankopen gemiddeld zijn, hoeveel je in een jaar wisselde en welke kosten daarbij hoorden.',
+  ],
   v97: [
     'Concentratie door de tijd: in Analyse, bij Doorkijk, zie je per maand hoeveel van je beleggingen in de vijf grootste posities zat, met de HHI en het effectieve aantal posities. Dit is de eerste van een reeks terugblikken die je geschiedenis per dag per aandeel gebruiken.',
   ],
