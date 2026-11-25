@@ -38,6 +38,15 @@ function derive() {
   const ti = m.intra.get(TOTAL) || [];
   const th = m.hours.get(TOTAL) || [];
   m.lastT = ti.length ? ti[ti.length - 1].t : th.length ? th[th.length - 1].t : null;
+  // De Worker schrijft een positie alleen als die veranderde, en elk uur alles (idee 45). De laatste stand van een
+  // positie die je nog hebt, loopt daarom door tot de laatste meting (hoogstens een uur terug).
+  if (ti.length) {
+    const tEnd = ti[ti.length - 1].t;
+    (data.positions || []).forEach((p) => {
+      const a = m.intra.get(p.ticker), z = a && a[a.length - 1];
+      if (z && z.t < tEnd && tEnd - z.t <= HOUR) a.push({ t: tEnd, v: z.v, q: z.q });
+    });
+  }
   m.isToday = m.lastT != null && dayKey(m.lastT) === dayKey(Date.now());
   m.dayWord = m.lastT == null || m.isToday ? 'vandaag' : 'op ' + fD.format(m.lastT);
   m.intraDays = new Set(ti.map((p) => dayKey(p.t))).size;

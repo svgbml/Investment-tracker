@@ -2090,6 +2090,8 @@ await test('vijf jaar, 30 posities: een ronde blijft ruim binnen de D1-daglimiet
   console.log('       geschreven rijen: gewone ronde ' + WRITES[0] + ', met samenvatten ' + WRITES[1] + ', zelden ' + WRITES[2] + ', ververs-vraag ' + WRITES[3]);
   console.log('       gelezen rijen: gewone ronde ' + normal + ', met samenvatten ' + hourly + ', zelden (alle jaren) ' + rare + ', ververs-vraag ' + poll + '; geschat per dag ' + Math.round(perDay));
   assert.ok(rare <= RARE_MAX, 'ronde met alle jaren opnieuw las ' + rare + ' rijen (grens ' + RARE_MAX + ')');
+  // Idee 45: een ronde waarin geen positie veranderde, schrijft alleen de totaalregel (was 14 rijen, nu 9)
+  assert.ok(WRITES[0] <= 10, 'gewone ronde zonder veranderingen schreef ' + WRITES[0] + ' rijen (grens 10)');
   assert.ok(normal <= ROUND_MAX, 'gewone ronde las ' + normal + ' rijen (grens ' + ROUND_MAX + ')');
   assert.ok(hourly <= HOURLY_MAX, 'ronde met samenvatten las ' + hourly + ' rijen (grens ' + HOURLY_MAX + ')');
   assert.ok(perDay <= DAY_BUDGET, 'geschat per dag ' + Math.round(perDay) + ' rijen (grens ' + DAY_BUDGET + ')');
@@ -2428,6 +2430,47 @@ await test('volglijst vaker: koers van Finnhub, een minuut in het geheugen, alle
   assert.ok(c.why && !Object.keys(c.quotes).length);
   setKv('src_health', '{}');
   routes = [];
+});
+
+await test('geen dubbele metingen: onveranderd alleen het totaal, elk uur alles, en een verkochte positie valt weg (idee 45)', async () => {
+  const T = WM._test;
+  const round = async (t, list) => {
+    routes = [[/t212\.test\/api\/v0\/equity\/positions/, reply(list)], [/t212\.test\/api\/v0\/equity\/account\/summary/, reply({ currency: 'EUR', cash: { availableToTrade: 80, inPies: 0, reservedForOrders: 0 } })]];
+    setKv('hk_hour', String(T.hourStart(t)));   // geen opruimronde in deze test
+    const pending = [];
+    await W.scheduled({ cron: '*/10 * * * *', scheduledTime: t }, env, { waitUntil: (p) => { pending.push(p); } });
+    await Promise.all(pending);
+  };
+  const n = (t) => DB.db.prepare('SELECT COUNT(*) AS n FROM intraday WHERE ts = ?').get(t).n;
+  const total = (t) => DB.db.prepare('SELECT price FROM intraday WHERE ts = ? AND ticker = ?').get(t, 'TOTAAL');
+  const t1 = Date.parse('2031-03-04T10:00:00Z'), t2 = t1 + 600e3, t3 = t1 + 1200e3, t4 = t1 + 3600e3, t5 = t4 + 600e3;
+  const changed = [Object.assign({}, T212_POS[0], { currentPrice: 235, walletImpact: Object.assign({}, T212_POS[0].walletImpact, { currentValue: 410 }) }), T212_POS[1]];
+  try {
+    await round(t1, T212_POS);
+    assert.equal(n(t1), 3, 'eerste meting: alle posities en het totaal');
+    assert.equal(total(t1).price, 2, 'totaalregel draagt het aantal posities');
+    await round(t2, T212_POS);
+    assert.equal(n(t2), 1, 'niets veranderd: alleen het totaal');
+    let st = await T.todayState(env);
+    assert.deepEqual(st.pos.map((p) => p.ticker).sort(), ['AAPL', 'VUAG'], 'posities blijven bekend');
+    await round(t3, changed);
+    assert.equal(n(t3), 2, 'één positie veranderd: die en het totaal');
+    await round(t4, changed);
+    assert.equal(n(t4), 3, 'nieuw uur: weer alles');
+    assert.deepEqual(((await T.lastRows(env)) || []).map((r) => r.ticker).sort(), ['AAPL', 'VUAG']);
+    await round(t5, [changed[0]]);
+    assert.equal(n(t5), 2, 'een positie minder: volledige meting');
+    st = await T.todayState(env);
+    assert.deepEqual(st.pos.map((p) => p.ticker), ['AAPL'], 'de verkochte positie valt weg');
+    assert.equal(st.pos[0].value, 410);
+    const d = await jsonOf(await req('/api/data?part=core&split=1'));
+    assert.deepEqual(d.positions.map((p) => p.ticker), ['AAPL'], 'de site krijgt de posities van de laatste meting');
+  } finally {
+    DB.db.prepare('DELETE FROM intraday WHERE ts >= ?').run(t1);
+    setKv('meas_last', '');
+    await T.invalidateSeries(env);
+    routes = [];
+  }
 });
 
 console.log((failed ? failed + ' fout, ' : '') + passed + ' geslaagd');

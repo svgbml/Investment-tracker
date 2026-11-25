@@ -1082,9 +1082,23 @@ async function tick(env, now, force) {
     } else {
       const total = rows.reduce((s, r) => s + r.value, 0);
       const totalUnreal = rows.reduce((s, r) => s + r.unrealized, 0);
+      // Geen dubbele metingen (idee 45): een positie die sinds de vorige meting niet veranderde, krijgt geen nieuwe regel.
+      // De totaalregel komt er altijd, en alle posities bij de eerste meting van elk uur en als er een positie bij komt
+      // of verdwijnt. Zo heeft elk uur per positie minstens één regel (uur- en dagregels hoeven niets door te zetten) en
+      // staat elke positie in het uur van de laatste meting (lastRows). De totaalregel bewaart in price het aantal
+      // posities, zodat todayState een volledige meting herkent; die kolom wordt verder nergens gebruikt.
+      let measLast = null;
+      try { measLast = JSON.parse((await getKv(env, 'meas_last')) || 'null'); } catch (e) { measLast = null; }
+      const hr = hourStart(ts), sig = (r) => [r.value, r.unrealized, r.price, r.qty].join('|');
+      const sNext = Object.fromEntries(rows.map((r) => [r.ticker, sig(r)]));
+      const sameSet = !!(measLast && measLast.h === hr && measLast.s && Object.keys(measLast.s).length === rows.length && rows.every((r) => r.ticker in measLast.s));
+      const toWrite = sameSet ? rows.filter((r) => measLast.s[r.ticker] !== sNext[r.ticker]) : rows.slice();
+      const nPos = rows.length;
       rows.push({ ticker: TOTAL, name: 'Totaal beleggingen', value: r2(total), unrealized: r2(totalUnreal), price: null, qty: null });
       const stmt = env.DB.prepare('INSERT OR REPLACE INTO intraday (ts, ticker, name, value, unrealized, price, qty) VALUES (?,?,?,?,?,?,?)');
-      await env.DB.batch(rows.map((r) => stmt.bind(ts, r.ticker, r.name, r.value, r.unrealized, r.price, r.qty)));
+      await env.DB.batch(toWrite.map((r) => stmt.bind(ts, r.ticker, r.name, r.value, r.unrealized, r.price, r.qty))
+        .concat([stmt.bind(ts, TOTAL, 'Totaal beleggingen', r2(total), r2(totalUnreal), nPos, null)]));
+      if (!sameSet || toWrite.length) await setKv(env, 'meas_last', JSON.stringify({ h: hr, s: sNext }));
       // Een geweigerde positie houdt zijn vorige gegevens, zodat een foute koers geen nieuwe maatstaf wordt
       const extra = posExtra(positions);
       chk.bad.forEach((b) => { if (prevExtra[b.ticker]) extra[b.ticker] = prevExtra[b.ticker]; else delete extra[b.ticker]; });
@@ -1336,7 +1350,7 @@ async function housekeeping(env, now) {
     const v = list.map((x) => x.value);
     const last = list[list.length - 1];
     hRows.push(hStmt.bind(hour, last.ticker, last.name, v[0], v[v.length - 1], Math.min(...v), Math.max(...v),
-      r2(v.reduce((s, x) => s + x, 0) / v.length), v.length, last.price));
+      r2(v.reduce((s, x) => s + x, 0) / v.length), v.length, last.ticker === TOTAL ? null : last.price));
     if (hour > maxHour) maxHour = hour;
   }
   if (hRows.length) {
@@ -1602,14 +1616,18 @@ async function seriesRows(env, now) {
 async function todayState(env) {
   let st = null;
   try { st = JSON.parse((await getKv(env, 'today_state')) || 'null'); } catch (e) { st = null; }
-  if (!st || st.v !== 1) {
+  if (!st || st.v !== 2) {
     const last = await env.DB.prepare('SELECT MAX(ts) AS ts FROM intraday').first().catch(() => null);
-    st = { v: 1, day: null, until: last && last.ts ? last.ts - 864e5 : 0, lastTs: 0, t: {}, pos: [] };
+    st = { v: 2, day: null, until: last && last.ts ? last.ts - 864e5 : 0, lastTs: 0, t: {}, pos: [] };
   }
   // Vanaf de laatste meting (die opnieuw): een meting die vervangen is (zelfde tijdstip), telt zo ook mee
   const { results } = await env.DB.prepare('SELECT ts, ticker, name, value, unrealized, qty, price FROM intraday WHERE ts >= ? ORDER BY ts').bind(st.until).all();
   const lastDay = results.length ? dayOf(results[results.length - 1].ts) : st.day;
   let changed = false;
+  // Een meting schrijft alleen de posities die veranderden (idee 45). De totaalregel draagt in price het aantal
+  // posities; zijn er op dat tijdstip evenveel positieregels, dan was het een volledige meting en vallen posities
+  // zonder regel (verkocht) weg. Een totaalregel zonder aantal is van vóór idee 45: toen was elke meting volledig.
+  const cnt = new Map(), full = new Map();
   results.forEach((r) => {
     const d = dayOf(r.ts);
     if (d !== lastDay) return;
@@ -1621,14 +1639,20 @@ async function todayState(env) {
       a.c = v; a.l = Math.min(a.l, v); a.h = Math.max(a.h, v); a.name = r.name;
       changed = true;
     }
-    if (r.ts > st.lastTs) { st.lastTs = r.ts; st.pos = []; changed = true; }
-    if (r.ts === st.lastTs && r.ticker !== TOTAL) {
-      const row = { ticker: r.ticker, name: r.name, value: r.value, unrealized: r.unrealized, qty: r.qty, price: r.price };
-      const i = st.pos.findIndex((x) => x.ticker === r.ticker);
-      if (i < 0) st.pos.push(row);
-      else if (JSON.stringify(st.pos[i]) !== JSON.stringify(row)) { st.pos[i] = row; changed = true; }
-    }
+    if (r.ts > st.lastTs) { st.lastTs = r.ts; changed = true; }
+    if (r.ticker === TOTAL) { full.set(r.ts, r.price > 0 ? r.price : -1); return; }
+    cnt.set(r.ts, (cnt.get(r.ts) || 0) + 1);
+    const row = { ticker: r.ticker, name: r.name, value: r.value, unrealized: r.unrealized, qty: r.qty, price: r.price, lt: r.ts };
+    const i = st.pos.findIndex((x) => x.ticker === r.ticker);
+    if (i < 0) { st.pos.push(row); changed = true; }
+    else if (r.ts >= (st.pos[i].lt || 0) && JSON.stringify(st.pos[i]) !== JSON.stringify(row)) { st.pos[i] = row; changed = true; }
   });
+  let fullTs = 0;
+  full.forEach((n, ts) => { if ((n === -1 || cnt.get(ts) === n) && ts > fullTs) fullTs = ts; });
+  if (fullTs) {
+    const keep = st.pos.filter((x) => (x.lt || 0) >= fullTs);
+    if (keep.length !== st.pos.length) { st.pos = keep; changed = true; }
+  }
   if (st.lastTs) st.until = st.lastTs;
   if (changed) await setKv(env, 'today_state', JSON.stringify(st));
   return st;
@@ -3272,12 +3296,23 @@ function prevWeekdays(day, n) {
   return out;
 }
 
+// Laatste regel per positie (idee 45). Een meting schrijft alleen wat veranderde, maar de eerste meting van elk uur
+// schrijft alles: elke positie staat dus in het uur van de laatste meting. Een positie die dit uur verkocht is, telt
+// tot het volgende uur nog mee. Met before: de laatste meting vóór dat tijdstip.
+async function lastRows(env, before) {
+  const last = before ? await env.DB.prepare('SELECT MAX(ts) AS ts FROM intraday WHERE ts < ?').bind(before).first()
+    : await env.DB.prepare('SELECT MAX(ts) AS ts FROM intraday').first();
+  if (!last || !last.ts) return null;
+  const { results } = await env.DB.prepare('SELECT ts, ticker, name, value, qty FROM intraday WHERE ts >= ? AND ts <= ? AND ticker != ? ORDER BY ts')
+    .bind(hourStart(last.ts), last.ts, TOTAL).all();
+  const m = new Map();
+  results.forEach((r) => m.set(r.ticker, r));
+  return [...m.values()];
+}
+
 async function heldStocks(env) {
-  const last = await env.DB.prepare('SELECT MAX(ts) AS ts FROM intraday').first();
-  let results;
-  if (last && last.ts) {
-    ({ results } = await env.DB.prepare('SELECT ticker, name FROM intraday WHERE ts = ? AND ticker != ?').bind(last.ts, TOTAL).all());
-  } else {
+  let results = await lastRows(env);
+  if (!results) {
     ({ results } = await env.DB.prepare('SELECT ticker, name FROM positions WHERE date = (SELECT MAX(date) FROM positions)').all());
   }
   // Fondsen overslaan: op naam, en volgens OpenFIGI (ETF of ETP) als die het weet
@@ -3862,7 +3897,7 @@ function isDst(localIso) {
 export const _test = { parts, isLive, marketHours, shortTicker, isoLocal, isDst, hourStart, dayOf, newsHistTask, storeNews, noteOpinionDay, figiRecord, gdeltName, usTicker, heldStocks,
   tradingDay, usTradingDay, shiftDay, weekdayOf, srcPause, srcFail, srcOk, srcState, srcHistState, checkPositions, splitRatio,
   planResearch, uniqTasks, dbWatch, testKey, r2Backup, r2Info, r2Preview, healthInfo, budgetInfo, buildData, bumpMarket, ensureMarketTables, ensureIndexes, countingDb, flushCalls, srcFail, searchCompanies, checkPriceAlerts, saveMode, buildAllowed, seriesRows, todayState, seriesFull, newsKind, newsBreaking, flashMerge, newsWatch, marketDataCached, marketData, invalidateSeries, cfTrend, setBig, getBig, invalidateOrders,
-  housekeeping, watchQuotes, wqClear: () => WQ.clear(), usSym, QUOTES, kvMemoClear: () => { kvMemo = new WeakMap(); }, sicSector, parseForm4, quarterlyEps, polyNewsItems, altTask, eodBackup, planMarket };
+  housekeeping, lastRows, watchQuotes, wqClear: () => WQ.clear(), usSym, QUOTES, kvMemoClear: () => { kvMemo = new WeakMap(); }, sicSector, parseForm4, quarterlyEps, polyNewsItems, altTask, eodBackup, planMarket };
 
 
 // =====================================================================
@@ -3986,7 +4021,7 @@ async function alertMoves(env, rows, now) {
   const per = new Map();
   try {
     const midnight = hourStart(now.getTime()) - parts(now).hour * HOUR_MS;
-    const { results: pq } = await env.DB.prepare('SELECT ticker, value, qty FROM intraday WHERE ts = (SELECT MAX(ts) FROM intraday WHERE ts < ?)').bind(midnight).all();
+    const pq = (await lastRows(env, midnight)) || [];
     pq.forEach((p) => { if (p.qty > 0 && p.value > 0) per.set(p.ticker, p.value / p.qty); });
   } catch (e) { /* dan zoals voorheen tegen het dagslot */ }
   // Totaal: je huidige posities tegen hun koers van gisteren
@@ -4032,9 +4067,7 @@ async function alertEarnings(env) {
 
 // Je eigen aandelen met hun naam: uit de laatste meting, anders uit de laatste weekmeting; fondsen tellen niet mee
 async function heldNamed(env) {
-  let rows = [];
-  const last = await env.DB.prepare('SELECT MAX(ts) AS ts FROM intraday').first();
-  if (last && last.ts) ({ results: rows } = await env.DB.prepare('SELECT ticker, name FROM intraday WHERE ts = ? AND ticker != ?').bind(last.ts, TOTAL).all());
+  let rows = (await lastRows(env)) || [];
   if (!rows.length) ({ results: rows } = await env.DB.prepare('SELECT ticker, name FROM positions WHERE date = (SELECT MAX(date) FROM positions)').all());
   return rows.filter((r) => !ETF_RE.test(r.name || ''));
 }

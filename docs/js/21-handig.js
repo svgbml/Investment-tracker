@@ -8,6 +8,9 @@
 // (gemaakt met node tools/changelog.mjs); hieronder staat alleen wat de gebruiker merkt.
 // Bij een nieuwe versie: zet de regels van die versie bovenaan, met VERSION uit js/01-basis.js als sleutel.
 const WHATS_NEW = {
+  v93: [
+    'Zuiniger meten: een positie die sinds de vorige meting niet veranderde, krijgt geen nieuwe regel meer in de database (elk uur wel één). Dat scheelt vooral 's nachts veel geschreven rijen van het gratis Cloudflare-plan. De grafieken lopen gewoon door.',
+  ],
   v92: [
     'Eigen sneltoetsen: bij Instellingen, Weergave kies je per actie een eigen toets, ook voor vernieuwen, het thema en een aantekening. Een toets die al in gebruik is of die de browser nodig heeft, weigert de site met uitleg.',
   ],
