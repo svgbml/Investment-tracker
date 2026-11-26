@@ -130,7 +130,9 @@ function lineChart(host, sets, o) {
     if (!isNum(v)) return;
     const el = document.createElement('div');
     const xp = X(i) / 10;
-    el.className = 'marker' + (xp > 82 ? ' r' : xp < 18 ? ' l' : '') + (mk.kind ? ' mk-' + mk.kind : '');
+    // dn: speldje in het bovenste deel; op de grote grafiek komt het label dan onder het steeltje,
+    // zodat het niet over de tekst boven de grafiek valt
+    el.className = 'marker' + (xp > 82 ? ' r' : xp < 18 ? ' l' : '') + (Y(v) < 70 ? ' dn' : '') + (mk.kind ? ' mk-' + mk.kind : '');
     el.style.left = xp + '%';
     el.style.top = Y(v) + '%';
     el.innerHTML = '<span></span><i></i>';

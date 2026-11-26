@@ -268,6 +268,8 @@ button.ds-c:hover b { color: var(--accent); }
   }
   #hero-chart .marker.l span { left: -4px; transform: none; }
   #hero-chart .marker.r span { left: auto; right: -4px; transform: none; }
+  /* Speldjes hoog in de grafiek: label onder het steeltje, anders valt het over de grote waarde en de dagwinst */
+  #hero-chart .marker.dn span { bottom: auto; top: 64px; }
   #hero-chart .marker.mk-high span, #hero-chart .marker:hover span { opacity: 1; }
   #hero-chart .marker.mk-dep { --pin: var(--ink-2); }
   #hero-chart .marker.mk-buy { --pin: var(--gain); }
