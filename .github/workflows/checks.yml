@@ -22,7 +22,7 @@ jobs:
           # De hele geschiedenis: tools/check-stijl.mjs vergelijkt met main en heeft daarvoor
           # een gemeenschappelijke voorouder nodig (met een ondiepe kloon is die er niet).
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
       - name: Website
@@ -52,7 +52,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
       - name: Playwright installeren
