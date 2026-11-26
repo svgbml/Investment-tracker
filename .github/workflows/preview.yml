@@ -39,7 +39,7 @@ jobs:
             || (echo 'Er lijkt een sleutel in docs/ te staan; de voorvertoning gaat niet online.'; exit 1)
 
       - name: Site bewaren om te bekijken
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: site-pr-${{ github.event.pull_request.number }}
           path: docs
